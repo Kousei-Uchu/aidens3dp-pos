@@ -1,0 +1,586 @@
+diff --git a/App.tsx b/App.tsx
+index 8785772..2d1af4a 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -8,7 +8,7 @@ import { NavProvider, useNav, type Route, type Tab } from './src/ui/nav';
+ import { Btn, Txt } from './src/ui/kit';
+ import { useApp } from './src/state/store';
+ import { loadCreds } from './src/lib/shopify/client';
+-import { backendSwitch, pollShared, processOutbox, pushSaved } from './src/lib/sync';
++import { backendSwitch, pollShared, processOutbox, pushSaved, pushPoll } from './src/lib/sync';
+ import { backendFlagStore } from './src/lib/cloudkit/backendFlagIO';
+ import { forceMetaobjectBackend, setBackend } from './src/lib/syncBackend';
+ import { metaobjectBackend } from './src/lib/shopify/metaobjectBackend';
+@@ -157,7 +157,8 @@ function Shell() {
+   useEffect(() => { if (ready && !setupDone && !isTraining() && nav.stack.length === 0) nav.push('setup'); }, [ready, setupDone, nav.stack.length]); // eslint-disable-line react-hooks/exhaustive-deps
+   useEffect(() => {
+     if (!ready) return;
+-    const tick = () => { if (isTraining()) return; runBackground(); const neg = Object.values(useApp.getState().data.variants).filter(v => (v.stock ?? 0) < 0).length; if (neg) useApp.getState().notify({ kind: 'stock', title: `${neg} item(s) with negative stock`, route: 'inventory' }); };
++    const tick = () => { if (isTraining()) return; runBackground(); void pushPoll.start(); // patch 8b: change pushes, once this till is on CloudKit; the tick stays as the fallback
++       const neg = Object.values(useApp.getState().data.variants).filter(v => (v.stock ?? 0) < 0).length; if (neg) useApp.getState().notify({ kind: 'stock', title: `${neg} item(s) with negative stock`, route: 'inventory' }); };
+     const t = setInterval(tick, 25000); const sub = AppState.addEventListener('change', st => { if (st === 'active') tick(); });
+     return () => { clearInterval(t); sub.remove(); };
+   }, [ready]);
+diff --git a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+index e9c577d..6d2b220 100644
+--- a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
++++ b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+@@ -12,11 +12,12 @@ Tags used throughout: **Sync** (goes to iCloud and is shared between registers),
+ 
+ Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0220 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer), patch 6a (the wider shared settings, the cash and refund notices, the logo, the grid layout and the Square history months) and patch 6c (training progress and the audit log), they add the in-app iCloud note and the drawer audit, and they finish patch 7 (the migration lease 0212, the import runner 0213, the count check 0214, the wiring 0215 and the screen section 0216), the two leftovers (resolving another register's payment 0217, creating a missing Shopify order 0218), the owner-only export (6e, 0219) and the switch (patch 8, 0220). **The code is complete but not live in practice.** Every register still runs on Shopify metaobjects until an owner iPad presses **Set up sync** and the import finishes and passes its count check. Only then does each till in the shop's share move itself to CloudKit on its next poll (about 25 seconds). Nothing starts the import automatically. Two changes already affect the Shopify path today: saved-cart merging (0204) and the safe settings reader (0205).
+ 
+-### Three things gate turning CloudKit on
++### Four things gate turning CloudKit on
+ 
+ 1. **The Swift has never been compiled or run.** Every patch since 0192 says so. It needs a Mac build in Xcode, and nothing has touched a real CloudKit zone.
+ 2. **The two-Apple-ID encryption test (O4, device test T85).** Waits for a second Apple ID and iPad. Until it passes, sale card details are not written at all (the `omit` switch, below), and the encrypted secrets and pass codes (patch 6d, built in 0224) are not sent or read either, because they use the same switch.
+-3. **The real-shop run of T102 to T109.** Patch 8 (0220) is built: the rollback flag, the move and the gap send exist, and a till moves to CloudKit by itself once it sees the import `done`. What is missing is proof on a real shop. The only brake today is that the import does not start until an owner presses **Set up sync**, so do not press it until T102 to T105 have passed. Retiring the 25 second poll (8b) still needs Swift subscriptions and is not a gate on moving.
++3. **The real-shop run of T102 to T109.** Patch 8 (0220) is built: the rollback flag, the move and the gap send exist, and a till moves to CloudKit by itself once it sees the import `done`. What is missing is proof on a real shop. The only brake today is that the import does not start until an owner presses **Set up sync**, so do not press it until T102 to T105 have passed. The change pushes (8b, 0225) are written but the 25 second poll stays as the fallback, so they are not a gate on moving.
++4. **Joined tills probably cannot see the owner's records (found by reading the Swift in 0225, not yet seen on a device).** Every record call in `CloudKitSyncModule.swift` goes through `database()`, which always returns the private database, and builds its zone ID as `CKRecordZone(zoneName: "Store")`, which is owned by the current Apple ID. The shared database is used once, in `state()`, only to report the role. In CloudKit a joined till finds the owner's zone in the shared database under the owner's own zone ID, so a joined iPad would read and write its own empty private zone. If that is right, only the owner iPad works and every other till breaks at the cut-over. T74 (join) and T85 would show it first. Fixing it means resolving the owner's zone ID and the right database once per role and using both for every record call. It has not been done. Do not move a second till until it is fixed or a device test shows it works.
+ 
+ ### The card-field switch
+ 
+@@ -117,9 +118,9 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ | 6e | Owner-only CloudKit export (one zip of JSON), or fold into 8 | **Built (0219).** Gated on nothing; T108. |
+ | 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | **Complete in code.** The lease (0212), the import runner with its phases and checkpoints (0213) the count check that marks the import done (0214), the controller wired into `sync.ts` (0215) and the screen section (0216) are built. The one-off uploads of local-only data are already done by the catch-ups (events, attempts, audit log) and the poll (training). Still to do: run T102 to T105 on a real shop. |
+ | 8 | Retire polling, add the rollback flag, decide dual-write or cut over | **Built in code (0220), except retiring polling.** Cut over in one go; the flag, the move and the rollback are done. T109. |
+-| 8b | Push-driven change callbacks (CloudKit subscriptions) so the 25 s poll can be retired | Not started. Needs Swift (a subscription and a silent-push entitlement). |
++| 8b | Push-driven change callbacks (CloudKit subscriptions) so the 25 s poll can be retired | **Built in code (0225), never run on a device, Swift not compiled. The poll is NOT retired.** A silent database subscription on both the private and the shared database (`startSubscriptions`), a `CloudKitPushSubscriber` that turns the push into the `onRemoteChange` event, `pushPoll.ts` that turns pushes into one coalesced `pollShared`, and `aps-environment` in the plugin. The 25 second tick in `App.tsx` stays as the fallback because iOS may delay or drop silent pushes. Retire or slow the tick only after T111 shows pushes arriving reliably. Needs Push Notifications enabled on the App ID, or the build does not sign. |
+ 
+-**Next up:** run T102 to T109 on a real shop, in order, before any till moves. 6d is built (0224) and its secrets are in the 6e export; it stays off until the encryption test (T85) and T110 pass. Then 8b (CloudKit subscriptions, Swift) to retire the poll. The two smaller leftovers are built: resolving another register's payment (item 9, 0217) and creating another register's missing Shopify order (item 8, 0218).
++**Next up:** run T102 to T109 on a real shop, in order, before any till moves. 6d is built (0224) and its secrets are in the 6e export; it stays off until the encryption test (T85) and T110 pass. 8b is built (0225) and speeds up reads with change pushes but keeps the 25 second tick; slow or remove the tick only after T111. The two smaller leftovers are built: resolving another register's payment (item 9, 0217) and creating another register's missing Shopify order (item 8, 0218).
+ 
+ ### 2.4 Open items and things to confirm
+ 
+@@ -169,6 +170,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ - Import runner (0213): saved carts, sales and rollups are copied with a plain upsert and no version check, which is safe only because other registers queue their writes until the import is done (plan section 6, step 5). That queueing was never built, and patch 8 (0220) did not add it. My reading of the code is that it is not needed: a till writes to CloudKit only after `backendSwitch.check()` sees the import `done`, and the owner iPad running the import is itself still on Shopify until then. Confirm this in T102 and T109 before relying on it.
+ - Training progress: two registers writing the same person's module in the same instant could lose one mark until the next poll, which joins them again. A reset cannot be lost this way, because the higher reset count always wins (0210).
+ - The switch (0220): the 25 second poll stays (8b). The rollback is per iPad, so a till rolled back while the others stay on iCloud reads an old copy until every till is done. A till that has moved never falls back by itself, even with iCloud signed out. Settings, layout and carts written in the gap between the import finishing and a till moving are not sent specially: the next poll merges them by version. A till that never joined the share stays on Shopify.
++- Change pushes (0225): never run on a device, and the Swift has not been compiled. It subscribes both databases from the tick once a till is on CloudKit, so the first read after a move is by the tick, not a push. A push reads only the shop's shared records (`pollShared`), not the outbox. Silent pushes can be delayed or dropped by iOS, especially in low power mode or after a force quit (iOS does not wake a force-quit app for a silent push), so the 25 second tick is the real guarantee. The `aps-environment` entitlement is `development` in the plugin and is expected to become `production` in a distribution archive: check that on the first TestFlight build. If Expo also forwards the call to another subscriber (for example a notifications library), both complete the handler; this has not been tried.
+ - Secrets (0224): never run on a device, and the Swift has not been compiled. Nothing deletes a secret record, so a cashier who is removed keeps an encrypted `badge.<id>` record in the shop's zone, and every register that already took it keeps its copy until that register removes it. A removal on one register is not sent. When both sides changed, the shop's value replaces this register's and the run reports it, but no screen tells the person yet. Taking a new Shopify login saves it through `saveCreds`, which normalises the domain and drops the cached token, so the next run may send the normalised form once before it settles. A secret that this device cannot read (for example the other Apple ID in T85) is skipped, never overwritten. The export zip now contains these secrets (O5): keep it owner-only.
+ - Missing-order recovery (0218) and the audit log (0211) both depend on the CloudKit sale and the encrypted switch for their full effect: an order made from another register has no customer name or card references, and gift card sales are left for a person.
+ **CloudKit dashboard steps needed before it works on a real zone:**
+@@ -182,7 +184,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ - The `SquareManifest` and `SquareShard` types (0209) are read by record name, so they need no index. The development environment creates them on first write; they must be deployed to Production like the others.
+ - The schema must be deployed to the Production environment, which is separate and empty. The migration would run again there.
+ 
+-**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) T96 (shared logo), T97 (shared layout) and T98 (shared Square history) T99 (shared training progress), T100 (shared audit log) and T101 (the migration lease). T102 (the import runner, 0213), T103 (the count check, 0214), T104 (the controller, 0215), T105 (the screen, 0216), T106 (resolving another register's payment, 0217), T107 (missing-order recovery, 0218), T108 (the owner export, 0219) T109 (the switch, 0220) and T110 (shared secrets, 0224, run after T85) are written. Run T102 to T105 first, because they exercise the import; T109 needs a real shop where they passed, with iPads A (owner), B (in the share) and C (not in the share).
++**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) T96 (shared logo), T97 (shared layout) and T98 (shared Square history) T99 (shared training progress), T100 (shared audit log) and T101 (the migration lease). T102 (the import runner, 0213), T103 (the count check, 0214), T104 (the controller, 0215), T105 (the screen, 0216), T106 (resolving another register's payment, 0217), T107 (missing-order recovery, 0218), T108 (the owner export, 0219) T109 (the switch, 0220) T110 (shared secrets, 0224, run after T85) and T111 (change pushes, 0225) are written. Run T102 to T105 first, because they exercise the import; T109 needs a real shop where they passed, with iPads A (owner), B (in the share) and C (not in the share).
+ 
+ **Yours to do, not code:** the shop’s privacy policy and the App Store privacy details (these changes add payment and staff data to what is stored), and the CloudKit container and App ID setup from patch 1.
+ 
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index cce6b81..b9ec38f 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1455,3 +1455,17 @@ Needs the owner iPad (A) and a second iPad (B) that has joined the shop, on a sh
+ 10. On B (a different Apple ID, if T85 left B unable to read an encrypted field) check the run does not overwrite what it cannot read. Pass: the dashboard value of any record B could not read is unchanged after B's polls.
+ 11. Start a practice run on A and change a secret inside it. Pass: no `Secret` record changes and the real secrets are unchanged after leaving practice.
+ 12. Export from A (owner only). Pass: the zip has a `secrets` file, and it contains the values A could read. Do not share the zip.
++
++## T111. Change pushes (0225)
++
++1. Needs the owner iPad A and a joined iPad B, both on CloudKit (T109 passed), and a build signed with a push-enabled provisioning profile (Push Notifications switched on for the App ID). Pass: the build installs. If signing fails, enable Push Notifications on the App ID first.
++2. Open both iPads and wait one tick (25 seconds). Pass: the CloudKit dashboard shows two database subscriptions for the app, `aidens3dp-private-changes` and `aidens3dp-shared-changes`, for each Apple ID, and none is duplicated after a relaunch.
++3. With B in front and idle, take a cash sale on A. Pass: B shows the sale in the shop-wide sales view within a few seconds, well under the 25 second tick. Repeat five times and note how many arrive in under 5 seconds. (A silent push is not guaranteed, so record the count, do not expect all five.)
++4. Make five quick changes on A (add and remove a saved cart five times). Pass: B stays responsive and reads a few times, not once per change. B's Diagnostics does not show overlapping syncs.
++5. Put B in the background for two minutes, change something on A, then bring B forward. Pass: B shows the change at once or after at most one tick.
++6. Force quit B, change something on A, wait 30 seconds without opening B, then open B. Pass: B shows the change within one tick of opening. (iOS does not wake a force-quit app for a silent push, so no earlier update is expected.)
++7. Turn on Low Power Mode on B and repeat step 3. Pass: changes still arrive within a tick, even if pushes are late.
++8. Turn Wi-Fi off on B, change something on A, turn Wi-Fi on. Pass: B catches up within a tick, and nothing errors.
++9. Start a practice run on B and change something on A. Pass: B does not read the shop or subscribe during practice, and the real data is unchanged after leaving practice.
++10. On a till that is still on Shopify storage, look at the dashboard. Pass: no subscription was made for it.
++11. Install a build with the entitlement removed (a debug build). Pass: the app still works and polls every tick; Cloud sync does not show an error about pushes.
+diff --git a/dev_docs/GUESSES.md b/dev_docs/GUESSES.md
+index 7f89ef2..6bfdcab 100644
+--- a/dev_docs/GUESSES.md
++++ b/dev_docs/GUESSES.md
+@@ -690,3 +690,16 @@ Each is a guess, change any you disagree with.
+ 8. **Pass codes sync so any iPad can print or send a pass again.** Before, only the iPad that issued it could. StaffPass still checks the code against the staff hash before showing it.
+ 9. **The secrets are in the 6e export** (O5), as the export plan said. The zip is as sensitive as the Shopify login.
+ 10. **Taking a Shopify login goes through `saveCreds`,** which normalises the domain and drops the cached token. The next run may send the normalised form once before it settles.
++
++## Change pushes (0225)
++
++Each is a guess, change any you disagree with.
++
++1. **The 25 second tick stays.** The pushes make reads faster and do not replace the tick, because iOS can delay or drop silent pushes and never wakes a force-quit app. Slow or remove the tick only after T111.
++2. **Both databases are always subscribed,** with fixed ids (`aidens3dp-private-changes`, `aidens3dp-shared-changes`). A joined till hears the owner's changes through the shared database, and an owner hears its own through the private one. Subscribing both avoids asking which role this iPad has.
++3. **Silent only.** The subscription carries `shouldSendContentAvailable` and no alert, sound or badge, so nothing asks the person for permission and nothing appears on screen.
++4. **Subscribe from the existing tick,** once a till is on CloudKit, rather than at launch. It costs nothing once listening, and a till that moves later starts listening without a restart. The first read after a move is therefore by the tick.
++5. **A push reads only the shop's shared records** (`pollShared`), not the outbox or saved carts.
++6. **At least 2 seconds between push reads.** A burst becomes one read now and one later, reads never overlap, and a push that arrives during a read earns exactly one more.
++7. **Expo's `appDelegateSubscribers`** receives the push, so nothing is written into the generated AppDelegate for it.
++8. **`aps-environment` is `development` in the plugin,** and an existing value is kept. A distribution archive is expected to carry `production`; check on the first TestFlight build.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 6fac3d0..c552457 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -201,6 +201,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0218 | 2026-11-02 | CloudKit item 8 leftover: **another register creates a missing Shopify order** (your request: do the rest of the docs). The problem found first: today the shared sale row is written after the order, so a sale left in a dead iPad's queue leaves no trace anywhere. So with CloudKit on the outbox gets an `early` step that writes the sale before the receipt and the order (CloudKit only, sales only, not in practice mode; a failure is not fatal and the final entry step writes it again with the order on it); `runItem` now returns the finished sale and the entry fields come from one helper. `orderRecovery.ts` has the rules (stranded sale, claim handle and fields, stale claims, the gift card exception, the notice); `cloudkit/orderRecoverySync.ts` is the job: at most every ten minutes, three sales per run, a write-once claim first (so two registers cannot both create it), then `runItem` on the sale, then a notice. Run from `pollShared`. New `tests/orderrecovery.test.ts` (14 tests). Guesses and known gaps under 0218. |
+ | 0219 | 2026-11-02 | CloudKit patch 6e: **the owner-only CloudKit export** (your request: do the rest of the docs), plus corrections. The export: `exportAll.ts` is the pure half (the list of every record type, `readAll` that reads a whole list and fails loudly, `collectExport` that builds the files, manifest and README, `zipExport` with fflate); `exportAllIO.ts` writes the zip to the cache folder, adds the logo picture, and refuses in a practice run; the Cloud sync page has an owner-only **Back up everything** button that confirms first and shares the zip. New `tests/exportall.test.ts` (9 tests) and `tests/lazybackend.test.ts` (3 tests). **Corrections to earlier patches, found by a real type check and by installing `fflate` so the whole suite ran:** (1) the tsc setup in this repo does not check anything here (`expo/tsconfig.base` is missing), so the "tsc clean" I reported for 0213 to 0218 meant nothing. I ran a lenient check of every file I touched and it found two real bugs in 0216: `migrationPanel.ts` read `phase` from a failure result that has none (a failed count check), and `CloudSync.tsx` used `useApp` without importing it. Both fixed here, with tests. (2) With `fflate` installed the suite showed two failures in `demoguard.test.ts` that my patches caused: 0215 put `put()` calls in `sync.ts` outside the guarded seam, and the new export wrote a file with no guard. The direct backend handles now live in `cloudkit/lazyBackend.ts` (the write stops on the same guard as the seam) and the export checks the guard. With `fflate` installed the whole suite passes (1868, 0 failing). |
+ | 0220 | 2026-11-02 | CloudKit patch 8: **the switch** (your request: do the rest of the docs). Rules in `backendChoice.ts` (flag values, start-up kind, when to move, which of a till's own sales are the gap, what the page says), job in `cloudkit/backendSwitch.ts` (`install`, `check`, `rollBack`, `allowSwitch`, `view`), flag storage in `cloudkit/backendFlagIO.ts` (guarded, local). `App.tsx` now installs the backend through the switch instead of always Shopify; `pollShared` calls `backendSwitch.check()` first. Cloud sync page: where this till keeps shared data, with the rollback and its way back. **Decisions made here, in GUESSES:** cut over in one go (no dual-write); a switched till never falls back by itself; the gap is closed by sending a till's own recent sales, not by dual-writing. **Not done:** retiring the 25 s poll, which needs CloudKit subscriptions in Swift (8b). New `tests/backendchoice.test.ts` (9 tests) and `tests/backendswitch.test.ts` (11 tests); full suite 1891, 0 failing with `fflate` installed; a lenient type check of the new files is clean. |
++| 0225 | 2026-11-03 | CloudKit patch 8b: **change pushes** (your request: start on 8b). Built, **never run on a device, Swift not compiled, and the 25 second poll is NOT retired.** Swift: `startSubscriptions` (a silent `CKDatabaseSubscription` on the private and the shared database, fixed ids, found before saved, `registerForRemoteNotifications`), an `onRemoteChange` event, and `CloudKitPushSubscriber.swift` registered through `appDelegateSubscribers`. JS: `cloudkit/pushPoll.ts` (subscribe once, retry after failure, a burst becomes one read, reads never overlap, a push during a read earns one more, nothing in practice mode or off CloudKit), created in `sync.ts` and started from the existing tick in `App.tsx`; the module typings. Plugin: `aps-environment` set to `development` through a pure `applyEntitlements`. Tests: 9 in `pushpoll.test.ts`, 2 Swift text checks, 2 plugin checks. Full suite 1933 pass, 0 fail. Device test T111, a GUESSES section with eight guesses, decisions doc updated. **Found while reading the Swift and recorded as gate 4 in the decisions doc: every record call uses the private database and a zone ID owned by the current Apple ID, so a joined till most likely reads and writes its own empty zone, not the owner's shared one. Not verified on a device and not fixed here.** |
+ | 0224 | 2026-11-03 | CloudKit patch 6d: **encrypted secrets and cashier pass codes** (your request: start on 6d). Built, **switched off, never run on a device, Swift not compiled.** One `Secret` record per secret (`shopify` packed as one login, `pass`, `claim`, `receipt`, `assistant`, `badge.<staff id>`), value in one encrypted `secure_json` field, plain labels only. New: `secretsShared.ts` (record shape, size cap, fingerprint, `mergeSecret`), `cloudkit/secretCloud.ts`, `secretSync.ts`, `secretSyncIO.ts` (Keychain side, loaded on demand, checks the practice-mode guard itself), Swift `putSecret` and `listSecrets` with `Secret` in the encrypted key list, module typings, a `sync.ts` call once per poll, and a `secrets` file in the 6e export (as O5 decided). Nothing is sent or read until `setSaleCardMode('encrypted')`, which waits for T85. Rules: one side changed, that side wins; both changed, the shop wins and the run reports it; a removal is never sent; nothing deletes a record; an unreadable shop record is skipped. 24 new tests (`secretsshared`, `secretsync`); two existing tests changed on purpose (`cloudkitswift` pins the encrypted key list, `exportall` now requires the `secrets` file). Device test T110 written. Full suite 1920 pass, 0 fail. GUESSES section added with ten guesses, decisions doc updated (N1, items 3, 20, O2, the 6d row, gaps, dashboard steps). Left open: no screen tells the person about a conflict, and a removed cashier's pass code stays in the shop's zone. |
+ | 0223 | 2026-11-03 | **Loans in the float report and the assistant's cash view** (your request: loans, assistant cash view). `recommendFloat` takes an optional `loanOwed`, returns it, and adds a note when one is owed: the report banks the day's takings only, so the float includes the loan, and the note says to take the loan back first. The Daily float report screen passes `loanOwed(shift)`. The assistant's `cash_drawer` result gains `loan_owed_back` inside `shift` (only while a loan is owed, only while the shift is open) and the `cash_calculator` float result gains the same field; both are in the field maps, so the gate lets them through. **Not done on purpose:** the suggested float is not adjusted for the loan, because the ledger cannot tell which notes are the loan. **A first version lengthened the tool description and failed the owner-confirmed 8000-token budget test (985 left, 1000 needed), so the description is unchanged and the field name carries the meaning.** Help page `cash/float-report` has a Deep section. New tests: 2 in `floatreport.test.ts`, 3 in `assistantcash.test.ts`. Full suite 1896 pass, 0 fail with `@noble/hashes`, `@noble/ciphers` and `fflate` installed; `help:check` passes. |
+ | 0222 | 2026-11-03 | Docs and help only, follows 0221 (your request: keep going on what else needs doing). Corrected the older docs that 0221 showed were stale: **`CLOUDKIT_SYNC_PLAN.md` section 6** (step 2 stored a lease expiry, which 0212 replaced with the watcher's own clock; step 5 promised a write queue that was never built, now says what the code does instead; step 6 named `sharedVersion`, the field is `version`); **`GUESSES.md` 0213 item 6** (same unbuilt-queue claim); and **`help/settings/index.md`**, which still called Smart change register-only although it is shared once Cloud sync is on (the Payments help page and the Settings screen already said so). `help/help.json` regenerated with `tsx scripts/build-help.ts`, and `--check` passes. No code changed; the Jest suite was not run. |
+diff --git a/modules/cloudkit-sync/expo-module.config.json b/modules/cloudkit-sync/expo-module.config.json
+index c3c3a7f..dbdd259 100644
+--- a/modules/cloudkit-sync/expo-module.config.json
++++ b/modules/cloudkit-sync/expo-module.config.json
+@@ -1,6 +1,7 @@
+ {
+   "platforms": ["apple"],
+   "apple": {
+-    "modules": ["CloudKitSyncModule"]
++    "modules": ["CloudKitSyncModule"],
++    "appDelegateSubscribers": ["CloudKitPushSubscriber"]
+   }
+ }
+diff --git a/modules/cloudkit-sync/index.ts b/modules/cloudkit-sync/index.ts
+index d0ab958..79ba4fd 100644
+--- a/modules/cloudkit-sync/index.ts
++++ b/modules/cloudkit-sync/index.ts
+@@ -58,6 +58,17 @@ export function onShareJoined(listener: (payload: { ok: boolean; message: string
+   return () => subscription?.remove();
+ }
+ 
++// Patch 8b: change pushes. `startSubscriptions` asks CloudKit to push when the shop's records change and resolves true when both the private
++// and the shared database are subscribed (it is safe to call on every launch). `onRemoteChange` fires when such a push arrives.
++export async function startSubscriptions(): Promise<boolean> {
++  if (!native?.startSubscriptions) return false;
++  return native.startSubscriptions();
++}
++export function onRemoteChange(listener: () => void): () => void {
++  const subscription = native?.addListener?.('onRemoteChange', listener);
++  return () => subscription?.remove();
++}
++
+ // Patch 4: sales and rollups (CloudKit backend)
+ export async function putSale(handle: string, fields: Record<string, any>, encrypted: Record<string, any> = {}): Promise<Record<string, any>> {
+   if (!native?.putSale) throw new Error(CLOUDKIT_MISSING);
+diff --git a/modules/cloudkit-sync/ios/CloudKitPushSubscriber.swift b/modules/cloudkit-sync/ios/CloudKitPushSubscriber.swift
+new file mode 100644
+index 0000000..b97adf3
+--- /dev/null
++++ b/modules/cloudkit-sync/ios/CloudKitPushSubscriber.swift
+@@ -0,0 +1,24 @@
++import ExpoModulesCore
++import CloudKit
++import UIKit
++
++// Patch 8b: receives the silent push CloudKit sends when the shop's records change (the subscriptions are made by CloudKitSyncModule's
++// startSubscriptions). Expo forwards this delegate call to every subscriber listed in expo-module.config.json, so nothing needs writing into
++// the generated AppDelegate for it (unlike the share link handler in plugins/withCloudKit.js, which Expo does not forward).
++// It only posts a notification. CloudKitSyncModule turns that into the onRemoteChange event, and JavaScript decides whether to read.
++// A push that is not a CloudKit database change is not handled here and is reported as no data, so other subscribers (for example
++// notifications) keep their own results.
++public class CloudKitPushSubscriber: ExpoAppDelegateSubscriber {
++  public func application(
++    _ application: UIApplication,
++    didReceiveRemoteNotification userInfo: [AnyHashable: Any],
++    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
++  ) {
++    guard let note = CKNotification(fromRemoteNotificationDictionary: userInfo), note.notificationType == .database else {
++      completionHandler(.noData)
++      return
++    }
++    NotificationCenter.default.post(name: cloudKitRemoteChangeNotification, object: nil)
++    completionHandler(.newData)
++  }
++}
+diff --git a/modules/cloudkit-sync/ios/CloudKitSyncModule.swift b/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
+index ab565dc..02b6ea1 100644
+--- a/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
++++ b/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
+@@ -1,6 +1,7 @@
+ import ExpoModulesCore
+ import CloudKit
+ import Foundation
++import UIKit
+ 
+ // The iCloud container declared by plugins/withCloudKit.js. The two must stay the same string: the entitlement and
+ // this identifier together are what let CloudKit open the container, and a mismatch fails at runtime, not at build.
+@@ -24,6 +25,13 @@ private let cloudKitNeverPlainKeys: Set<String> = Set(cloudKitEncryptedKeys.valu
+ // because it does not own the container logic.
+ private let cloudKitDidAcceptShareNotification = Notification.Name("cloudkitDidAcceptShare")
+ 
++// Patch 8b: change pushes. One database subscription on each database: the owner's records change in the private database, a joined till
++// hears about the owner's changes through the shared one. Fixed ids, so asking again finds the subscription already there and saves nothing.
++// CloudKitPushSubscriber (its own file) posts the notification below when a silent push for either database arrives.
++private let cloudKitPrivateSubscriptionID = "aidens3dp-private-changes"
++private let cloudKitSharedSubscriptionID = "aidens3dp-shared-changes"
++let cloudKitRemoteChangeNotification = Notification.Name("cloudkitRemoteChange")
++
+ // What the Cloud sync page reads back. `role` is "owner" on the till that set the shop up, "participant" on a till that
+ // joined, and "none" on a till that has done neither.
+ struct CloudKitStateRecord: Record {
+@@ -36,11 +44,12 @@ struct CloudKitStateRecord: Record {
+ // themselves (the sync engine) arrive in patch 3; this patch only opens the door and says which side of it a till is on.
+ public class CloudKitSyncModule: Module {
+   private var shareObserver: NSObjectProtocol?
++  private var changeObserver: NSObjectProtocol?
+ 
+   public func definition() -> ModuleDefinition {
+     Name("CloudKitSync")
+ 
+-    Events("onShareJoined")
++    Events("onShareJoined", "onRemoteChange")
+ 
+     // Join a share the moment iOS hands one over. Registering on create (not on a JS listener) means the invite is
+     // accepted even if nobody is looking at the Cloud sync page when the link is tapped.
+@@ -53,11 +62,26 @@ public class CloudKitSyncModule: Module {
+         guard let self, let metadata = note.object as? CKShare.Metadata else { return }
+         Task { await self.join(metadata) }
+       }
++      // Patch 8b: a silent push for either database became a notification in CloudKitPushSubscriber; tell JavaScript to read.
++      self.changeObserver = NotificationCenter.default.addObserver(
++        forName: cloudKitRemoteChangeNotification,
++        object: nil,
++        queue: .main
++      ) { [weak self] _ in
++        self?.sendEvent("onRemoteChange", [:] as [String: Any?])
++      }
+     }
+ 
+     OnDestroy {
+       if let observer = self.shareObserver { NotificationCenter.default.removeObserver(observer) }
+       self.shareObserver = nil
++      if let observer = self.changeObserver { NotificationCenter.default.removeObserver(observer) }
++      self.changeObserver = nil
++    }
++
++    // Patch 8b: ask CloudKit to push when the shop's records change. True when both subscriptions are in place. Safe to call every launch.
++    AsyncFunction("startSubscriptions") { () async throws -> Bool in
++      try await self.ensureSubscriptions()
+     }
+ 
+     // Whether CloudKit can run here. The deployment target is iOS 17, so a real build always answers true; the
+@@ -337,6 +361,27 @@ public class CloudKitSyncModule: Module {
+ 
+   private func container() -> CKContainer { CKContainer(identifier: cloudKitContainerIdentifier) }
+ 
++  // --- Patch 8b: change pushes ---------------------------------------------
++
++  // A silent push needs the app registered with Apple's push service, which asks the person nothing. The subscription carries no alert, no
++  // sound and no badge: only content-available, so iOS wakes the app and the AppDelegate subscriber posts the notification. Each database is
++  // handled on its own, so one failing (no account, offline) does not stop the other, and the result says whether both are in place.
++  // iOS may delay or drop silent pushes, so JavaScript keeps its timer poll as a fallback.
++  private func ensureSubscriptions() async throws -> Bool {
++    await MainActor.run { UIApplication.shared.registerForRemoteNotifications() }
++    let c = container()
++    var allInPlace = true
++    for (database, id) in [(c.privateCloudDatabase, cloudKitPrivateSubscriptionID), (c.sharedCloudDatabase, cloudKitSharedSubscriptionID)] {
++      if (try? await database.subscription(for: id)) != nil { continue }
++      let subscription = CKDatabaseSubscription(subscriptionID: id)
++      let info = CKSubscription.NotificationInfo()
++      info.shouldSendContentAvailable = true
++      subscription.notificationInfo = info
++      do { _ = try await database.save(subscription) } catch { allInPlace = false }
++    }
++    return allInPlace
++  }
++
+   private var storeZoneID: CKRecordZone.ID { CKRecordZone(zoneName: cloudKitZoneName).zoneID }
+ 
+   private func accountStatus() async -> String {
+diff --git a/modules/cloudkit-sync/status.ts b/modules/cloudkit-sync/status.ts
+index b24b38e..63823b3 100644
+--- a/modules/cloudkit-sync/status.ts
++++ b/modules/cloudkit-sync/status.ts
+@@ -62,6 +62,8 @@ export type CloudKitSyncNative = {
+   putAudit?(handle: string, fields: Record<string, any>, encrypted: Record<string, any>): Promise<Record<string, any>>;
+   listAuditIndex?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+   listAudit?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
++  // Patch 8b: change pushes (true when both databases are subscribed)
++  startSubscriptions?(): Promise<boolean>;
+   // Patch 6d: shared secrets (one record per secret, content in one encrypted field)
+   putSecret?(handle: string, fields: Record<string, any>, encrypted: Record<string, any>): Promise<Record<string, any>>;
+   listSecrets?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+diff --git a/plugins/withCloudKit.js b/plugins/withCloudKit.js
+index 91b13da..02ca3f1 100644
+--- a/plugins/withCloudKit.js
++++ b/plugins/withCloudKit.js
+@@ -3,17 +3,19 @@
+ // `npm run ios:reset`, so this config lives here and never in the generated project.
+ //
+ // It does four things:
+-//   1. Adds the iCloud container and CloudKit entitlement, so the app may open its own zone.
++//   1. Adds the iCloud container and CloudKit entitlement, so the app may open its own zone, and the push entitlement
++//      (aps-environment) that the change subscriptions need (patch 8b).
+ //   2. Sets CKSharingSupported and the remote-notification background mode, so a till can accept the share the owner sends
+-//      and hear about new records while it is open (the subscriptions themselves come in a later patch).
++//      and hear about new records while it is not in front (the subscriptions are made by the CloudKit module, patch 8b).
+ //   3. Raises the iOS deployment target to 17, which CKSyncEngine needs. It sets both the Podfile platform and the Xcode
+ //      build setting, because the Podfile alone does not change the app target.
+ //   4. Adds the AppDelegate method iOS calls when someone taps a CloudKit share link on this device
+ //      (`userDidAcceptCloudKitShareWith`). Expo forwards a fixed set of delegate calls and this is not one of them, so the
+ //      method has to be written into the generated AppDelegate. It only records the link and points at the CloudKit
+ //      module, which does the accepting (patch 2 of dev_docs/CLOUDKIT_SYNC_PLAN.md).
+-// The aps-environment entitlement is deliberately left out until the push subscriptions land (a later patch), because an
+-// app with it must also be signed with a push-enabled profile.
++// The aps-environment entitlement was left out until the push subscriptions landed. They have (patch 8b), so it is set now. An app with it
++// must be signed with a push-enabled provisioning profile: enable Push Notifications for the App ID in the Apple Developer account first, or
++// the build fails to sign.
+ const { withEntitlementsPlist, withInfoPlist, withPodfileProperties, withXcodeProject, withAppDelegate } = require('@expo/config-plugins');
+ 
+ const CONTAINER = 'iCloud.com.aidens3dp.pos';
+@@ -25,10 +27,19 @@ const PENDING_INVITE_KEY = 'cloudkitPendingInvite';
+ const SHARE_NOTIFICATION = 'cloudkitDidAcceptShare';
+ const SHARE_MARKER = '// CloudKit share links (added here by plugins/withCloudKit.js).';
+ 
++// The entitlements, as a plain function so the node tests can check them. `aps-environment` (patch 8b) is what lets the app receive the
++// silent pushes CloudKit sends when records change. It is set to `development`, and an archive signed with a push-enabled distribution
++// profile is expected to carry `production` instead (check this on the first TestFlight build). An existing value is kept.
++function applyEntitlements(entitlements) {
++  entitlements['com.apple.developer.icloud-container-identifiers'] = [CONTAINER];
++  entitlements['com.apple.developer.icloud-services'] = ['CloudKit'];
++  if (!entitlements['aps-environment']) entitlements['aps-environment'] = 'development';
++  return entitlements;
++}
++
+ const withIcloudEntitlements = (config) =>
+   withEntitlementsPlist(config, (c) => {
+-    c.modResults['com.apple.developer.icloud-container-identifiers'] = [CONTAINER];
+-    c.modResults['com.apple.developer.icloud-services'] = ['CloudKit'];
++    c.modResults = applyEntitlements(c.modResults);
+     return c;
+   });
+ 
+@@ -113,3 +124,4 @@ const withShareLinkHandler = (config) =>
+ 
+ module.exports = (config) => withShareLinkHandler(withProjectTarget(withPodfileTarget(withSharingSupport(withIcloudEntitlements(config)))));
+ module.exports.injectShareLinkHandler = injectShareLinkHandler;
++module.exports.applyEntitlements = applyEntitlements;
+diff --git a/src/lib/cloudkit/pushPoll.ts b/src/lib/cloudkit/pushPoll.ts
+new file mode 100644
+index 0000000..02640f4
+--- /dev/null
++++ b/src/lib/cloudkit/pushPoll.ts
+@@ -0,0 +1,68 @@
++// Location: src/lib/cloudkit/pushPoll.ts
++// CloudKit sync, patch 8b: CloudKit tells this iPad when the shop's records changed (a silent push), and the app reads the shop's shared
++// records straight away instead of waiting for the next 25 second tick. This file is only the decisions, so it is tested without an iPad
++// (tests/pushpoll.test.ts): subscribe once, turn a burst of pushes into one read, never read twice at the same time, and say plainly
++// whether pushes are on. The 25 second tick is NOT removed by this patch: iOS may delay or drop silent pushes, so the tick stays as the
++// fallback until T111 shows pushes arrive reliably. Decisions: dev_docs/CLOUDKIT_SYNC_DECISIONS.md (the 8b row).
++
++export type PushState = 'off' | 'listening' | 'unavailable';
++
++export type PushPollDeps = {
++  /** True only while the CloudKit backend is the active one. */
++  active: () => boolean;
++  /** True in practice mode: nothing is subscribed or read then. */
++  training: () => boolean;
++  /** Ask CloudKit for change pushes on both databases. Resolves true when both are in place, false when not. May throw. */
++  subscribe: () => Promise<boolean>;
++  /** Listen for the module's change event. Returns an unsubscribe function. */
++  listen: (onChange: () => void) => () => void;
++  /** The read to run: the shop's shared records. Must not throw (an error here is swallowed and the next push or tick tries again). */
++  run: () => Promise<void>;
++  /** The least time between the start of two reads caused by pushes. */
++  minGapMs?: number;
++  now?: () => number;
++  /** Call `fn` after `ms`. Replaced in tests. */
++  later?: (fn: () => void, ms: number) => unknown;
++};
++
++export const PUSH_MIN_GAP_MS = 2000;
++
++export function createPushPoll(d: PushPollDeps) {
++  const gap = d.minGapMs ?? PUSH_MIN_GAP_MS; const now = d.now ?? Date.now; const later = d.later ?? ((fn, ms) => setTimeout(fn, ms));
++  let state: PushState = 'off'; let unlisten: (() => void) | null = null; let starting: Promise<PushState> | null = null;
++  // running: a read is in progress. again: a push arrived during it, so one more read is owed. timer: a read is already scheduled for later.
++  let running = false; let again = false; let timer = false; let lastStart = -Infinity; let events = 0; let lastEventAt = 0; let reads = 0;
++
++  async function go(): Promise<void> {
++    if (running) { again = true; return; }
++    if (state !== 'listening' || !d.active() || d.training()) return;
++    const wait = lastStart + gap - now();
++    if (wait > 0) { if (!timer) { timer = true; later(() => { timer = false; void go(); }, wait); } return; }
++    running = true; lastStart = now(); reads += 1;
++    try { await d.run(); } catch { /* the next push or the 25 second tick tries again */ }
++    running = false;
++    if (again) { again = false; void go(); }
++  }
++
++  const onChange = () => { events += 1; lastEventAt = now(); void go(); };
++
++  /** Subscribe once and start listening. Safe to call on every tick: it does nothing once listening, and tries again after a failure. */
++  function start(): Promise<PushState> {
++    if (state === 'listening') return Promise.resolve(state);
++    if (starting) return starting;
++    if (!d.active() || d.training()) return Promise.resolve(state);
++    starting = (async () => {
++      try {
++        const ok = await d.subscribe();
++        if (ok) { if (!unlisten) unlisten = d.listen(onChange); state = 'listening'; } else state = 'unavailable';
++      } catch { state = 'unavailable'; }
++      starting = null; return state;
++    })();
++    return starting;
++  }
++
++  function stop(): void { unlisten?.(); unlisten = null; state = 'off'; again = false; }
++
++  return { start, stop, onChange, status: () => ({ state, events, lastEventAt, reads }) };
++}
++export type PushPoll = ReturnType<typeof createPushPoll>;
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index 3158b48..6d9b5d4 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -29,6 +29,7 @@ import { createSquareSync } from './cloudkit/squareSync';
+ import { createTrainingSync } from './cloudkit/trainingSync';
+ import { createAuditSync } from './cloudkit/auditSync';
+ import { createSecretSync } from './cloudkit/secretSync';
++import { createPushPoll } from './cloudkit/pushPoll';
+ import type { SecretNative } from './cloudkit/secretCloud';
+ import { FIXED_SECRETS } from './secretsShared';
+ import { createMigrationControl } from './cloudkit/migrationControl';
+@@ -155,6 +156,18 @@ export const auditSync = createAuditSync({
+ });
+ setAuditHook(e => { void auditSync.upload(e); });
+ 
++// CloudKit patch 8b: CloudKit pushes a note when the shop's records change, and this reads the shared records at once instead of waiting for the
++// next 25 second tick. The tick in App.tsx stays as the fallback (iOS can delay or drop silent pushes). `start()` is called from that tick, so it
++// begins as soon as a till is on CloudKit and costs nothing once it is listening. The native module is loaded on demand.
++let pushModule: { startSubscriptions(): Promise<boolean>; onRemoteChange(l: () => void): () => void } | null = null;
++export const pushPoll = createPushPoll({
++  active: () => activeBackendKind() === 'cloudkit',
++  training: isTraining,
++  subscribe: async () => { pushModule = (await import('../../modules/cloudkit-sync')) as unknown as NonNullable<typeof pushModule>; return pushModule.startSubscriptions(); },
++  listen: cb => (pushModule ? pushModule.onRemoteChange(cb) : () => {}),
++  run: () => pollShared(),
++});
++
+ // CloudKit patch 6d: the shop's secrets (Shopify login, pass, claim and receipt secrets, assistant key, each cashier's pass code) are shared,
+ // encrypted (decisions N1). Once per poll, only when the encrypted switch is on. The Keychain parts are loaded on demand so this file
+ // still imports in the node tests. A removal on one register is never sent, and a clash is settled in the shop's favour (see secretsShared.ts).
+diff --git a/tests/cloudkitplugin.test.ts b/tests/cloudkitplugin.test.ts
+index 49972d1..cd068bf 100644
+--- a/tests/cloudkitplugin.test.ts
++++ b/tests/cloudkitplugin.test.ts
+@@ -73,6 +73,17 @@ test('a file with no AppDelegate is left alone rather than mangled', () => {
+   assert.equal(injectShareLinkHandler(other), other);
+ });
+ 
++// ---- 8b: the push entitlement ----
++const { applyEntitlements } = require('../plugins/withCloudKit') as { applyEntitlements: (e: Record<string, unknown>) => Record<string, unknown> };
++test('the entitlements carry the container, CloudKit and the push environment', () => {
++  const e = applyEntitlements({});
++  assert.deepEqual(e['com.apple.developer.icloud-container-identifiers'], ['iCloud.com.aidens3dp.pos']); assert.deepEqual(e['com.apple.developer.icloud-services'], ['CloudKit']);
++  assert.equal(e['aps-environment'], 'development');
++});
++test('an aps-environment already set is kept, and running twice changes nothing', () => {
++  assert.equal(applyEntitlements({ 'aps-environment': 'production' })['aps-environment'], 'production');
++  const once = applyEntitlements({ other: 1 }); assert.deepEqual(applyEntitlements({ ...once }), once);
++});
+ test('an Objective-C AppDelegate is left alone rather than having Swift written into it', () => {
+   const objc = '@implementation AppDelegate\n@end\n';
+   assert.equal(injectShareLinkHandler(objc, 'objc'), objc);
+diff --git a/tests/cloudkitswift.test.ts b/tests/cloudkitswift.test.ts
+index 01f785a..5993aa2 100644
+--- a/tests/cloudkitswift.test.ts
++++ b/tests/cloudkitswift.test.ts
+@@ -85,3 +85,25 @@ test('getMigration returns the change tag, without changing what other records r
+   assert.match(body('getMigrationFields'), /out\["tag"\] = record\.recordChangeTag/);
+   assert.doesNotMatch(body('recordToDict'), /recordChangeTag/);
+ });
++
++// ---- 8b: change pushes ----
++const subscriber = readFileSync('modules/cloudkit-sync/ios/CloudKitPushSubscriber.swift', 'utf8');
++test('startSubscriptions subscribes both databases with fixed ids, silently, and says whether both are in place', () => {
++  assert.match(src, /AsyncFunction\("startSubscriptions"\)[\s\S]*?ensureSubscriptions\(\)/);
++  const b = body('ensureSubscriptions');
++  assert.match(b, /c\.privateCloudDatabase, cloudKitPrivateSubscriptionID/); assert.match(b, /c\.sharedCloudDatabase, cloudKitSharedSubscriptionID/);
++  assert.match(b, /shouldSendContentAvailable = true/); assert.doesNotMatch(b, /alertBody|soundName|shouldBadge/, 'a silent push carries no alert, sound or badge');
++  assert.match(b, /registerForRemoteNotifications\(\)/); assert.match(b, /database\.subscription\(for: id\)/, 'an existing subscription is found, not saved again');
++  assert.match(b, /allInPlace = false/); assert.match(b, /return allInPlace/);
++  assert.match(src, /cloudKitPrivateSubscriptionID = "aidens3dp-private-changes"/); assert.match(src, /cloudKitSharedSubscriptionID = "aidens3dp-shared-changes"/);
++});
++test('a database push becomes the onRemoteChange event, and anything else is reported as no data', () => {
++  assert.match(src, /Events\("onShareJoined", "onRemoteChange"\)/);
++  assert.match(src, /forName: cloudKitRemoteChangeNotification[\s\S]*?sendEvent\("onRemoteChange"/);
++  assert.match(src, /removeObserver\(observer\)[\s\S]*?changeObserver = nil/);
++  assert.match(subscriber, /class CloudKitPushSubscriber: ExpoAppDelegateSubscriber/);
++  assert.match(subscriber, /note\.notificationType == \.database/); assert.match(subscriber, /post\(name: cloudKitRemoteChangeNotification/);
++  assert.match(subscriber, /completionHandler\(\.noData\)[\s\S]*?completionHandler\(\.newData\)/);
++  assert.deepEqual(JSON.parse(readFileSync('modules/cloudkit-sync/expo-module.config.json', 'utf8')).apple.appDelegateSubscribers, ['CloudKitPushSubscriber']);
++  assert.match(readFileSync('modules/cloudkit-sync/index.ts', 'utf8'), /export async function startSubscriptions[\s\S]*export function onRemoteChange/);
++});
+diff --git a/tests/pushpoll.test.ts b/tests/pushpoll.test.ts
+new file mode 100644
+index 0000000..d7e649a
+--- /dev/null
++++ b/tests/pushpoll.test.ts
+@@ -0,0 +1,69 @@
++// Location: tests/pushpoll.test.ts
++// CloudKit patch 8b: the decisions behind push-triggered reads, on a fake clock and a fake timer. Subscribe once, retry after a failure, a burst of
++// pushes becomes one read, two reads never overlap, a push that arrives during a read is not lost, and nothing happens unless CloudKit is
++// active and this is not a practice run. The Swift that delivers the pushes is checked as text in tests/cloudkitswift.test.ts.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { createPushPoll, PUSH_MIN_GAP_MS, type PushPollDeps } from '../src/lib/cloudkit/pushPoll';
++
++const world = (o: Partial<PushPollDeps> & { subscribeResults?: (boolean | 'throw')[] } = {}) => {
++  let t = 1_000_000; const timers: { at: number; fn: () => void }[] = []; let listener: (() => void) | null = null; let listens = 0; let unlistens = 0;
++  const calls = { subscribe: 0, run: 0 }; let release: (() => void) | null = null; let hold = false; let active = true; let training = false;
++  const results = [...(o.subscribeResults ?? [true])];
++  const deps: PushPollDeps = {
++    active: () => active, training: () => training,
++    subscribe: async () => { calls.subscribe += 1; const r = results.length > 1 ? results.shift()! : results[0]; if (r === 'throw') throw new Error('no iCloud'); return r; },
++    listen: cb => { listens += 1; listener = cb; return () => { unlistens += 1; listener = null; }; },
++    run: async () => { calls.run += 1; if (hold) await new Promise<void>(r => { release = r; }); },
++    now: () => t, later: (fn, ms) => { timers.push({ at: t + ms, fn }); return 0; }, ...o,
++  };
++  const p = createPushPoll(deps);
++  return {
++    p, calls, push: () => listener?.(), listens: () => listens, unlistens: () => unlistens, timers: () => timers.length,
++    advance: (ms: number) => { t += ms; for (const x of timers.splice(0).filter(x => x.at <= t)) x.fn(); },
++    holdRuns: (v: boolean) => { hold = v; }, finishRun: async () => { release?.(); release = null; await new Promise(r => setImmediate(r)); },
++    set: (k: 'active' | 'training', v: boolean) => { if (k === 'active') active = v; else training = v; }, tick: () => new Promise(r => setImmediate(r)),
++  };
++};
++
++test('start subscribes once and listens once, however often it is called', async () => {
++  const w = world(); await w.p.start(); await w.p.start(); await Promise.all([w.p.start(), w.p.start()]);
++  assert.equal(w.calls.subscribe, 1); assert.equal(w.listens(), 1); assert.equal(w.p.status().state, 'listening');
++});
++test('a failed or refused subscription is reported, and the next start tries again without listening twice', async () => {
++  const w = world({ subscribeResults: ['throw', false, true] });
++  assert.equal(await w.p.start(), 'unavailable'); assert.equal(w.listens(), 0);
++  assert.equal(await w.p.start(), 'unavailable'); assert.equal(await w.p.start(), 'listening'); assert.equal(w.calls.subscribe, 3); assert.equal(w.listens(), 1);
++});
++test('nothing is subscribed unless CloudKit is active, and never in practice mode', async () => {
++  const a = world(); a.set('active', false); assert.equal(await a.p.start(), 'off'); assert.equal(a.calls.subscribe, 0);
++  const b = world(); b.set('training', true); assert.equal(await b.p.start(), 'off'); assert.equal(b.calls.subscribe, 0);
++});
++test('a push reads the shop straight away', async () => {
++  const w = world(); await w.p.start(); w.push(); await w.tick(); assert.equal(w.calls.run, 1); assert.equal(w.p.status().events, 1);
++});
++test('a burst of pushes inside the gap becomes one read now and one later', async () => {
++  const w = world(); await w.p.start(); w.push(); await w.tick();
++  for (let i = 0; i < 5; i++) w.push(); await w.tick();
++  assert.equal(w.calls.run, 1, 'the extra pushes wait for the gap'); assert.equal(w.timers(), 1, 'and share a single timer');
++  w.advance(PUSH_MIN_GAP_MS); await w.tick(); assert.equal(w.calls.run, 2); assert.equal(w.p.status().events, 6);
++});
++test('a push that arrives during a read is not lost, and reads never overlap', async () => {
++  const w = world(); await w.p.start(); w.holdRuns(true); w.push(); await w.tick(); w.push(); w.push(); await w.tick();
++  assert.equal(w.calls.run, 1, 'still the first read'); w.holdRuns(false); await w.finishRun();
++  w.advance(PUSH_MIN_GAP_MS); await w.tick(); assert.equal(w.calls.run, 2, 'one more read owed for the pushes that came during the first');
++  w.advance(PUSH_MIN_GAP_MS * 5); await w.tick(); assert.equal(w.calls.run, 2, 'and no more than that');
++});
++test('a read that fails does not stop later pushes', async () => {
++  const w = world({ run: async () => { throw new Error('offline'); } }); await w.p.start(); w.push(); await w.tick(); w.advance(PUSH_MIN_GAP_MS); w.push(); await w.tick();
++  assert.equal(w.p.status().reads, 2);
++});
++test('pushes are ignored once CloudKit is no longer active or practice mode starts', async () => {
++  const w = world(); await w.p.start(); w.set('training', true); w.push(); await w.tick(); assert.equal(w.calls.run, 0);
++  w.set('training', false); w.set('active', false); w.push(); await w.tick(); assert.equal(w.calls.run, 0);
++});
++test('stop removes the listener and a leftover timer then reads nothing', async () => {
++  const w = world(); await w.p.start(); w.push(); await w.tick(); w.push(); await w.tick(); assert.equal(w.timers(), 1);
++  w.p.stop(); assert.equal(w.unlistens(), 1); assert.equal(w.p.status().state, 'off'); w.advance(PUSH_MIN_GAP_MS); await w.tick(); assert.equal(w.calls.run, 1);
++  assert.equal(await w.p.start(), 'listening'); assert.equal(w.listens(), 2, 'it can be started again');
++});
