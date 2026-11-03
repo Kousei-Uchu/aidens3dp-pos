@@ -1406,3 +1406,14 @@ Needs the owner iPad (A) and a second iPad (B) that has joined the shop, on a sh
 5. Repeat with A and B both on the Diagnostics page, and press at the same moment on a third iPad C and on B. Pass: one wins, the other sees "<name> resolved this payment first", and the dashboard has exactly one `resolve-` record for the payment.
 6. Start a charge on A and leave it running (a `started` payment). Pass: B shows it as in progress with no buttons.
 7. Turn off Wi-Fi on B and press a button. Pass: a message says it was not sent and nothing is logged. Turn Wi-Fi on and repeat. Pass: it works.
+
+## T107. Another register creates a missing Shopify order (0218)
+
+1. Needs two iPads in the shop (A and B) with CloudKit active and Shopify credentials on both, and a debug build on A that can make `createOrderForSale` fail (so A's queue stays stuck). For the test lower `RECOVERY_MIN_AGE_MS` and `RECOVERY_EVERY_MS` on B to a minute.
+2. On A put a break in the order step (a debug build that fails `createOrderForSale`), take a cash sale, and let the early step run. Pass: the CloudKit dashboard shows a `sale-<uuid>` record with no `order_gid`, and A's queue holds the sale.
+3. Close A for the sale to stay queued. On B wait a minute and pull to refresh. Pass: B shows "Created a missing Shopify order" naming A and the order number, Shopify has exactly one order tagged with the sale, the CloudKit sale record now has `order_gid`, and A's rollup for the day includes the sale.
+4. Reopen A. Pass: its queue finishes the sale without making a second Shopify order, and the totals do not count it twice.
+5. With three iPads A, B and C looking at the same stranded sale at once. Pass: one Shopify order, and the dashboard has `resolve-order-<uuid>-1` written by one register.
+6. Take a gift card sale on A and kill A before it finishes. Pass: after the wait, B raises "Sales with no Shopify order" and creates nothing. Reopen A and let its queue finish. Pass: the order and card are made.
+7. Turn Shopify credentials off on B. Pass: B does nothing and raises no notice.
+8. Start a practice run on B. Pass: B does nothing.

@@ -635,3 +635,16 @@ Each is a guess, change any you disagree with.
 3. **Nothing is added to the other register's sale.** A resolution from elsewhere only clears the block (0200). The owning register decides what to do with its own sale.
 4. **Any signed-in person can do it**, the same as resolving on the Pay screen (Q10). The Diagnostics page is where it lives.
 5. **The other register's name is in the event message** ("payment from Front till"), so the shop's events show it was not resolved on the register that took the payment.
+
+## Another register creates a missing Shopify order (0218)
+
+Each is a guess, change any you disagree with.
+
+1. **The sale is written to CloudKit before the order, with CloudKit on only.** Without it nothing is left to find, because Shopify's shared sale row is written after the order. A sale shows in the shop-wide views without an order number until its order exists.
+2. **A register waits 15 minutes before touching another register's sale**, and never touches one that is in its own queue. That gives the register that took the sale time to finish its own queue first.
+3. **The claim is a write-once resolution record, `order-<sale>-<n>`.** It uses the resolution record's existing field names so no schema change is needed. The first claim wins. A claim over 30 minutes old with the order still missing means the claimer stopped, and the next number is tried, up to four.
+4. **Three sales per run, one run every ten minutes, newest 500 sales read.** A sale further back than the newest 500 is not found. The CloudKit list order is not controlled from the app, so on a shop with a very long history this should be revisited.
+5. **The same steps the queue uses are run**: order, receipt page, gift cards, the CloudKit record and the totals. All are safe to repeat (the order is searched by the sale's tag first, gift cards by code, the totals by an applied list), so the original iPad can come back and finish its own queue without doubling anything.
+6. **A sale with a gift card sold or spent is not finished from here.** The card code is only in iCloud as an encrypted field, which is off until O4 passes, so another register could make the order but not the card. A notice tells a person once per launch to open the register that took it.
+7. **Card references, the receipt link and the customer's name are not in the CloudKit sale** (decisions item 17 and the customer rule), so an order made from here has the customer's Shopify id but no name, and card payments without their references. Say if you want this limited further.
+8. **No new event kind.** The recovering register raises a sync notice, not a CSV event.

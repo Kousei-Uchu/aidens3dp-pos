@@ -1,6 +1,6 @@
 # CloudKit sync: decisions, status and roadmap
 
-Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 to 0217
+Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 to 0218
 
 This replaces the 31 October decisions doc. Nothing from that doc has been dropped: every decision, question, answer and note is in Part 3, with the original numbering (items 1 to 27, Q1 to Q14, N1 to N3, O1 to O5), so existing cross-references still work. Parts 1 and 2 are new. They say where the work is up to and where it is going.
 
@@ -10,7 +10,7 @@ Tags used throughout: **Sync** (goes to iCloud and is shared between registers),
 
 ### In one paragraph
 
-Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0217 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer), patch 6a (the wider shared settings, the cash and refund notices, the logo, the grid layout and the Square history months) and patch 6c (training progress and the audit log), they add the in-app iCloud note and the drawer audit, and they start patch 7 with the migration lease (0212) the import runner (0213) the count check (0214), the wiring (0215) and the screen section (0216). **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
+Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0218 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer), patch 6a (the wider shared settings, the cash and refund notices, the logo, the grid layout and the Square history months) and patch 6c (training progress and the audit log), they add the in-app iCloud note and the drawer audit, and they start patch 7 with the migration lease (0212) the import runner (0213) the count check (0214), the wiring (0215) and the screen section (0216). **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
 
 ### Three things gate turning CloudKit on
 
@@ -24,7 +24,7 @@ Patches 1 to 3 (entitlements and the native module, the zone and share, and the 
 
 ## Part 2. What has been built, and where we are going
 
-### 2.1 Patch ledger, 0188 to 0217
+### 2.1 Patch ledger, 0188 to 0218
 
 All of these were requested by you, in order. “Pure code” means no native code and no behaviour change.
 
@@ -60,6 +60,7 @@ All of these were requested by you, in order. “Pure code” means no native co
 | 0215 | 2 Nov | **Patch 7, fourth piece: the wiring** (`cloudkit/migrationControl.ts`, one instance `migrationControl` in `sync.ts`). One object with `view()` (the plain sentence, running, phase and count, can-start, done, the last outcome), `start()`, `stop()` and `subscribe()`. `start()` is refused with a reason and no write unless this iPad is the owner, is not in a practice run, and is not already running (the guard is taken before any wait, so a double press cannot start two). It makes sure both backends' storage exists, then runs `runImport` with Shopify always read through the metaobject backend and CloudKit written through the CloudKit backend, whichever the app is using. A failure to start becomes a sentence, not an exception. `stop()` ends a run at its next page and leaves the lease to lapse. Both backends and the native module load on demand. Pure code except the one instance; nothing calls `start()` yet. | Inactive until patch 8. T102 and T103 can now be run from a debug console with `migrationControl.start()`. The "Setting up sync" screen is next. |
 | 0216 | 2 Nov | **Patch 7, last piece: the "Move the shop to iCloud" section** on the Cloud sync page (`migrationPanel.ts`, `screens/CloudSync.tsx`). Shown to any till in the shop (owner or participant). It reads the lease when the page opens and every five seconds, and redraws as the import reports progress. The owner sees what the setup does and one button, Set up sync (Carry on setting up sync after a stop, a failure or a short count), plus Stop while it runs; a participant sees only the state. The practice-mode and owner-only rules are the controller's and the words are all in the pure `migrationPanel`, tested in Node. Nothing starts the import except that button. **Patch 7 is now complete in code.** | Safe to ship: the app still reads and writes Shopify, and the import only copies. Switching to CloudKit is patch 8. |
 | 0217 | 2 Nov | **Item 9 leftover: resolving another register's payment from a different register** (`attemptShared.ts`, `cloudkit/attemptSync.ts`, `screens/Diagnostics.tsx`). On the Diagnostics page, each row of "Card payments waiting (all registers)" that has no result yet and belongs to another register gets **Charged** and **Not charged** buttons. Each asks first, then `attemptSync.resolveElsewhere` writes only the write-once resolution (the attempt keeps the register that wrote it), so the first resolution wins and a second register is told who won. The owning register hears about it through the pull that already exists (0200), with its local notice. The resolving register logs an `unknown_resolved` event naming the other register. A `started` payment is never offered, because it may still be charging, and nothing is added to the other register's sale. | Inactive until patch 8, like the rest of patch 4. T106. |
+| 0218 | 2 Nov | **Item 8 leftover: another register creates a missing Shopify order** (`orderRecovery.ts`, `cloudkit/orderRecoverySync.ts`, `sync.ts`). With CloudKit on, the outbox now writes the sale to CloudKit first (a new `early` step, before the receipt and the order, for sales only and never in practice mode), so a sale from an iPad that died is findable. Every ten minutes, a register with Shopify credentials reads the newest 500 sales, picks those with no order, older than 15 minutes and not in its own queue, claims each with a write-once record (`order-<sale>-<n>` in the resolution records, using fields that already exist), and runs the sale through the same outbox steps (order, gift cards, receipt, CloudKit record, totals). Three sales per run at most. The first claim wins; a claim over half an hour old is treated as abandoned and the next number is tried. A sale that sold or was paid with a gift card is not finished from here (its code is only in iCloud when encryption is on) and a notice says so once. | Inactive until patch 8. T107. |
 
 ### 2.2 Build status of each decision
 
@@ -74,7 +75,7 @@ All of these were requested by you, in order. “Pure code” means no native co
 | 5 | Fees, cash rounding, Require PIN sync | Already in the original seven shared keys. |
 | 6 | One shared drawer | Built (0190 to 0192), audited (0203). Swift uncompiled. |
 | 7 | Bookkeeping fields local | Nothing to build. `sharedBase` was added as a new device-only key in `DEVICE_KEYS` (0205). |
-| 8 | Outbox local; another register can create a missing Shopify order (Q11) | Outbox unchanged. **The “find sales with no Shopify order and create it” recovery is not built.** |
+| 8 | Outbox local; another register can create a missing Shopify order (Q11) | Outbox unchanged. **Built (0218):** the sale goes to CloudKit early, and another register can find sales with no Shopify order and create it after a write-once claim. |
 | 9 | Payment attempts sync with the register name; first resolution wins | Built (0196 to 0200). **Resolving another register’s payment from a different register is not built** (the shop-wide list is read only). |
 | 10 | Cash and refund notices sync | Built (0206). Reading or dismissing stays per iPad. Swift uncompiled. |
 | 11 | `pos.shared` becomes a CloudKit-fed cache | Not yet. Happens at cut-over. |
@@ -115,7 +116,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
 | 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | **Started.** The lease (0212), the import runner with its phases and checkpoints (0213) the count check that marks the import done (0214), the controller wired into `sync.ts` (0215) and the screen section (0216) are built. The one-off uploads of local-only data are already done by the catch-ups (events, attempts, audit log) and the poll (training). Still to do: run T102 to T105 on a real shop. |
 | 8 | Retire polling, add the rollback flag, decide dual-write or cut over | Not started. |
 
-**Next up:** patch 8 (the switch), after T102 to T105 pass on a real shop, then 6d and 6e after the encryption test, and 8 last. One smaller leftover can go at any point: the "find sales with no Shopify order and create it" recovery (item 8). Resolving another register's payment (item 9) is built (0217).
+**Next up:** patch 8 (the switch), after T102 to T105 pass on a real shop, then 6d and 6e after the encryption test, and 8 last. The two smaller leftovers are built: resolving another register's payment (item 9, 0217) and creating another register's missing Shopify order (item 8, 0218).
 
 ### 2.4 Open items and things to confirm
 
@@ -140,6 +141,8 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
 - The assistant’s log cap and data gate stay per iPad. With no merge base the shop’s value wins (0205).
 
 **Known gaps and risks:**
+
+- Missing-order recovery (0218) reads only the newest 500 sales, makes three orders per run, and leaves gift card sales for a person. An order it makes has the customer's id but not their name and no card references, because those are not in the CloudKit sale. Two registers cannot both create an order (the write-once claim), but a claim whose register dies after creating the order and before writing the record is retried after half an hour and finds the order by its tag, so nothing doubles.
 
 - Swift has never been compiled or run. Expect a build error or two on the first Mac build.
 - Two registers changing the same attempt in the same instant could still write an older status (the status check and the write are two calls). The resolution cannot be raced this way. A server-side compare would close it.
