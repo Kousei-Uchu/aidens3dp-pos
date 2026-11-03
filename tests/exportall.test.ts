@@ -26,7 +26,7 @@ const many = (n: number, prefix = 'sale') => Array.from({ length: n }, (_, i) =>
 test('every record type the app keeps in CloudKit has a file, and nothing is listed twice', () => {
   const files = [...COLLECTIONS.map(c => c.file), ...SINGLES.map(s => s.file)];
   assert.equal(new Set(files).size, files.length);
-  for (const f of ['sales', 'rollups', 'saved-carts', 'settings', 'layout', 'drawer-ledger-entries', 'drawer-shift', 'drawer-checkpoint', 'events', 'payment-attempts', 'payment-resolutions', 'notices', 'training-progress', 'audit-events', 'migration', 'logo', 'square-manifest']) assert.ok(files.includes(f), f);
+  for (const f of ['sales', 'rollups', 'saved-carts', 'settings', 'layout', 'drawer-ledger-entries', 'drawer-shift', 'drawer-checkpoint', 'events', 'payment-attempts', 'payment-resolutions', 'notices', 'training-progress', 'audit-events', 'secrets', 'migration', 'logo', 'square-manifest']) assert.ok(files.includes(f), f);
 });
 
 test('a list longer than a page is read to the end, in order', async () => {

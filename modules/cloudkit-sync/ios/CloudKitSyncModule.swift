@@ -17,7 +17,7 @@ private let cloudKitPendingInviteKey = "cloudkitPendingInvite"
 /// The fields kept as CloudKit encrypted values, by record type (decisions item 17). They are never written as plain fields:
 /// copyFields skips them, and they only travel through the separate `encrypted` argument. CKRecord.allKeys() does not list
 /// encrypted values, so recordToDict reads these keys by name.
-private let cloudKitEncryptedKeys: [String: [String]] = ["Sale": ["secure_json"], "Audit": ["secure_json"]]
+private let cloudKitEncryptedKeys: [String: [String]] = ["Sale": ["secure_json"], "Audit": ["secure_json"], "Secret": ["secure_json"]]
 private let cloudKitNeverPlainKeys: Set<String> = Set(cloudKitEncryptedKeys.values.flatMap { $0 })
 
 // The AppDelegate posts this when iOS hands the app a share link. The module joins on the spot; the AppDelegate cannot,
@@ -191,6 +191,18 @@ public class CloudKitSyncModule: Module {
 
     AsyncFunction("listAudit") { (limit: Int, after: String?) async throws -> [String: Any] in
       try await self.listRecords(recordType: "Audit", limit: limit, after: after)
+    }
+
+    // --- Patch 6d: shared secrets ---
+    // One record per secret (the Shopify login, the pass, claim and receipt secrets, the assistant key, each cashier's pass code). The secret is
+    // in the encrypted `secure_json`; the plain fields are labels (name, register, time). A record is changed in place by the register that
+    // changed the secret, and the JavaScript side decides whether to write at all. Nothing here ever deletes a secret record.
+    AsyncFunction("putSecret") { (handle: String, fields: [String: Any], encrypted: [String: Any]) async throws -> [String: Any] in
+      try await self.putRecord(recordType: "Secret", recordName: "secret-\(handle)", fields: fields, encrypted: encrypted)
+    }
+
+    AsyncFunction("listSecrets") { (limit: Int, after: String?) async throws -> [String: Any] in
+      try await self.listRecords(recordType: "Secret", limit: limit, after: after)
     }
 
     // --- Patch 6a: the shared logo ---

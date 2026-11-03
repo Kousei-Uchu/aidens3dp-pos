@@ -14,7 +14,7 @@ type Lister = (limit: number, after: string | null) => Promise<Page>;
 export type ExportNative = {
   listSales: Lister; listRollups: Lister; listCarts: Lister; listSettings: Lister; listLayout: Lister; listSquareHistory: Lister;
   listLedgerEntries: Lister; listEvents: Lister; listAttempts: Lister; listResolutions: Lister; listNotices: Lister; listTraining: Lister;
-  listAuditIndex: Lister; listAudit: Lister;
+  listAuditIndex: Lister; listAudit: Lister; listSecrets: Lister;
   getDrawerShift(): Promise<Rec | null>; getDrawerCheckpoint(): Promise<Rec | null>; getMigration(): Promise<Rec | null>;
   getLogo(): Promise<Rec | null>; getSquareManifest(): Promise<Rec | null>;
 };
@@ -35,6 +35,7 @@ export const COLLECTIONS: ReadonlyArray<{ file: string; list: keyof ExportNative
   { file: 'training-progress', list: 'listTraining', what: 'training progress' },
   { file: 'audit-index', list: 'listAuditIndex', what: 'assistant log index' },
   { file: 'audit-events', list: 'listAudit', what: 'assistant log events (encrypted fields only if this iPad could read them)' },
+  { file: 'secrets', list: 'listSecrets', what: 'shared secrets and pass codes (decrypted values included if this iPad could read them: as sensitive as the Shopify login)' },
 ];
 /** Single records, one file each. A missing one is written as null so the zip always has the same files. */
 export const SINGLES: ReadonlyArray<{ file: string; get: keyof ExportNative; what: string }> = [

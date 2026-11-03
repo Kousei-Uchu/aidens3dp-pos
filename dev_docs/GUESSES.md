@@ -675,3 +675,18 @@ Each is a guess, change any you disagree with.
 7. **After a rollback the till does not move again until "Use iCloud again" is pressed**, even though the import is still done.
 8. **Only a till in the shop's share moves.** One that never joined stays on Shopify.
 9. **The poll is not retired.** CloudKit's push needs a subscription and a silent-push entitlement in Swift. Until that exists the 25 second poll reads CloudKit, as it read Shopify.
+
+## Shared secrets and pass codes (0224)
+
+Each is a guess, change any you disagree with.
+
+1. **What is shared:** the Shopify login (domain, client id and client secret as one secret), the pass, claim and receipt secrets, the assistant key, and each cashier's pass code. Nothing else in the Keychain.
+2. **One record per secret, named `secret-<name>`**, with the value in one encrypted `secure_json` field and three plain labels: `name`, `registerId` and `at`. The Shopify login is one record so its three parts can never be mismatched.
+3. **Same switch as card details.** Nothing is sent or read until `setSaleCardMode('encrypted')`, which waits for T85.
+4. **The join uses a remembered fingerprint per secret** (a 24 character hash, kept in the Keychain as `pos.secretsBase`, never the secret). One side changed: that side wins. Both changed, or they never agreed: **the shop's value wins** and the run reports a conflict. I chose this over "newest wins" because it does not depend on any iPad's clock. It can lose an edit, and no screen tells the person yet.
+5. **A removal is never sent.** Signing out of Shopify on one till does not sign out the others. A register that removed a secret keeps it removed until the shop's value changes.
+6. **Nothing deletes a secret record.** A removed cashier's encrypted pass code stays in the shop's zone, and in the copies already taken. This is a gap you may want closed with a tombstone later.
+7. **A shop record this device cannot read is skipped,** never treated as missing and written over.
+8. **Pass codes sync so any iPad can print or send a pass again.** Before, only the iPad that issued it could. StaffPass still checks the code against the staff hash before showing it.
+9. **The secrets are in the 6e export** (O5), as the export plan said. The zip is as sensitive as the Shopify login.
+10. **Taking a Shopify login goes through `saveCreds`,** which normalises the domain and drops the cached token. The next run may send the normalised form once before it settles.
