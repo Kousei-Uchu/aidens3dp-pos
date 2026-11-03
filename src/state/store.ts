@@ -75,7 +75,7 @@ export type SavedCart = { id: string; name: string; note?: string; cart: Cart; t
   /** When this register last changed it, and the content both sides last agreed on, for merging a cart two registers changed (0204, savedMerge.ts). */ updatedAt?: string; base?: string };
 export type OutboxItem = {
   id: string; sale: SaleRecord; queuedAt: string;
-  done: { receipt?: boolean; receiptFinal?: boolean; order?: boolean; giftCards?: boolean; entry?: boolean; rollup?: boolean; stock?: boolean };
+  done: { early?: boolean; receipt?: boolean; receiptFinal?: boolean; order?: boolean; giftCards?: boolean; entry?: boolean; rollup?: boolean; stock?: boolean };
   giftDone?: string[]; // A9: codes of gift card lines already created (and emailed, if they have a recipient)
   tries: number; error?: string; blocked?: boolean; // blocked = Shopify user error, needs a human
 };

@@ -29,6 +29,8 @@ import { createSquareSync } from './cloudkit/squareSync';
 import { createTrainingSync } from './cloudkit/trainingSync';
 import { createAuditSync } from './cloudkit/auditSync';
 import { createMigrationControl } from './cloudkit/migrationControl';
+import { createOrderRecovery } from './cloudkit/orderRecoverySync';
+import { READ_PAGES } from './orderRecovery';
 import type { MigrationNative } from './cloudkit/migrationCloud';
 import type { VerifyTarget } from './cloudkit/migrationVerify';
 import type { SharedBackend } from './syncBackend';
@@ -165,6 +167,30 @@ export const migrationControl = createMigrationControl({
   training: isTraining,
 });
 
+// CloudKit item 8 (Q11): if another register's iPad died with sales still queued, this register finds the sales that have no Shopify order
+// and creates it, through the same steps the queue uses. Run from the poll, at most every ten minutes. Nothing happens unless CloudKit is the
+// backend in use and this register has Shopify credentials.
+const orderRecovery = createOrderRecovery({
+  active: () => activeBackendKind() === 'cloudkit',
+  training: isTraining,
+  canCreateOrders: hasCreds,
+  who: () => ({ id: st().settings.registerId, name: st().settings.registerName }),
+  native: async () => (await import('../../modules/cloudkit-sync')) as unknown as EventNative,
+  readSales: async () => {
+    const out: SaleRecord[] = []; let after: string | null = null; const b = await loadBackend('cloudkit');
+    for (let i = 0; i < READ_PAGES; i++) {
+      const page = await b.list('sale', { first: 100, after });
+      for (const r of page.rows) { try { const j = r.f.sale_json ? JSON.parse(r.f.sale_json) : null; if (j && typeof j.uuid === 'string') out.push(j as SaleRecord); } catch { /* an unreadable record is left out */ } }
+      if (!page.next) break; after = page.next;
+    }
+    return out;
+  },
+  outboxIds: () => new Set(st().pos.outbox.map(o => o.id)),
+  finish: async sale => (await runItem({ id: sale.uuid, sale, queuedAt: new Date().toISOString(), done: { early: true, stock: true }, tries: 0 })).orderName,
+  notify: n => st().notify({ kind: 'sync', title: n.title, body: n.body, route: 'notifications' }),
+  now: () => Date.now(),
+});
+
 // ── record a finished sale locally (the single entry point after tender completes) ──────────────
 export async function recordSale(sale: SaleRecord) {
   const s = st();
@@ -178,10 +204,27 @@ export async function recordSale(sale: SaleRecord) {
 const patchItem = (id: string, f: (o: OutboxItem) => OutboxItem) =>
   st().patchPos({ outbox: st().pos.outbox.map(o => (o.id === id ? f(o) : o)) });
 
-async function runItem(o: OutboxItem) {
+/** The row written for a finished sale: the figures, who and when, and (where the backend can hold it) the whole sale in `sale_json`. */
+function saleEntryFields(cur: SaleRecord, detailed: boolean): Record<string, string | number | undefined> {
+  return {
+    sale_uuid: cur.uuid, order_gid: cur.orderGid, register_id: cur.registerId, employee: cur.staff, ts: cur.ts, entry_type: cur.type, items_cents: cur.itemsCents,
+    discounts_cents: cur.discountCents, total_cents: cur.totalCents, cogs_cents: cur.cogsCents, fees_cents: cur.feesCents, rounding_cents: cur.roundingCents,
+    refund_of: cur.refundOf, status: 'complete', tenders_json: JSON.stringify(cur.tenders.map(t => ({ k: t.kind, a: t.amountCents, r: t.card?.externalReference }))),
+    lines_json: JSON.stringify(cur.lines.map(l => ({ v: l.variantId, q: l.qty, n: l.netCents }))), customer_gid: cur.customer?.id, receipt_link: cur.receiptLink,
+    ...(detailed ? { sale_json: JSON.stringify(cur) } : {}),
+  };
+}
+
+async function runItem(o: OutboxItem): Promise<SaleRecord> {
   const s = st(); const { sale } = o; const cfg = s.settings;
   const mark = (k: keyof OutboxItem['done']) => patchItem(o.id, x => ({ ...x, done: { ...x.done, [k]: true }, error: undefined }));
   let cur = sale;
+  // CloudKit only (item 8, Q11): the sale goes to CloudKit as soon as it is queued, before its Shopify order exists, so that if this iPad
+  // dies another register can find it and create the order. A failure here is not fatal: the later steps still run, and the final
+  // entry step writes the record again with the order on it. Shopify's shared rows are never written early.
+  if (!o.done.early && activeBackendKind() === 'cloudkit' && !isTraining() && sale.type === 'sale') {
+    try { await putShared('sale', cur.uuid, saleEntryFields(cur, await detailReadyShared('sale'))); mark('early'); } catch (e) { if (isNetworkError(e)) throw e; }
+  }
   // Receipt page first (it needs no Shopify), so the customer's QR code works within seconds. A receipt-server outage never blocks the Shopify
   // steps: the error is held until the end so the item stays queued and only the receipt step repeats.
   let deferred: unknown = null;
@@ -221,13 +264,7 @@ async function runItem(o: OutboxItem) {
     // The whole sale in `sale_json`, so another till can show this one's orders in full (the shop-wide view). The definition's
     // field is added on demand; a till that cannot add it still sends the row, the same way it did before.
     const detailed = await detailReadyShared('sale');
-    await putShared('sale', cur.uuid, {
-      sale_uuid: cur.uuid, order_gid: cur.orderGid, register_id: cur.registerId, employee: cur.staff, ts: cur.ts, entry_type: cur.type, items_cents: cur.itemsCents,
-      discounts_cents: cur.discountCents, total_cents: cur.totalCents, cogs_cents: cur.cogsCents, fees_cents: cur.feesCents, rounding_cents: cur.roundingCents,
-      refund_of: cur.refundOf, status: 'complete', tenders_json: JSON.stringify(cur.tenders.map(t => ({ k: t.kind, a: t.amountCents, r: t.card?.externalReference }))),
-      lines_json: JSON.stringify(cur.lines.map(l => ({ v: l.variantId, q: l.qty, n: l.netCents }))), customer_gid: cur.customer?.id, receipt_link: cur.receiptLink,
-      ...(detailed ? { sale_json: JSON.stringify(cur) } : {}),
-    });
+    await putShared('sale', cur.uuid, saleEntryFields(cur, detailed));
     mark('entry');
   }
   if (!o.done.rollup) {
@@ -240,6 +277,7 @@ async function runItem(o: OutboxItem) {
     mark('rollup');
   }
   if (deferred) throw deferred;
+  return cur;
 }
 
 export async function processOutbox() {
@@ -298,6 +336,7 @@ export async function pollShared() {
       await squareSync.run(); // the Square history months, both ways (never throws)
       await trainingSync.run(); // training marks, both ways (never throws)
       await auditSync.catchUp(); // assistant log events the live upload missed, encrypted (never throws)
+      await orderRecovery.run(); // sales another register left without a Shopify order (at most every ten minutes; never throws)
     }
     // stock
     if (s.settings.locationId && s.data.stockSince) {
