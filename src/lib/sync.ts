@@ -29,6 +29,7 @@ import { createSquareSync } from './cloudkit/squareSync';
 import { createTrainingSync } from './cloudkit/trainingSync';
 import { createAuditSync } from './cloudkit/auditSync';
 import { createSecretSync } from './cloudkit/secretSync';
+import { createPushPoll } from './cloudkit/pushPoll';
 import type { SecretNative } from './cloudkit/secretCloud';
 import { FIXED_SECRETS } from './secretsShared';
 import { createMigrationControl } from './cloudkit/migrationControl';
@@ -154,6 +155,18 @@ export const auditSync = createAuditSync({
   readLocal: async () => (await (await import('./assistantLogIO')).assistantLog.events()).events,
 });
 setAuditHook(e => { void auditSync.upload(e); });
+
+// CloudKit patch 8b: CloudKit pushes a note when the shop's records change, and this reads the shared records at once instead of waiting for the
+// next 25 second tick. The tick in App.tsx stays as the fallback (iOS can delay or drop silent pushes). `start()` is called from that tick, so it
+// begins as soon as a till is on CloudKit and costs nothing once it is listening. The native module is loaded on demand.
+let pushModule: { startSubscriptions(): Promise<boolean>; onRemoteChange(l: () => void): () => void } | null = null;
+export const pushPoll = createPushPoll({
+  active: () => activeBackendKind() === 'cloudkit',
+  training: isTraining,
+  subscribe: async () => { pushModule = (await import('../../modules/cloudkit-sync')) as unknown as NonNullable<typeof pushModule>; return pushModule.startSubscriptions(); },
+  listen: cb => (pushModule ? pushModule.onRemoteChange(cb) : () => {}),
+  run: () => pollShared(),
+});
 
 // CloudKit patch 6d: the shop's secrets (Shopify login, pass, claim and receipt secrets, assistant key, each cashier's pass code) are shared,
 // encrypted (decisions N1). Once per poll, only when the encrypted switch is on. The Keychain parts are loaded on demand so this file

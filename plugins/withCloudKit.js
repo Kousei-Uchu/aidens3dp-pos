@@ -3,17 +3,19 @@
 // `npm run ios:reset`, so this config lives here and never in the generated project.
 //
 // It does four things:
-//   1. Adds the iCloud container and CloudKit entitlement, so the app may open its own zone.
+//   1. Adds the iCloud container and CloudKit entitlement, so the app may open its own zone, and the push entitlement
+//      (aps-environment) that the change subscriptions need (patch 8b).
 //   2. Sets CKSharingSupported and the remote-notification background mode, so a till can accept the share the owner sends
-//      and hear about new records while it is open (the subscriptions themselves come in a later patch).
+//      and hear about new records while it is not in front (the subscriptions are made by the CloudKit module, patch 8b).
 //   3. Raises the iOS deployment target to 17, which CKSyncEngine needs. It sets both the Podfile platform and the Xcode
 //      build setting, because the Podfile alone does not change the app target.
 //   4. Adds the AppDelegate method iOS calls when someone taps a CloudKit share link on this device
 //      (`userDidAcceptCloudKitShareWith`). Expo forwards a fixed set of delegate calls and this is not one of them, so the
 //      method has to be written into the generated AppDelegate. It only records the link and points at the CloudKit
 //      module, which does the accepting (patch 2 of dev_docs/CLOUDKIT_SYNC_PLAN.md).
-// The aps-environment entitlement is deliberately left out until the push subscriptions land (a later patch), because an
-// app with it must also be signed with a push-enabled profile.
+// The aps-environment entitlement was left out until the push subscriptions landed. They have (patch 8b), so it is set now. An app with it
+// must be signed with a push-enabled provisioning profile: enable Push Notifications for the App ID in the Apple Developer account first, or
+// the build fails to sign.
 const { withEntitlementsPlist, withInfoPlist, withPodfileProperties, withXcodeProject, withAppDelegate } = require('@expo/config-plugins');
 
 const CONTAINER = 'iCloud.com.aidens3dp.pos';
@@ -25,10 +27,19 @@ const PENDING_INVITE_KEY = 'cloudkitPendingInvite';
 const SHARE_NOTIFICATION = 'cloudkitDidAcceptShare';
 const SHARE_MARKER = '// CloudKit share links (added here by plugins/withCloudKit.js).';
 
+// The entitlements, as a plain function so the node tests can check them. `aps-environment` (patch 8b) is what lets the app receive the
+// silent pushes CloudKit sends when records change. It is set to `development`, and an archive signed with a push-enabled distribution
+// profile is expected to carry `production` instead (check this on the first TestFlight build). An existing value is kept.
+function applyEntitlements(entitlements) {
+  entitlements['com.apple.developer.icloud-container-identifiers'] = [CONTAINER];
+  entitlements['com.apple.developer.icloud-services'] = ['CloudKit'];
+  if (!entitlements['aps-environment']) entitlements['aps-environment'] = 'development';
+  return entitlements;
+}
+
 const withIcloudEntitlements = (config) =>
   withEntitlementsPlist(config, (c) => {
-    c.modResults['com.apple.developer.icloud-container-identifiers'] = [CONTAINER];
-    c.modResults['com.apple.developer.icloud-services'] = ['CloudKit'];
+    c.modResults = applyEntitlements(c.modResults);
     return c;
   });
 
@@ -113,3 +124,4 @@ const withShareLinkHandler = (config) =>
 
 module.exports = (config) => withShareLinkHandler(withProjectTarget(withPodfileTarget(withSharingSupport(withIcloudEntitlements(config)))));
 module.exports.injectShareLinkHandler = injectShareLinkHandler;
+module.exports.applyEntitlements = applyEntitlements;

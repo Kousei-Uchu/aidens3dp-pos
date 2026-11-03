@@ -1,6 +1,7 @@
 import ExpoModulesCore
 import CloudKit
 import Foundation
+import UIKit
 
 // The iCloud container declared by plugins/withCloudKit.js. The two must stay the same string: the entitlement and
 // this identifier together are what let CloudKit open the container, and a mismatch fails at runtime, not at build.
@@ -24,6 +25,13 @@ private let cloudKitNeverPlainKeys: Set<String> = Set(cloudKitEncryptedKeys.valu
 // because it does not own the container logic.
 private let cloudKitDidAcceptShareNotification = Notification.Name("cloudkitDidAcceptShare")
 
+// Patch 8b: change pushes. One database subscription on each database: the owner's records change in the private database, a joined till
+// hears about the owner's changes through the shared one. Fixed ids, so asking again finds the subscription already there and saves nothing.
+// CloudKitPushSubscriber (its own file) posts the notification below when a silent push for either database arrives.
+private let cloudKitPrivateSubscriptionID = "aidens3dp-private-changes"
+private let cloudKitSharedSubscriptionID = "aidens3dp-shared-changes"
+let cloudKitRemoteChangeNotification = Notification.Name("cloudkitRemoteChange")
+
 // What the Cloud sync page reads back. `role` is "owner" on the till that set the shop up, "participant" on a till that
 // joined, and "none" on a till that has done neither.
 struct CloudKitStateRecord: Record {
@@ -36,11 +44,12 @@ struct CloudKitStateRecord: Record {
 // themselves (the sync engine) arrive in patch 3; this patch only opens the door and says which side of it a till is on.
 public class CloudKitSyncModule: Module {
   private var shareObserver: NSObjectProtocol?
+  private var changeObserver: NSObjectProtocol?
 
   public func definition() -> ModuleDefinition {
     Name("CloudKitSync")
 
-    Events("onShareJoined")
+    Events("onShareJoined", "onRemoteChange")
 
     // Join a share the moment iOS hands one over. Registering on create (not on a JS listener) means the invite is
     // accepted even if nobody is looking at the Cloud sync page when the link is tapped.
@@ -53,11 +62,26 @@ public class CloudKitSyncModule: Module {
         guard let self, let metadata = note.object as? CKShare.Metadata else { return }
         Task { await self.join(metadata) }
       }
+      // Patch 8b: a silent push for either database became a notification in CloudKitPushSubscriber; tell JavaScript to read.
+      self.changeObserver = NotificationCenter.default.addObserver(
+        forName: cloudKitRemoteChangeNotification,
+        object: nil,
+        queue: .main
+      ) { [weak self] _ in
+        self?.sendEvent("onRemoteChange", [:] as [String: Any?])
+      }
     }
 
     OnDestroy {
       if let observer = self.shareObserver { NotificationCenter.default.removeObserver(observer) }
       self.shareObserver = nil
+      if let observer = self.changeObserver { NotificationCenter.default.removeObserver(observer) }
+      self.changeObserver = nil
+    }
+
+    // Patch 8b: ask CloudKit to push when the shop's records change. True when both subscriptions are in place. Safe to call every launch.
+    AsyncFunction("startSubscriptions") { () async throws -> Bool in
+      try await self.ensureSubscriptions()
     }
 
     // Whether CloudKit can run here. The deployment target is iOS 17, so a real build always answers true; the
@@ -336,6 +360,27 @@ public class CloudKitSyncModule: Module {
   // --- The container and the zone it shares ---------------------------------
 
   private func container() -> CKContainer { CKContainer(identifier: cloudKitContainerIdentifier) }
+
+  // --- Patch 8b: change pushes ---------------------------------------------
+
+  // A silent push needs the app registered with Apple's push service, which asks the person nothing. The subscription carries no alert, no
+  // sound and no badge: only content-available, so iOS wakes the app and the AppDelegate subscriber posts the notification. Each database is
+  // handled on its own, so one failing (no account, offline) does not stop the other, and the result says whether both are in place.
+  // iOS may delay or drop silent pushes, so JavaScript keeps its timer poll as a fallback.
+  private func ensureSubscriptions() async throws -> Bool {
+    await MainActor.run { UIApplication.shared.registerForRemoteNotifications() }
+    let c = container()
+    var allInPlace = true
+    for (database, id) in [(c.privateCloudDatabase, cloudKitPrivateSubscriptionID), (c.sharedCloudDatabase, cloudKitSharedSubscriptionID)] {
+      if (try? await database.subscription(for: id)) != nil { continue }
+      let subscription = CKDatabaseSubscription(subscriptionID: id)
+      let info = CKSubscription.NotificationInfo()
+      info.shouldSendContentAvailable = true
+      subscription.notificationInfo = info
+      do { _ = try await database.save(subscription) } catch { allInPlace = false }
+    }
+    return allInPlace
+  }
 
   private var storeZoneID: CKRecordZone.ID { CKRecordZone(zoneName: cloudKitZoneName).zoneID }
 

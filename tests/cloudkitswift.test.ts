@@ -85,3 +85,25 @@ test('getMigration returns the change tag, without changing what other records r
   assert.match(body('getMigrationFields'), /out\["tag"\] = record\.recordChangeTag/);
   assert.doesNotMatch(body('recordToDict'), /recordChangeTag/);
 });
+
+// ---- 8b: change pushes ----
+const subscriber = readFileSync('modules/cloudkit-sync/ios/CloudKitPushSubscriber.swift', 'utf8');
+test('startSubscriptions subscribes both databases with fixed ids, silently, and says whether both are in place', () => {
+  assert.match(src, /AsyncFunction\("startSubscriptions"\)[\s\S]*?ensureSubscriptions\(\)/);
+  const b = body('ensureSubscriptions');
+  assert.match(b, /c\.privateCloudDatabase, cloudKitPrivateSubscriptionID/); assert.match(b, /c\.sharedCloudDatabase, cloudKitSharedSubscriptionID/);
+  assert.match(b, /shouldSendContentAvailable = true/); assert.doesNotMatch(b, /alertBody|soundName|shouldBadge/, 'a silent push carries no alert, sound or badge');
+  assert.match(b, /registerForRemoteNotifications\(\)/); assert.match(b, /database\.subscription\(for: id\)/, 'an existing subscription is found, not saved again');
+  assert.match(b, /allInPlace = false/); assert.match(b, /return allInPlace/);
+  assert.match(src, /cloudKitPrivateSubscriptionID = "aidens3dp-private-changes"/); assert.match(src, /cloudKitSharedSubscriptionID = "aidens3dp-shared-changes"/);
+});
+test('a database push becomes the onRemoteChange event, and anything else is reported as no data', () => {
+  assert.match(src, /Events\("onShareJoined", "onRemoteChange"\)/);
+  assert.match(src, /forName: cloudKitRemoteChangeNotification[\s\S]*?sendEvent\("onRemoteChange"/);
+  assert.match(src, /removeObserver\(observer\)[\s\S]*?changeObserver = nil/);
+  assert.match(subscriber, /class CloudKitPushSubscriber: ExpoAppDelegateSubscriber/);
+  assert.match(subscriber, /note\.notificationType == \.database/); assert.match(subscriber, /post\(name: cloudKitRemoteChangeNotification/);
+  assert.match(subscriber, /completionHandler\(\.noData\)[\s\S]*?completionHandler\(\.newData\)/);
+  assert.deepEqual(JSON.parse(readFileSync('modules/cloudkit-sync/expo-module.config.json', 'utf8')).apple.appDelegateSubscribers, ['CloudKitPushSubscriber']);
+  assert.match(readFileSync('modules/cloudkit-sync/index.ts', 'utf8'), /export async function startSubscriptions[\s\S]*export function onRemoteChange/);
+});

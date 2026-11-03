@@ -58,6 +58,17 @@ export function onShareJoined(listener: (payload: { ok: boolean; message: string
   return () => subscription?.remove();
 }
 
+// Patch 8b: change pushes. `startSubscriptions` asks CloudKit to push when the shop's records change and resolves true when both the private
+// and the shared database are subscribed (it is safe to call on every launch). `onRemoteChange` fires when such a push arrives.
+export async function startSubscriptions(): Promise<boolean> {
+  if (!native?.startSubscriptions) return false;
+  return native.startSubscriptions();
+}
+export function onRemoteChange(listener: () => void): () => void {
+  const subscription = native?.addListener?.('onRemoteChange', listener);
+  return () => subscription?.remove();
+}
+
 // Patch 4: sales and rollups (CloudKit backend)
 export async function putSale(handle: string, fields: Record<string, any>, encrypted: Record<string, any> = {}): Promise<Record<string, any>> {
   if (!native?.putSale) throw new Error(CLOUDKIT_MISSING);

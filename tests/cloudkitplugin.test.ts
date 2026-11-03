@@ -73,6 +73,17 @@ test('a file with no AppDelegate is left alone rather than mangled', () => {
   assert.equal(injectShareLinkHandler(other), other);
 });
 
+// ---- 8b: the push entitlement ----
+const { applyEntitlements } = require('../plugins/withCloudKit') as { applyEntitlements: (e: Record<string, unknown>) => Record<string, unknown> };
+test('the entitlements carry the container, CloudKit and the push environment', () => {
+  const e = applyEntitlements({});
+  assert.deepEqual(e['com.apple.developer.icloud-container-identifiers'], ['iCloud.com.aidens3dp.pos']); assert.deepEqual(e['com.apple.developer.icloud-services'], ['CloudKit']);
+  assert.equal(e['aps-environment'], 'development');
+});
+test('an aps-environment already set is kept, and running twice changes nothing', () => {
+  assert.equal(applyEntitlements({ 'aps-environment': 'production' })['aps-environment'], 'production');
+  const once = applyEntitlements({ other: 1 }); assert.deepEqual(applyEntitlements({ ...once }), once);
+});
 test('an Objective-C AppDelegate is left alone rather than having Swift written into it', () => {
   const objc = '@implementation AppDelegate\n@end\n';
   assert.equal(injectShareLinkHandler(objc, 'objc'), objc);

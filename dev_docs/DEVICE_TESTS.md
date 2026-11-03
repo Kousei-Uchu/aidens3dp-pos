@@ -1455,3 +1455,17 @@ Needs the owner iPad (A) and a second iPad (B) that has joined the shop, on a sh
 10. On B (a different Apple ID, if T85 left B unable to read an encrypted field) check the run does not overwrite what it cannot read. Pass: the dashboard value of any record B could not read is unchanged after B's polls.
 11. Start a practice run on A and change a secret inside it. Pass: no `Secret` record changes and the real secrets are unchanged after leaving practice.
 12. Export from A (owner only). Pass: the zip has a `secrets` file, and it contains the values A could read. Do not share the zip.
+
+## T111. Change pushes (0225)
+
+1. Needs the owner iPad A and a joined iPad B, both on CloudKit (T109 passed), and a build signed with a push-enabled provisioning profile (Push Notifications switched on for the App ID). Pass: the build installs. If signing fails, enable Push Notifications on the App ID first.
+2. Open both iPads and wait one tick (25 seconds). Pass: the CloudKit dashboard shows two database subscriptions for the app, `aidens3dp-private-changes` and `aidens3dp-shared-changes`, for each Apple ID, and none is duplicated after a relaunch.
+3. With B in front and idle, take a cash sale on A. Pass: B shows the sale in the shop-wide sales view within a few seconds, well under the 25 second tick. Repeat five times and note how many arrive in under 5 seconds. (A silent push is not guaranteed, so record the count, do not expect all five.)
+4. Make five quick changes on A (add and remove a saved cart five times). Pass: B stays responsive and reads a few times, not once per change. B's Diagnostics does not show overlapping syncs.
+5. Put B in the background for two minutes, change something on A, then bring B forward. Pass: B shows the change at once or after at most one tick.
+6. Force quit B, change something on A, wait 30 seconds without opening B, then open B. Pass: B shows the change within one tick of opening. (iOS does not wake a force-quit app for a silent push, so no earlier update is expected.)
+7. Turn on Low Power Mode on B and repeat step 3. Pass: changes still arrive within a tick, even if pushes are late.
+8. Turn Wi-Fi off on B, change something on A, turn Wi-Fi on. Pass: B catches up within a tick, and nothing errors.
+9. Start a practice run on B and change something on A. Pass: B does not read the shop or subscribe during practice, and the real data is unchanged after leaving practice.
+10. On a till that is still on Shopify storage, look at the dashboard. Pass: no subscription was made for it.
+11. Install a build with the entitlement removed (a debug build). Pass: the app still works and polls every tick; Cloud sync does not show an error about pushes.
