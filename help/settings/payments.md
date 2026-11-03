@@ -27,7 +27,7 @@ To pair or check the reader, tap **Reader & pairing**. In **Support & diagnostic
 
 ### What each choice affects
 - Cash rounding applies to the amount due on a cash tender, not card or gift-card amounts.
-- Smart change is a per-register preference and works with the drawer's note-and-coin counts and sales history.
+- Smart change is this register's own preference until Cloud sync is switched on, then a shop-wide one. It works with the drawer's note-and-coin counts and sales history.
 - Card fee rates are stored as shared settings and are used to estimate fees. Changing a rate does not change the amount charged by Zeller.
 - Reader pairing is device-specific. If you reinstall the app, pair the terminal again.
 

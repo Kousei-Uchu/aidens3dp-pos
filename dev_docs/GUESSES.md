@@ -676,6 +676,14 @@ Each is a guess, change any you disagree with.
 8. **Only a till in the shop's share moves.** One that never joined stays on Shopify.
 9. **The poll is not retired.** CloudKit's push needs a subscription and a silent-push entitlement in Swift. Until that exists the 25 second poll reads CloudKit, as it read Shopify.
 
+## Loans in the float report and the assistant (0223)
+
+Each is a guess, change any you disagree with.
+
+1. **The suggested float is not adjusted for a loan.** The ledger counts notes and coins and cannot tell which of them are the loan, so the report banks the day's takings only and the float still includes the loan cash. A note says to take the loan back first, and the report then updates.
+2. **The assistant sees the loan as one new field, `loan_owed_back`,** inside `shift` for `cash_drawer` and in the float result of `cash_calculator`, and only while a loan is owed and the shift is open. The tool description is unchanged, because a longer one failed the owner-confirmed 8000-token budget test (985 left, 1000 needed).
+3. **The Daily float report reads the loan from the shared shift** (`loanOwed(shift)`), so on a till that has moved to CloudKit it is the shop's loan, not this iPad's.
+
 ## Shared secrets and pass codes (0224)
 
 Each is a guess, change any you disagree with.
