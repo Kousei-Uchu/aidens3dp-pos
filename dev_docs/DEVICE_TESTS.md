@@ -1371,3 +1371,15 @@ Same setup as T102, with the button now calling `runImport` instead of `runMigra
 5. With a shop of several hundred sales, time the check. Pass: it finishes without the lease being lost, and the dashboard shows heartbeat writes (the change tag moves) while it runs.
 6. Put A on a bad network during the check. Pass: A records `failed` with `Count check could not run` and never `done`.
 7. Add one extra record in CloudKit that Shopify does not have (a settings row with a new key). Pass: the check still reports `done`.
+
+## T104. Starting the import through the controller (0215)
+
+Same setup as T102, with a throwaway button (or debug console) that calls `migrationControl.start()` and shows `view()`. Use a fresh Development zone.
+
+1. On the owner iPad call `view()`. Pass: `canStart` is true and the line says it is ready.
+2. Call `start()` twice in quick succession. Pass: the second returns `refused` (already running) and the first ends `done`.
+3. On a participant iPad (different Apple ID in the share) call `start()`. Pass: `refused` (owner only) and the dashboard record is unchanged.
+4. Start a practice run on the owner iPad and call `start()`. Pass: `refused`, nothing written. Start a run, then enter a practice run. Pass: the import stops at its next page.
+5. Call `stop()` during sales, then `start()` again. Pass: it carries on from the stored page and ends `done`.
+6. Turn iCloud off in Settings and call `start()`. Pass: a sentence explains it, nothing is thrown, and calling `start()` after turning iCloud back on works.
+7. While the owner iPad is running, call `view()` on a second owner iPad. Pass: the line names the first iPad and the step, and `canStart` is false.
