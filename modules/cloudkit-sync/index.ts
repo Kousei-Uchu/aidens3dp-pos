@@ -234,6 +234,15 @@ export async function listAudit(limit = 200, after?: string | null): Promise<Pag
   if (!native?.listAudit) return { rows: [], next: null };
   return native.listAudit(limit, after ?? null);
 }
+// Patch 6d: shared secrets. The names match SecretNative in src/lib/cloudkit/secretCloud.ts. `encrypted` holds `secure_json`.
+export async function putSecret(handle: string, fields: Record<string, any>, encrypted: Record<string, any> = {}): Promise<Record<string, any>> {
+  if (!native?.putSecret) throw new Error(CLOUDKIT_MISSING);
+  return native.putSecret(handle, fields, encrypted);
+}
+export async function listSecrets(limit = 200, after?: string | null): Promise<Page> {
+  if (!native?.listSecrets) return { rows: [], next: null };
+  return native.listSecrets(limit, after ?? null);
+}
 // Patch 6a: the shared logo. The names match LogoNative in src/lib/cloudkit/logoCloud.ts.
 export async function putLogo(fields: Record<string, any>, filePath: string | null): Promise<Record<string, any>> {
   if (!native?.putLogo) throw new Error(CLOUDKIT_MISSING);

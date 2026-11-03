@@ -62,6 +62,9 @@ export type CloudKitSyncNative = {
   putAudit?(handle: string, fields: Record<string, any>, encrypted: Record<string, any>): Promise<Record<string, any>>;
   listAuditIndex?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
   listAudit?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+  // Patch 6d: shared secrets (one record per secret, content in one encrypted field)
+  putSecret?(handle: string, fields: Record<string, any>, encrypted: Record<string, any>): Promise<Record<string, any>>;
+  listSecrets?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
   // Patch 6a: the shared logo (one record with an image asset)
   putLogo?(fields: Record<string, any>, filePath: string | null): Promise<Record<string, any>>;
   getLogo?(): Promise<Record<string, any> | null>;

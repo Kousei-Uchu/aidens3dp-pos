@@ -1440,3 +1440,18 @@ Needs the owner iPad (A) and a second iPad (B) that has joined the shop, on a sh
 8. On B press Use iCloud again. Pass: B moves back to iCloud on that press or the next poll.
 9. Start a practice run on a Shopify-storage till that has not moved. Pass: it does not move, and the rollback and Use iCloud again buttons are off.
 10. Break the gap send (a debug build where `runItem` fails for a caught-up sale) on B. Pass: B is on iCloud, the catch-up is not remembered, and a later poll finishes it.
+
+## T110. Shared secrets and pass codes (0224)
+
+1. Needs the same two iPads and two Apple IDs as T85 (A owns the shop's zone, B joined through the invite link), CloudKit as the active backend, and the encrypted switch on (`setSaleCardMode('encrypted')`) only after T85 passed. Before turning it on, wait two polls with it off. Pass: the CloudKit dashboard shows no `Secret` records, and nothing on B changed.
+2. Turn the switch on. On A set a pass server secret, a gift claim secret, a receipt secret and an assistant key, and make sure A is signed in to Shopify and has issued a pass code to a cashier. Wait two polls. Pass: the dashboard shows `Secret` records named `secret-shopify`, `secret-pass`, `secret-claim`, `secret-receipt`, `secret-assistant` and `secret-badge.<staff id>`, each with `secure_json` shown as encrypted (no readable value), and the plain labels are only `name`, `registerId` and `at`.
+3. Wait two polls on B. Pass: B holds the same Shopify login (it connects to the shop without being signed in by hand), the same four secrets, and B can print or send the cashier's pass again (Staff, the cashier, their pass) without issuing a new one. Before this patch only the iPad that issued it could. In the dashboard no record changed after B's polls (B sent nothing).
+4. On A change the pass server secret. Wait two polls. Pass: B has the new value. Change a different secret on B. Pass: A has it after two polls.
+5. Change the same secret on both iPads before either polls (turn Wi-Fi off on both, edit, turn it back on). Pass: after two polls both iPads hold the same value, and it is the one the shop already held. This is the conflict rule, so one edit is expected to be lost.
+6. On B remove the assistant key. Wait three polls. Pass: B stays without a key, and the shop's record is unchanged (dashboard). On A change the key. Pass: B takes the new key.
+7. On A sign out of Shopify. Wait three polls. Pass: B is still signed in, and the `secret-shopify` record is unchanged.
+8. Remove the cashier on A. Pass: A's copy of the pass code is gone, the shop's record and B's copy remain. This is a known gap, not a failure.
+9. Turn the switch off again and change a secret on A. Wait two polls. Pass: nothing is written and B does not change.
+10. On B (a different Apple ID, if T85 left B unable to read an encrypted field) check the run does not overwrite what it cannot read. Pass: the dashboard value of any record B could not read is unchanged after B's polls.
+11. Start a practice run on A and change a secret inside it. Pass: no `Secret` record changes and the real secrets are unchanged after leaving practice.
+12. Export from A (owner only). Pass: the zip has a `secrets` file, and it contains the values A could read. Do not share the zip.

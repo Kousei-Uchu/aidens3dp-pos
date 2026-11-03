@@ -28,6 +28,9 @@ import type { LogoNative } from './cloudkit/logoCloud';
 import { createSquareSync } from './cloudkit/squareSync';
 import { createTrainingSync } from './cloudkit/trainingSync';
 import { createAuditSync } from './cloudkit/auditSync';
+import { createSecretSync } from './cloudkit/secretSync';
+import type { SecretNative } from './cloudkit/secretCloud';
+import { FIXED_SECRETS } from './secretsShared';
 import { createMigrationControl } from './cloudkit/migrationControl';
 import { createOrderRecovery } from './cloudkit/orderRecoverySync';
 import { lazyBackend, loadBackend } from './cloudkit/lazyBackend';
@@ -151,6 +154,22 @@ export const auditSync = createAuditSync({
   readLocal: async () => (await (await import('./assistantLogIO')).assistantLog.events()).events,
 });
 setAuditHook(e => { void auditSync.upload(e); });
+
+// CloudKit patch 6d: the shop's secrets (Shopify login, pass, claim and receipt secrets, assistant key, each cashier's pass code) are shared,
+// encrypted (decisions N1). Once per poll, only when the encrypted switch is on. The Keychain parts are loaded on demand so this file
+// still imports in the node tests. A removal on one register is never sent, and a clash is settled in the shop's favour (see secretsShared.ts).
+const secretSync = createSecretSync({
+  active: () => activeBackendKind() === 'cloudkit',
+  training: isTraining,
+  who: () => ({ id: st().settings.registerId }),
+  native: async () => (await import('../../modules/cloudkit-sync')) as unknown as SecretNative,
+  mode: async () => (await import('./cloudkit/cloudkitBackend')).saleCardMode(),
+  localNames: async () => [...FIXED_SECRETS, ...(await import('./cloudkit/secretSyncIO')).secretNamesFor((st().settings.staff ?? []).map(m => m.id))],
+  read: async n => (await import('./cloudkit/secretSyncIO')).readSecret(n),
+  write: async (n, v) => (await import('./cloudkit/secretSyncIO')).writeSecret(n, v),
+  loadBase: async () => (await import('./cloudkit/secretSyncIO')).loadSecretBase(),
+  saveBase: async b => (await import('./cloudkit/secretSyncIO')).saveSecretBase(b),
+});
 
 // CloudKit patch 7: the one-off import of the shop's Shopify records into CloudKit. Nothing starts it by itself; the "Setting up sync" screen
 // (next piece) calls `migrationControl.start()` on the owner's iPad. Shopify is always read through the metaobject backend and CloudKit
@@ -355,6 +374,7 @@ export async function pollShared() {
       await squareSync.run(); // the Square history months, both ways (never throws)
       await trainingSync.run(); // training marks, both ways (never throws)
       await auditSync.catchUp(); // assistant log events the live upload missed, encrypted (never throws)
+      await secretSync.run(); // shared secrets, both ways, only with the encrypted switch on (never throws)
       await orderRecovery.run(); // sales another register left without a Shopify order (at most every ten minutes; never throws)
     }
     // stock

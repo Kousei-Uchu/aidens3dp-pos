@@ -32,7 +32,10 @@ test('save() is only called in the helpers that deal with an existing record', (
 
 // Encrypted sale fields (decisions item 17). The Swift cannot be built here, so these pin the rules by reading it.
 test('an encrypted key is never written as a plain field, and only listed keys are written as encrypted ones', () => {
-  assert.match(src, /cloudKitEncryptedKeys: \[String: \[String\]\] = \["Sale": \["secure_json"\], "Audit": \["secure_json"\]\]/);
+  assert.match(src, /cloudKitEncryptedKeys: \[String: \[String\]\] = \["Sale": \["secure_json"\], "Audit": \["secure_json"\], "Secret": \["secure_json"\]\]/);
+  assert.match(src, /AsyncFunction\("putSecret"\)[\s\S]*?recordType: "Secret", recordName: "secret-\\\(handle\)", fields: fields, encrypted: encrypted/);
+  assert.match(src, /AsyncFunction\("listSecrets"\)[\s\S]*?recordType: "Secret"/);
+  assert.doesNotMatch(src, /recordType: "Secret"[^\n]*delete/i, 'nothing deletes a secret record');
   assert.match(body('copyFields'), /cloudKitNeverPlainKeys\.contains\(k\) \{ continue \}/);
   const e = body('copyEncrypted');
   assert.match(e, /allowed\.contains\(k\)/); assert.match(e, /record\.encryptedValues\[k\] = s/);
