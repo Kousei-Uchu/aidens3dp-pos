@@ -1383,3 +1383,16 @@ Same setup as T102, with a throwaway button (or debug console) that calls `migra
 5. Call `stop()` during sales, then `start()` again. Pass: it carries on from the stored page and ends `done`.
 6. Turn iCloud off in Settings and call `start()`. Pass: a sentence explains it, nothing is thrown, and calling `start()` after turning iCloud back on works.
 7. While the owner iPad is running, call `view()` on a second owner iPad. Pass: the line names the first iPad and the step, and `canStart` is false.
+
+## T105. The Move the shop to iCloud section (0216)
+
+Needs the owner iPad (A) and a second iPad (B) that has joined the shop, on a shop with real Shopify records. Use a fresh Development zone.
+
+1. On A open Settings, Cloud sync. Pass: the section "Move the shop to iCloud" shows "Ready to set up sync from this iPad.", three lines saying what it does and one button, Set up sync.
+2. On B open the same page. Pass: the same sentence area shows that the owner's iPad will do it, there is no button and no explanation.
+3. Press Set up sync on A and stay on the page. Pass: the sentence changes to "Setting up sync, step N of 6", a line like "Step 5 of 6, sales: 240 so far." counts up, and a Stop button shows. Leave B's page open. Pass: within about ten seconds B shows A's step.
+4. Press Stop on A. Pass: the progress stops within a page, the outcome line says it stopped, and the button now says Carry on setting up sync. Press it. Pass: it carries on and finishes.
+5. When it finishes. Pass: A shows "Done. Every record is in iCloud and the counts match." and "Sync is set up.", with no button. B shows "Sync is set up." too.
+6. Turn on a practice run. Pass: the button is gone on A.
+7. Leave the page while it runs and come back. Pass: the page shows the running import again (it continues while the app stays open).
+8. Turn off Wi-Fi mid import. Pass: the outcome line names the step and says what happened, and the button offers to carry on.
