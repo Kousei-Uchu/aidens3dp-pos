@@ -118,11 +118,11 @@ Item numbers refer to `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`.
 ## 6. First-connection migration
 
 1. **Owner only.** Only a device on the owner's Apple ID creates the zone and share and runs the import.
-2. **Lease record.** `migration-v1` is saved with `ifServerRecordUnchanged`, so only one device wins. It stores the device ID (`registerId`), a lease expiry with heartbeat, the current phase, and a cursor. If the holder dies, another owner device takes over using the record's change tag.
+2. **Lease record.** `migration-v1` is saved with `ifServerRecordUnchanged`, so only one device wins. It stores the device ID (`registerId`), a heartbeat, the current phase, and a cursor. If the holder dies, another owner device takes over using the record's change tag. **Changed in 0212:** no expiry time is stored. A watcher judges a holder gone when the change tag it sees has not moved for two minutes on the watcher's own clock, so a wrong clock on one iPad cannot cause a takeover.
 3. **Phases, in order:** settings, drawer, layout, saved carts, sales, rollups (changed in 0212: the drawer is its own phase because Shopify keeps it as one blob that has to become a shift record and ledger entries, and Square history is not a phase because it is not in Shopify and each register already shares its months at every poll). Shopify lists are paged. Writes go in batches of about 100 records (CloudKit's cap is 400 per operation). Each batch advances the cursor so a crash resumes where it stopped.
 4. **Verify.** Compare per-type counts between Shopify and CloudKit. Only then set `status: done`. Clients switch to the CloudKit backend only once they see `done`.
-5. **Other devices during migration.** They show a "Setting up sync" state, queue local writes, and flush them once the import finishes.
-6. **Settings conflicts.** The Shopify settings row is canonical on first import. Local settings are used only if no row exists. Where both exist, the highest `sharedVersion` wins.
+5. **Other devices during migration.** They show a "Setting up sync" state, queue local writes, and flush them once the import finishes. **Not built as written (checked in 0221).** The "Move the shop to iCloud" section (0216) shows the state, but there is no write queue. Instead a till keeps using Shopify until it sees `done` (0220), so nothing writes CloudKit during the import. Sales finished after the import began are sent once by each till when it moves (the gap send).
+6. **Settings conflicts.** The Shopify settings row is canonical on first import. Local settings are used only if no row exists. Where both exist, the highest version wins. **Changed in 0213:** the field is the row's `version` (no row has a `sharedVersion`), and Shopify wins a tie.
 7. **Rollback.** Metaobjects are untouched, and a backend flag lets the app revert. Optionally dual-write for a release or two. With only a few iPads, updating them all at once is likely simpler.
 
 ## 7. Known / unknown
