@@ -35,7 +35,7 @@ The Settings list also has Checkout options for consolidating identical items an
 ## Deep
 
 ### Settings are not all shared the same way
-Some choices apply only to this register, such as Smart change and Screensaver & display. Shared settings, such as staff and bundle deals, sync with the other registers. The screen or setting guide explains when a choice is local.
+Some choices apply only to this register, such as Screensaver & display, and Smart change until Cloud sync is switched on (after that it is shared). Shared settings, such as staff and bundle deals, sync with the other registers. The screen or setting guide explains when a choice is local.
 
 The Payments section shows fee rates used for estimates. Zeller does not report actual card fees to the POS, and the automatic cash tender machine is still under construction; cash is entered and given by hand.
 
