@@ -107,3 +107,32 @@ test('a database push becomes the onRemoteChange event, and anything else is rep
   assert.deepEqual(JSON.parse(readFileSync('modules/cloudkit-sync/expo-module.config.json', 'utf8')).apple.appDelegateSubscribers, ['CloudKitPushSubscriber']);
   assert.match(readFileSync('modules/cloudkit-sync/index.ts', 'utf8'), /export async function startSubscriptions[\s\S]*export function onRemoteChange/);
 });
+
+// Patch 0227: a joined till must use the owner's zone in the shared database, not an empty zone of its own in the private one.
+test('the database and zone come from the role, worked out by resolveStore (0227)', () => {
+  const d = body('database');
+  assert.match(d, /sharedCloudDatabase/); assert.match(d, /privateCloudDatabase/); assert.match(d, /participant/);
+  assert.match(src, /private var storeZoneID: CKRecordZone\.ID \{[\s\S]*?storeSharedZoneID[\s\S]*?ownerZoneID/);
+  const r = body('resolveStore');
+  assert.match(r, /privateCloudDatabase\.allRecordZones\(\)/); assert.match(r, /sharedCloudDatabase\.allRecordZones\(\)/);
+  assert.match(r, /storeSharedZoneID = zone\.zoneID/, 'the participant keeps the zone ID CloudKit listed, not one built from its own Apple ID');
+});
+test('every function that reads or writes a record resolves the store first (0227)', () => {
+  for (const f of ['putLogo', 'getLogoFields', 'downloadLogoFile', 'putSquareShardOnce', 'getSquareManifestFields', 'putSquareManifest', 'downloadSquareShardFile',
+    'getMigrationFields', 'putMigrationIfUnchanged', 'upsertRecord', 'putRecordOnce', 'listCreatedSince', 'getRecord', 'listRecords']) {
+    const b = body(f);
+    assert.match(b, /try await resolveStore\(\)/, `${f} resolves the store`);
+    assert.ok(b.indexOf('resolveStore()') < Math.min(...['database()', 'storeZoneID', 'makeRecord(', 'logoRecordID', 'squareManifestID'].map(k => b.indexOf(k) < 0 ? Infinity : b.indexOf(k))), `${f} resolves before it uses the database or zone`);
+  }
+});
+test('only the owner-only code names the zone under the current Apple ID (0227)', () => {
+  for (const f of ['shareLink', 'createZoneAndShare', 'resolveStore']) assert.match(body(f), /ownerZoneID/, `${f} is owner-side`);
+  for (const f of ['makeRecord', 'getRecord', 'upsertRecord', 'putRecordOnce', 'listRecords', 'runQuery', 'putLogo', 'getMigrationFields']) assert.doesNotMatch(body(f), /ownerZoneID/, `${f} uses the resolved zone`);
+  assert.equal(src.split('CKRecordZone(zoneName: cloudKitZoneName)').length - 1, 1, 'the default zone ID is built in one place');
+});
+test('a join, a set-up and an Apple ID change make the next call look again (0227)', () => {
+  assert.match(body('accept'), /defer \{ forgetStore\(\) \}/);
+  assert.match(body('createZoneAndShare'), /defer \{ forgetStore\(\) \}/);
+  assert.match(src, /\.CKAccountChanged[\s\S]*?forgetStore\(\)/);
+  assert.match(body('state'), /resolveStore\(refresh: true\)/);
+});

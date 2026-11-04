@@ -711,3 +711,15 @@ Each is a guess, change any you disagree with.
 6. **At least 2 seconds between push reads.** A burst becomes one read now and one later, reads never overlap, and a push that arrives during a read earns exactly one more.
 7. **Expo's `appDelegateSubscribers`** receives the push, so nothing is written into the generated AppDelegate for it.
 8. **`aps-environment` is `development` in the plugin,** and an existing value is kept. A distribution archive is expected to carry `production`; check on the first TestFlight build.
+
+## Joined tills (0227)
+
+Each is a guess, change any you disagree with.
+
+1. **The role is found by looking in the private database first, then the shared one.** An iPad that owns a `Store` zone counts as the owner even if it also joined someone else's share. This matters in testing: do not press **Set up this till** on the iPad that is meant to join.
+2. **The answer lives in memory only.** It is not saved to disk. It is looked up again after a join, after setting up as owner, when the Apple ID changes, and each time the Cloud sync page reads the state. That costs two zone lookups per read of the page.
+3. **A lookup that fails throws.** If CloudKit cannot be asked (offline, no account) a record call fails instead of falling back to the private database, so a joined till can never write into a zone of its own by mistake.
+4. **A till that is neither owner nor participant keeps using the private database,** as before. It is not remembered, so a till that joins a moment later is picked up on its next call.
+5. **A joined till keeps the zone ID CloudKit listed** in the shared database, and does not build one from its own Apple ID.
+6. **Creating the zone, the share link and the owner check stay owner-only,** on the private database under the owner's own zone name.
+7. **No JavaScript changed.** The pushes (0225) already subscribe to both databases, and the read after a push goes through the same record functions, so it now reads the owner's zone on a joined till.

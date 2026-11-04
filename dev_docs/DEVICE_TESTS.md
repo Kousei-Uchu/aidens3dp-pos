@@ -1469,3 +1469,18 @@ Needs the owner iPad (A) and a second iPad (B) that has joined the shop, on a sh
 9. Start a practice run on B and change something on A. Pass: B does not read the shop or subscribe during practice, and the real data is unchanged after leaving practice.
 10. On a till that is still on Shopify storage, look at the dashboard. Pass: no subscription was made for it.
 11. Install a build with the entitlement removed (a debug build). Pass: the app still works and polls every tick; Cloud sync does not show an error about pushes.
+
+## T112. A joined till uses the owner's zone (0227)
+
+Needs the same two iPads and two Apple IDs as T74 and T85: A owns the shop's zone, B joined through the invite link. Run this straight after T74, before anything else that needs two iPads. Nothing in this patch has been run on a device, and the Swift has not been compiled, so a build error is possible first. Do not press **Set up this till** on B.
+
+1. Build and install on both iPads, then open **Cloud sync** on each. Pass: A says it holds the shop records, B says it has joined the shop. On B, tap **Check again**. Pass: it still says joined.
+2. On A, write a test sale (a debug build, card mode `omit`) and note its sale id. Open the Development dashboard for the container, in the owner's Apple ID, in the `Store` zone. Pass: the record `sale-<id>` is there.
+3. On B, read the shop's sales. Pass: A's test sale appears, with the same amounts.
+4. On B, write a different test sale and note its id. Pass: in the dashboard, still under the owner's Apple ID, the record `sale-<id>` is in the same `Store` zone as A's. **Most important:** B's Apple ID's own private database has no `Store` zone and no `sale-<id>` record.
+5. On A, read the shop's sales. Pass: B's test sale appears.
+6. On B, open the cash drawer and start or change a shift. Pass: the `drawer-shift` record in the owner's `Store` zone changes, and A shows the change after one tick.
+7. On B, change a setting that is shared (the shop name). Pass: A shows it after one tick, and the `Settings` record is in the owner's zone.
+8. Sign B out of iCloud, then try step 4 again. Pass: the write fails with an error and nothing is written to any zone. Sign B back in. Pass: the next tick works again.
+9. On A, leave the Cloud sync page open and tap **Check again** several times while B writes a sale. Pass: B's write still lands in the owner's zone each time.
+10. On a till that has neither set up nor joined, open Cloud sync. Pass: it offers Set up and Join as before and writes nothing.
