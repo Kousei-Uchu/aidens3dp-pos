@@ -1,0 +1,258 @@
+diff --git a/src/lib/assistantCash.ts b/src/lib/assistantCash.ts
+index 749a70f..7f45f84 100644
+--- a/src/lib/assistantCash.ts
++++ b/src/lib/assistantCash.ts
+@@ -151,7 +151,7 @@ export function floatInfo(d: DrawerIn, now: number, takingsOverride?: number): R
+   return {
+     cash_takings: fmt(rep.takings), drawer_holds: fmt(rep.drawerTotal),
+     ...(rep.loanOwed > 0 ? { loan_owed_back: fmt(rep.loanOwed) } : {}),
+-    take_out_to_bank: countsView(rep.best.takeOut), leave_as_float: countsView(rep.best.keep),
++    ...(rep.loanBack > 0 ? { loan_included_in_take_out: fmt(rep.loanBack) } : {}), take_out_to_bank: countsView(rep.best.takeOut), leave_as_float: countsView(rep.best.keep),
+     ...(totalOf(rep.topUp) > 0 ? { top_up_from_bank: countsView(rep.topUp) } : {}), suggested_float: fmt(rep.suggestedFloat),
+     ...(totalOf(rep.bankable) > 0 ? { big_notes_better_banked: countsView(rep.bankable) } : {}),
+     ...(rep.failNow !== null ? { sales_without_exact_change: { drawer_now: pct(rep.failNow), after_banking: pct(rep.failKeep), after_top_up: pct(rep.failTopUp) } } : {}),
+@@ -165,7 +165,7 @@ export const cashCalculatorTool: AssistantTool = {
+     amount_due: 'shop', cash_due_after_rounding: 'shop', amount_given: 'shop', short_by: 'shop', change_to_give: 'shop', largest_notes_first: COUNTS_GATE,
+     from_this_drawer: { possible: 'shop', fewest_pieces: 'shop', note: 'shop', ...COUNTS_GATE },
+     total: 'shop', split: 'shop', payments: flat('number', 'amount'), last_payment_if_paid_in_cash: 'shop',
+-    cash_takings: 'shop', drawer_holds: 'shop', loan_owed_back: 'shop', take_out_to_bank: COUNTS_GATE, leave_as_float: COUNTS_GATE, top_up_from_bank: COUNTS_GATE, suggested_float: 'shop',
++    cash_takings: 'shop', drawer_holds: 'shop', loan_owed_back: 'shop', loan_included_in_take_out: 'shop', take_out_to_bank: COUNTS_GATE, leave_as_float: COUNTS_GATE, top_up_from_bank: COUNTS_GATE, suggested_float: 'shop',
+     big_notes_better_banked: COUNTS_GATE, sales_without_exact_change: flat('drawer_now', 'after_banking', 'after_top_up'), notes: 'shop', search_cut_short: 'shop',
+   },
+   def: { type: 'function', function: {
+diff --git a/src/lib/floatReport.ts b/src/lib/floatReport.ts
+index f0f18b4..0fdac7b 100644
+--- a/src/lib/floatReport.ts
++++ b/src/lib/floatReport.ts
+@@ -9,6 +9,8 @@ import { profileUsable, selectSmartCandidates, type CashProfile } from './change
+ import { greedyChange } from './cashSale';
+ import { dayScript, failRate, planTopUp, rankTakeOuts } from './floatPlan';
+ 
++/** 0228: the least share of the day's takings that is ever taken out. The float search may leave a little of the takings behind to keep the float stocked, but never more than a quarter of them. */
++export const MIN_TAKEN_SHARE = 0.75;
+ /** Points lost per dollar the amount taken out is away from the day's takings (100 points = every usual change amount covered). */
+ export const CLOSE_WEIGHT = 1.5;
+ const NEAR = 1000; // how far from the takings (cents) an amount taken out may be
+@@ -43,6 +45,12 @@ export type FloatReport = {
+   bankable: Counts;
+   /** 0223: cents of the drawer's cash that is a loan to the drawer, still owed back to the owner (0 when there is none). */
+   loanOwed: number;
++  /** 0228: the part of the loan the amount to take out covers (the loan, or less when the drawer cannot hold the takings and the loan together). It is an amount only: nothing says which notes were the loan. */
++  loanBack: number;
++  /** 0228: what the take-out is aiming at: takings plus the loan to take back. */
++  takeOutTarget: number;
++  /** 0228: the least the take-out may come to: three quarters of the takings, plus the whole loan. */
++  takeOutFloor: number;
+   notes: string[];
+   truncated: boolean;
+ };
+@@ -55,40 +63,46 @@ const option = (drawer: Counts, takeOut: Counts): FloatOption => { const keep =
+  * the best 30, and picks the one whose float copes best, with a penalty for each dollar away from the takings. It then asks `planTopUp` what, if anything, is worth adding. Without a profile it takes the largest notes first. It never takes
+  * out more than the drawer holds. `budgetMs` caps the top-up search (the best so far is used when it runs out).
+  */
+-export function recommendFloat(o: { drawer: Counts; takings: number; profile?: CashProfile | null; maxNodes?: number; budgetMs?: number; /** 0223: cents of a loan to the drawer still owed back (Shift.loanCents). Informational: it does not change what is banked. */ loanOwed?: number }): FloatReport {
++export function recommendFloat(o: { drawer: Counts; takings: number; profile?: CashProfile | null; maxNodes?: number; budgetMs?: number; /** 0223: cents of a loan to the drawer still owed back (Shift.loanCents). 0228: it is added to what is taken out. */ loanOwed?: number }): FloatReport {
+   const drawer = cleanCounts(Object.fromEntries(Object.entries(o.drawer).filter(([, n]) => n > 0))); const drawerTotal = totalOf(drawer);
+   const takings = Math.max(0, Math.min(o.takings, drawerTotal)); const prof = profileUsable(o.profile) ? o.profile : null;
++  // 0228: the loan is yours, so it comes out with the takings. Only the amount is tracked, so it is just added to what is aimed at, and the whole
++  // of it is always taken (the floor below includes it). Three quarters of the takings is the least that may come out.
++  const loanOwed = Number.isFinite(o.loanOwed) ? Math.max(0, Math.round(o.loanOwed ?? 0)) : 0;
++  const loanWanted = Math.min(loanOwed, drawerTotal - takings); const target = takings + loanWanted;
++  const floor = Math.min(target, Math.ceil(takings * MIN_TAKEN_SHARE) + loanWanted);
+   const day: CashProfile | null = prof ? { ...prof, horizon: prof.horizon * 2 } : null; // the profile's horizon is half a day
+   const script = prof ? dayScript(prof) : null;
+   let best = option(drawer, {}); let alternatives: FloatOption[] = []; let truncated = false;
+-  if (takings > 0) {
++  if (target > 0) {
+     if (day && script) {
+-      const { results, truncated: t } = findCombinationsLimited(drawer, takings, NEAR, { maxNodes: o.maxNodes ?? 150000, all: true, bigFirst: true }); truncated = t;
+-      const all = results.map(r => { const take: Counts = {}; let pieces = 0; for (const [v, q] of Object.entries(r.values)) if (q.qty_used > 0) { take[v] = q.qty_used; pieces += q.qty_used; } return { take, pieces, off: Math.abs(r.total - takings) }; });
++      const { results, truncated: t } = findCombinationsLimited(drawer, target, NEAR, { maxNodes: o.maxNodes ?? 150000, all: true, bigFirst: true }); truncated = t;
++      const all = results.filter(r => r.total >= floor).map(r => { const take: Counts = {}; let pieces = 0; for (const [v, q] of Object.entries(r.values)) if (q.qty_used > 0) { take[v] = q.qty_used; pieces += q.qty_used; } return { take, pieces, off: Math.abs(r.total - target) }; });
+       // spread over the whole search (quickest ways and fuller ones), exact amounts first, then near ones
+       const cands = [...selectSmartCandidates(all.filter(c => c.off === 0), MAX_EXACT), ...selectSmartCandidates(all.filter(c => c.off > 0), MAX_NEAR)];
+       const shortlist = rankTakeOuts(drawer, cands, dayScript(prof, QUICK_TRIALS), CLOSE_WEIGHT, FINALISTS);
+       const ranked = rankTakeOuts(drawer, shortlist, script, CLOSE_WEIGHT, 3);
+       if (ranked.length) { best = option(drawer, ranked[0].take); alternatives = ranked.slice(1).map(s => option(drawer, s.take)); }
+-      else { const g = greedyBelow(drawer, takings); best = option(drawer, g); }
+-    } else best = option(drawer, greedyBelow(drawer, takings));
++      else { const g = greedyTake(drawer, target, floor); best = option(drawer, g); }
++    } else best = option(drawer, greedyTake(drawer, target, floor));
+   }
+   const plan = script ? planTopUp(best.keep, script, { budgetMs: o.budgetMs }) : null;
+   const topUp: Counts = plan ? plan.add : {};
+   const bankable: Counts = {}; for (const d of DENOMS) if (d.cents >= 5000 && (best.keep[String(d.cents)] ?? 0) > 0) bankable[String(d.cents)] = best.keep[String(d.cents)];
+-  const gap = best.takeOutTotal - takings;
++  const gap = best.takeOutTotal - target;
+   const failNow = script ? failRate(drawer, script) : null; const failKeep = plan ? plan.before : null; const failTopUp = plan ? plan.after : null;
++  const loanBack = Math.min(loanWanted, best.takeOutTotal);
+   const notes: string[] = [];
+   if (!prof) notes.push('No cash history or item prices to learn from yet, so this just takes the largest notes first. It improves as you track more cash sales.');
+-  if (takings <= 0) notes.push('No cash takings to bank, so nothing needs to come out.');
+-  else if (gap !== 0) notes.push(`${gap > 0 ? 'Takes' : 'Leaves'} ${fmtMoney(Math.abs(gap))} ${gap > 0 ? 'more' : 'less'} than the day's takings so the float keeps the notes and coins you'll need.`);
++  if (target <= 0) notes.push('No cash takings to bank, so nothing needs to come out.');
++  else if (gap !== 0) notes.push(`${gap > 0 ? 'Takes' : 'Leaves'} ${fmtMoney(Math.abs(gap))} ${gap > 0 ? 'more' : 'less'} than ${loanBack > 0 ? "the day's takings and your loan" : "the day's takings"} so the float keeps the notes and coins you'll need.`);
+   if (o.takings > drawerTotal) notes.push('The ledger holds less than the takings, so it may be out of date. Count the drawer first.');
+   if (plan && failTopUp !== null && failTopUp > 0.1) notes.push(`Even with the top-up, about ${Math.round(failTopUp * 100)}% of a typical day's cash sales would get no exact change. More of the same notes and coins would not fix it cheaply.`);
+-  // 0223: a loan to the drawer is cash in the drawer that is not the day's takings. The ledger counts notes and coins, not whose they are, so
+-  // the float below still includes it. Say so, and say how to get a float without it, rather than guessing which notes are the loan.
+-  const loanOwed = Number.isFinite(o.loanOwed) ? Math.max(0, Math.round(o.loanOwed ?? 0)) : 0;
+-  if (loanOwed > 0) notes.push(`${fmtMoney(Math.min(loanOwed, drawerTotal))} of the cash in the drawer is a loan still owed back to you. This banks the day's takings only, so the float includes the loan. Take the loan back first (Take loan back) and this updates to a float without it.`);
+-  return { takings, drawerTotal, usedProfile: !!prof, best, alternatives, gap, topUp: cleanCounts(topUp), failNow, failKeep, failTopUp, suggestedFloat: best.keepTotal + totalOf(topUp), bankable, loanOwed, notes, truncated };
++  // 0228: a loan to the drawer is yours, so it is taken out as well as the takings. Only the amount is tracked (the ledger counts notes and coins, not whose
++  // they are), so this says how much of the take-out is the loan and does not try to pick out which notes it was.
++  if (loanBack > 0) notes.push(`${fmtMoney(loanBack)} of this is your loan, so you take it back with the takings (${fmtMoney(takings)} takings + ${fmtMoney(loanBack)} loan). The float below is what is left without it.`);
++  if (loanOwed > loanBack) notes.push(`The drawer holds less than the takings and the whole loan together, so ${fmtMoney(loanOwed - loanBack)} of the loan is still owed back.`);
++  return { takings, drawerTotal, usedProfile: !!prof, best, alternatives, gap, topUp: cleanCounts(topUp), failNow, failKeep, failTopUp, suggestedFloat: best.keepTotal + totalOf(topUp), bankable, loanOwed, loanBack, takeOutTarget: target, takeOutFloor: floor, notes, truncated };
+ }
+ 
+ const fmtMoney = (c: number) => `$${Math.floor(c / 100)}.${String(c % 100).padStart(2, '0')}`;
+@@ -99,3 +113,21 @@ function greedyBelow(pool: Counts, target: number): Counts {
+   for (const v of Object.keys(pool).map(Number).sort((a, b) => b - a)) { const n = Math.min(pool[String(v)] ?? 0, Math.floor(left / v)); if (n > 0) { out[String(v)] = n; left -= n * v; } }
+   return out;
+ }
++/**
++ * 0228: `greedyBelow`; if that lands under `floor` (the least allowed), the way of at least `floor` nearest `target` with the fewest pieces, found by search;
++ * and failing that, extra pieces added one at a time. So a take-out never falls below the least allowed while the drawer holds enough.
++ */
++function greedyTake(pool: Counts, target: number, floor: number): Counts {
++  const out = greedyBelow(pool, target); if (totalOf(out) >= floor) return out;
++  const { results } = findCombinationsLimited(pool, target, Math.max(NEAR, target), { maxNodes: 60000, all: true, bigFirst: true });
++  const ways = results.filter(r => r.total >= floor).map(r => { const take: Counts = {}; let pieces = 0; for (const [v, q] of Object.entries(r.values)) if (q.qty_used > 0) { take[v] = q.qty_used; pieces += q.qty_used; } return { take, pieces, off: Math.abs(r.total - target) }; })
++    .sort((a, b) => a.off - b.off || a.pieces - b.pieces);
++  if (ways.length) return ways[0].take;
++  let total = totalOf(out); const values = Object.keys(pool).map(Number).sort((a, b) => a - b);
++  while (total < floor) {
++    const left = floor - total; const free = (v: number) => (pool[String(v)] ?? 0) - (out[String(v)] ?? 0);
++    const v = values.find(x => x >= left && free(x) > 0) ?? [...values].reverse().find(x => free(x) > 0);
++    if (v === undefined) break; out[String(v)] = (out[String(v)] ?? 0) + 1; total += v;
++  }
++  return out;
++}
+diff --git a/src/screens/FloatReport.tsx b/src/screens/FloatReport.tsx
+index f7f8707..291e3c2 100644
+--- a/src/screens/FloatReport.tsx
++++ b/src/screens/FloatReport.tsx
+@@ -1,6 +1,7 @@
+ // Location: src/screens/FloatReport.tsx
+ // B1f: the daily float report (More ▸ Cash drawer ▸ Daily float report). Shows the day's cash takings, which notes and coins to take out (bank),
+ // what that leaves as the float, what to top up, and offers to write the banking into the ledger. Uses the learned profile whether or not Smart change is on.
++// 0228: a loan owed back is added to what comes out, and the amount taken out is never less than three quarters of the takings.
+ // Since 0089 the report is worked out after the sheet opens (it plays a day of imagined sales against many drawers), so the sheet shows "Working it out" first.
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { View } from 'react-native';
+@@ -13,7 +14,7 @@ import { applyEntry, newEntry, summariseCounts, totalOf, type Counts } from '../
+ import { CountSquares } from '../ui/CountSquares';
+ import { ledgerTakings, recommendFloat, type FloatOption, type FloatReport } from '../lib/floatReport';
+ import { profileNote } from '../lib/changeScore';
+-import { loanOwed as loanOwedOf } from '../lib/drawerLoan';
++import { loanOwed as loanOwedOf, repayLoan } from '../lib/drawerLoan';
+ import { fmt } from '../lib/money';
+ 
+ const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
+@@ -30,11 +31,14 @@ export function FloatReportSheet({ visible, onClose, cashTakings, since }: { vis
+     const t = setTimeout(() => setRep(recommendFloat({ drawer: ledger.counts, takings, profile, budgetMs: 2500, loanOwed })), 40); return () => clearTimeout(t);
+   }, [visible, ledger.counts, takings, profile, loanOwed]);
+   const options: FloatOption[] = rep ? [rep.best, ...rep.alternatives] : []; const shown = rep ? options[Math.min(alt, options.length - 1)] : null;
++  const loanBack = rep && shown ? Math.min(rep.loanBack, shown.takeOutTotal) : 0; // the part of this take-out that is the loan
+   const bank = async () => {
+     if (!shown || !totalOf(shown.takeOut)) return;
+-    if (!(await confirm('Write this banking into the ledger?', `Takes ${summariseCounts(shown.takeOut)} (${fmt(shown.takeOutTotal)}) out of the drawer ledger as a paid out. Only do this once the cash has really been taken out.`, 'Record it'))) return;
+-    const entry = newEntry('paid_out', Object.fromEntries(Object.entries(shown.takeOut).map(([v, n]) => [v, -n])), { staff: currentStaff()?.name, note: 'Daily banking (float report)' });
+-    patchPos({ ledger: applyEntry(useApp.getState().pos.ledger, entry), ...(shift.open ? { shift: { ...shift, paidOutCents: shift.paidOutCents + shown.takeOutTotal } } : {}) }); drawerChanged(shift.open); onClose();
++    if (!(await confirm('Write this banking into the ledger?', `Takes ${summariseCounts(shown.takeOut)} (${fmt(shown.takeOutTotal)}${loanBack ? `, including your ${fmt(loanBack)} loan` : ''}) out of the drawer ledger as a paid out. Only do this once the cash has really been taken out.`, 'Record it'))) return;
++    const note = ['Daily banking (float report)', loanBack ? 'Loan taken back' : ''].filter(Boolean).join(' · ');
++    const entry = newEntry('paid_out', Object.fromEntries(Object.entries(shown.takeOut).map(([v, n]) => [v, -n])), { staff: currentStaff()?.name, note });
++    const cur = useApp.getState().pos.shift; const paid = cur.open ? { ...cur, paidOutCents: cur.paidOutCents + shown.takeOutTotal } : cur; // the loan that came out is no longer owed
++    patchPos({ ledger: applyEntry(useApp.getState().pos.ledger, entry), shift: loanBack ? repayLoan(paid, loanBack) : paid }); drawerChanged(cur.open || loanBack > 0); onClose();
+   };
+   const box = (title: string, counts: Counts, tone?: string) => (
+     <View style={{ backgroundColor: (tone ?? c.fill) + (tone ? '18' : ''), borderRadius: 14, padding: 14, gap: 2, ...(tone ? { borderWidth: 1.5, borderColor: tone } : {}) }}><CountSquares counts={counts} label={title} total /></View>
+@@ -45,7 +49,8 @@ export function FloatReportSheet({ visible, onClose, cashTakings, since }: { vis
+         <View style={{ alignItems: 'center', gap: 2 }}><Txt sub>Cash takings {label}</Txt><Money cents={takings} size={34} weight="700" /><Txt size={12} sub style={{ textAlign: 'center' }}>Cash sales minus cash refunds. The drawer ledger holds {fmt(totalOf(ledger.counts))}{seen.sales ? `, and saw ${fmt(seen.cents)} from ${seen.sales} tracked sale${seen.sales === 1 ? '' : 's'}` : ''}.</Txt></View>
+         {takings > 0 && Math.abs(seen.cents - takings) >= 5 ? <Txt size={13} color="#B45309" style={{ textAlign: 'center' }}>The ledger saw {fmt(seen.cents)} but sales say {fmt(takings)}. Some sales weren't tracked, so count the drawer (Count &amp; close) before banking.</Txt> : null}
+         {!rep || !shown ? <Txt sub style={{ textAlign: 'center', paddingVertical: 24 }}>Working it out…</Txt> : <>
+-        {totalOf(shown.takeOut) > 0 ? box('Take out (bank)', shown.takeOut) : null}
++        {loanBack > 0 ? <Txt size={13} sub style={{ textAlign: 'center' }}>Takings {fmt(rep.takings)} + your loan {fmt(loanBack)} = {fmt(rep.takeOutTarget)} to take out.</Txt> : null}
++        {totalOf(shown.takeOut) > 0 ? box(loanBack > 0 ? 'Take out (takings and loan)' : 'Take out (bank)', shown.takeOut) : null}
+         {box('Leave in the drawer as the float', shown.keep, c.good)}
+         {options.length > 1 ? <Btn title={alt === 0 ? 'Show another way' : alt < options.length - 1 ? 'Show the next way' : 'Back to the suggested way'} kind="secondary" onPress={() => setAlt(a => (a + 1) % options.length)} /> : null}
+         {rep.usedProfile && rep.failKeep !== null ? <Txt size={13} sub style={{ textAlign: 'center' }}>Played against a typical day of your cash sales, this float could give exact change for about {pct(1 - rep.failKeep)} of them{rep.failNow !== null && Math.abs(rep.failNow - rep.failKeep) >= 0.01 ? ` (the drawer as it is now: ${pct(1 - rep.failNow)})` : ''}.</Txt> : null}
+diff --git a/tests/assistantcash.test.ts b/tests/assistantcash.test.ts
+index 8dadf2f..51efbe2 100644
+--- a/tests/assistantcash.test.ts
++++ b/tests/assistantcash.test.ts
+@@ -269,8 +269,8 @@ test('a loan owed back shows in the drawer view, and only while one is owed', ()
+ });
+ test('the float suggestion says how much of the drawer is a loan, and says nothing without one', () => {
+   const r: any = floatInfo(drawer({}, { loanCents: 2000 }), NOW);
+-  assert.equal(r.loan_owed_back, '$20.00'); assert.ok(r.notes.some((n: string) => /loan still owed back/.test(n)));
+-  const none: any = floatInfo(drawer(), NOW); assert.equal(none.loan_owed_back, undefined); assert.ok(!none.notes.some((n: string) => /loan/.test(n)));
++  assert.equal(r.loan_owed_back, '$20.00'); assert.equal(r.loan_included_in_take_out, '$20.00'); assert.ok(r.notes.some((n: string) => /your loan/.test(n)));
++  const none: any = floatInfo(drawer(), NOW); assert.equal(none.loan_owed_back, undefined); assert.equal(none.loan_included_in_take_out, undefined); assert.ok(!none.notes.some((n: string) => /loan/.test(n)));
+ });
+ test('the loan field gets through the gate to a shop-level reader', () => {
+   const res = out(run('cash_drawer', {}, state({ drawer: drawer({}, { paidInCents: 2000, loanCents: 2000 }) }), resolvePolicy('remote')));
+diff --git a/tests/floatreport.test.ts b/tests/floatreport.test.ts
+index acc2cc5..e856719 100644
+--- a/tests/floatreport.test.ts
++++ b/tests/floatreport.test.ts
+@@ -11,20 +11,49 @@ const profile = (o: Partial<CashProfile>): CashProfile => ({ ...emptyProfile(),
+ const prof = profile({ amounts: [{ cents: 500, p: 0.4 }, { cents: 800, p: 0.3 }, { cents: 1500, p: 0.3 }], needPerSale: { '500': 0.8, '200': 0.6, '100': 1.2, '1000': 0.3 }, inPerSale: {}, horizon: 6, confidence: 1, source: 'history', samples: 30 });
+ const ts = (h: number) => new Date(Date.UTC(2026, 9, 10, h)).toISOString();
+ 
+-// 0223: a loan to the drawer is named in the report and changes nothing else
+-test('a loan owed back is reported and noted, and does not change what is banked', () => {
+-  const drawer: Counts = { '5000': 1, '2000': 3, '1000': 4, '500': 2, '100': 10 };
++// 0228: a loan to the drawer is taken out with the takings, as an amount only, and the float is what is left without it
++test('a loan owed back is added to what is taken out, and the float is reduced by it', () => {
++  const drawer: Counts = { '5000': 1, '2000': 3, '1000': 4, '500': 2, '100': 10 }; // $170
+   const plain = recommendFloat({ drawer, takings: 4000 });
+   const loan = recommendFloat({ drawer, takings: 4000, loanOwed: 2000 });
+-  assert.equal(plain.loanOwed, 0); assert.ok(!plain.notes.some(n => /loan/.test(n)));
+-  assert.equal(loan.loanOwed, 2000); assert.ok(loan.notes.some(n => /\$20\.00 of the cash in the drawer is a loan/.test(n)));
+-  assert.deepEqual(loan.best.takeOut, plain.best.takeOut); assert.equal(loan.suggestedFloat, plain.suggestedFloat);
++  assert.equal(plain.loanOwed, 0); assert.equal(plain.loanBack, 0); assert.ok(!plain.notes.some(n => /loan/.test(n)));
++  assert.equal(loan.loanOwed, 2000); assert.equal(loan.loanBack, 2000); assert.equal(loan.takeOutTarget, 6000); assert.equal(loan.best.takeOutTotal, 6000); assert.equal(loan.gap, 0);
++  assert.equal(loan.suggestedFloat, plain.suggestedFloat - 2000); assert.equal(loan.best.keepTotal, totalOf(drawer) - 6000);
++  assert.ok(loan.notes.some(n => /\$20\.00 of this is your loan/.test(n)));
+ });
+-test('a loan amount that makes no sense is ignored or capped to what the drawer holds', () => {
++test('a loan is taken back even when there are no takings', () => {
++  const r = recommendFloat({ drawer: { '2000': 2, '500': 2 }, takings: 0, loanOwed: 2000 });
++  assert.equal(r.best.takeOutTotal, 2000); assert.equal(r.loanBack, 2000); assert.ok(!r.notes.some(n => /No cash takings/.test(n)));
++});
++test('a loan amount that makes no sense is ignored, and one the drawer cannot cover is capped and still shown as owed', () => {
+   const drawer: Counts = { '2000': 1 };
+-  for (const bad of [NaN, -500, undefined]) assert.equal(recommendFloat({ drawer, takings: 0, loanOwed: bad as number }).loanOwed, 0);
++  for (const bad of [NaN, -500, undefined]) { const r = recommendFloat({ drawer, takings: 0, loanOwed: bad as number }); assert.equal(r.loanOwed, 0); assert.equal(r.loanBack, 0); }
+   const big = recommendFloat({ drawer, takings: 0, loanOwed: 99900 });
+-  assert.equal(big.loanOwed, 99900); assert.ok(big.notes.some(n => /^\$20\.00 of the cash/.test(n)));
++  assert.equal(big.loanOwed, 99900); assert.equal(big.loanBack, 2000); assert.ok(big.notes.some(n => /still owed back/.test(n)));
++});
++test('the loan is always taken in full, with the profile too, and the takings floor sits on top of it', () => {
++  const drawer: Counts = { '5000': 1, '2000': 4, '1000': 6, '500': 8, '200': 10, '100': 12 };
++  const r = recommendFloat({ drawer, takings: 3000, loanOwed: 5000, profile: prof, budgetMs: 200, maxNodes: 30000 });
++  assert.equal(r.takeOutFloor, Math.ceil(3000 * 0.75) + 5000);
++  for (const o of [r.best, ...r.alternatives]) assert.ok(o.takeOutTotal >= r.takeOutFloor, `took ${o.takeOutTotal}`);
++});
++
++// 0228: never less than 75% of the takings goes to you
++test('the take-out is never less than three quarters of the takings, with or without a history', () => {
++  const drawer: Counts = { '5000': 1, '2000': 4, '1000': 6, '500': 8, '200': 10, '100': 12, '50': 6, '20': 5, '10': 5, '5': 5 };
++  for (const takings of [800, 2300, 3900, 6500]) {
++    const floor = Math.ceil(takings * 0.75);
++    const withProfile = recommendFloat({ drawer, takings, profile: prof, budgetMs: 200, maxNodes: 30000 });
++    assert.equal(withProfile.takeOutFloor, floor);
++    for (const o of [withProfile.best, ...withProfile.alternatives]) assert.ok(o.takeOutTotal >= floor, `takings ${takings}: took ${o.takeOutTotal}`);
++    assert.ok(recommendFloat({ drawer, takings }).best.takeOutTotal >= floor, `no history, takings ${takings}`);
++  }
++});
++test('the takings floor holds when the notes in the drawer do not make the amount, and it says how far over it goes', () => {
++  const r = recommendFloat({ drawer: { '5000': 1, '2000': 1 }, takings: 3000 }); // $20 is under 75% of $30, so $50 comes out instead
++  assert.deepEqual(r.best.takeOut, { '5000': 1 }); assert.equal(r.gap, 2000); assert.ok(r.notes.some(n => /Takes \$20\.00 more/.test(n)));
++  const short = recommendFloat({ drawer: { '500': 2 }, takings: 3000 }); // the drawer holds less than the takings: everything it holds, never more
++  assert.equal(short.best.takeOutTotal, 1000);
+ });
+ 
+ test('ledgerTakings: received minus change minus cash refunds since a time, and how many sales', () => {
