@@ -19,6 +19,11 @@ test('the shift round trips, including a loan still owed', () => {
   const s = { open: true, openedAt: '2026-10-31T09:00:00Z', floatCents: 20000, paidInCents: 5000, paidOutCents: 0, staff: 'Sam', loanCents: 5000 };
   assert.deepEqual(shiftFromFields(shiftToFields(s, 7)), { shift: s, version: 7 });
 });
+test('takings not yet taken out travel with the shift, and a closed shift keeps them', () => {
+  const s = { open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0, collectSince: '2026-11-03T09:00:00.000Z', loanCents: 2000 };
+  assert.deepEqual(shiftFromFields(shiftToFields(s, 3)), { shift: s, version: 3 });
+  assert.equal('collectSince' in shiftToFields({ open: true, floatCents: 1, paidInCents: 0, paidOutCents: 0 }, 1), false);
+});
 test('a shift with no loan has no loan field, and a closed one reads as closed', () => {
   const f = shiftToFields({ open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 }, 1);
   assert.equal('loanCents' in f, false);

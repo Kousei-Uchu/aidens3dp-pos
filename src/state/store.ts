@@ -82,7 +82,7 @@ export type OutboxItem = {
 export type Attempt = { ref: string; saleUuid: string; amountCents: number; ts: string; status: 'started' | 'approved' | 'declined' | 'cancelled' | 'unknown' | 'resolved'; note?: string; resolvedBy?: string };
 export type SyncState = { state: 'idle' | 'syncing' | 'error' | 'offline'; at?: string; error?: string };
 export type ZellerStatus = { ready: boolean; message?: string };
-export type Shift = { open: boolean; openedAt?: string; floatCents: number; paidInCents: number; paidOutCents: number; staff?: string; /** 0188: how much of the paid-in is a loan to the drawer, still to be taken back out (see lib/drawerLoan.ts) */ loanCents?: number };
+export type Shift = { open: boolean; openedAt?: string; floatCents: number; paidInCents: number; paidOutCents: number; staff?: string; /** 0188: how much of the paid-in is a loan to the drawer, still to be taken back out (see lib/drawerLoan.ts) */ loanCents?: number; /** 0228: takings from this time on are not yet taken out of the drawer. Set when the drawer closes or cash is banked, kept across closing and opening, so the next float report counts every cash sale in the period and not just today's. */ collectSince?: string };
 
 type Data = {
   variants: Record<string, Variant>; collections: Collection[]; customers: Customer[]; autos: AutoDiscount[]; presets: ManualPreset[];

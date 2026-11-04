@@ -19,6 +19,7 @@ export function shiftToFields(s: Shift, version: number): Fields {
   if (s.openedAt) f.openedAt = s.openedAt;
   if (s.staff) f.staff = s.staff;
   if (s.loanCents) f.loanCents = s.loanCents; // 0188: the part of paid in still owed back; absent means none
+  if (s.collectSince) f.collectSince = s.collectSince; // 0228: takings from here on are not yet taken out; absent means since the drawer opened
   return f;
 }
 const int = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.round(v)) : 0);
@@ -27,6 +28,7 @@ export function shiftFromFields(f: Record<string, unknown>): { shift: Shift; ver
   if (typeof f.openedAt === 'string' && f.openedAt) shift.openedAt = f.openedAt;
   if (typeof f.staff === 'string' && f.staff) shift.staff = f.staff;
   if (int(f.loanCents)) shift.loanCents = int(f.loanCents);
+  if (typeof f.collectSince === 'string' && f.collectSince) shift.collectSince = f.collectSince;
   return { shift, version: int(f.version) };
 }
 
