@@ -9,6 +9,8 @@ import { profileUsable, selectSmartCandidates, type CashProfile } from './change
 import { greedyChange } from './cashSale';
 import { dayScript, failRate, planTopUp, rankTakeOuts } from './floatPlan';
 
+/** 0228: the least share of the day's takings that is ever taken out. The float search may leave a little of the takings behind to keep the float stocked, but never more than a quarter of them. */
+export const MIN_TAKEN_SHARE = 0.75;
 /** Points lost per dollar the amount taken out is away from the day's takings (100 points = every usual change amount covered). */
 export const CLOSE_WEIGHT = 1.5;
 const NEAR = 1000; // how far from the takings (cents) an amount taken out may be
@@ -43,6 +45,12 @@ export type FloatReport = {
   bankable: Counts;
   /** 0223: cents of the drawer's cash that is a loan to the drawer, still owed back to the owner (0 when there is none). */
   loanOwed: number;
+  /** 0228: the part of the loan the amount to take out covers (the loan, or less when the drawer cannot hold the takings and the loan together). It is an amount only: nothing says which notes were the loan. */
+  loanBack: number;
+  /** 0228: what the take-out is aiming at: takings plus the loan to take back. */
+  takeOutTarget: number;
+  /** 0228: the least the take-out may come to: three quarters of the takings, plus the whole loan. */
+  takeOutFloor: number;
   notes: string[];
   truncated: boolean;
 };
@@ -55,40 +63,46 @@ const option = (drawer: Counts, takeOut: Counts): FloatOption => { const keep = 
  * the best 30, and picks the one whose float copes best, with a penalty for each dollar away from the takings. It then asks `planTopUp` what, if anything, is worth adding. Without a profile it takes the largest notes first. It never takes
  * out more than the drawer holds. `budgetMs` caps the top-up search (the best so far is used when it runs out).
  */
-export function recommendFloat(o: { drawer: Counts; takings: number; profile?: CashProfile | null; maxNodes?: number; budgetMs?: number; /** 0223: cents of a loan to the drawer still owed back (Shift.loanCents). Informational: it does not change what is banked. */ loanOwed?: number }): FloatReport {
+export function recommendFloat(o: { drawer: Counts; takings: number; profile?: CashProfile | null; maxNodes?: number; budgetMs?: number; /** 0223: cents of a loan to the drawer still owed back (Shift.loanCents). 0228: it is added to what is taken out. */ loanOwed?: number }): FloatReport {
   const drawer = cleanCounts(Object.fromEntries(Object.entries(o.drawer).filter(([, n]) => n > 0))); const drawerTotal = totalOf(drawer);
   const takings = Math.max(0, Math.min(o.takings, drawerTotal)); const prof = profileUsable(o.profile) ? o.profile : null;
+  // 0228: the loan is yours, so it comes out with the takings. Only the amount is tracked, so it is just added to what is aimed at, and the whole
+  // of it is always taken (the floor below includes it). Three quarters of the takings is the least that may come out.
+  const loanOwed = Number.isFinite(o.loanOwed) ? Math.max(0, Math.round(o.loanOwed ?? 0)) : 0;
+  const loanWanted = Math.min(loanOwed, drawerTotal - takings); const target = takings + loanWanted;
+  const floor = Math.min(target, Math.ceil(takings * MIN_TAKEN_SHARE) + loanWanted);
   const day: CashProfile | null = prof ? { ...prof, horizon: prof.horizon * 2 } : null; // the profile's horizon is half a day
   const script = prof ? dayScript(prof) : null;
   let best = option(drawer, {}); let alternatives: FloatOption[] = []; let truncated = false;
-  if (takings > 0) {
+  if (target > 0) {
     if (day && script) {
-      const { results, truncated: t } = findCombinationsLimited(drawer, takings, NEAR, { maxNodes: o.maxNodes ?? 150000, all: true, bigFirst: true }); truncated = t;
-      const all = results.map(r => { const take: Counts = {}; let pieces = 0; for (const [v, q] of Object.entries(r.values)) if (q.qty_used > 0) { take[v] = q.qty_used; pieces += q.qty_used; } return { take, pieces, off: Math.abs(r.total - takings) }; });
+      const { results, truncated: t } = findCombinationsLimited(drawer, target, NEAR, { maxNodes: o.maxNodes ?? 150000, all: true, bigFirst: true }); truncated = t;
+      const all = results.filter(r => r.total >= floor).map(r => { const take: Counts = {}; let pieces = 0; for (const [v, q] of Object.entries(r.values)) if (q.qty_used > 0) { take[v] = q.qty_used; pieces += q.qty_used; } return { take, pieces, off: Math.abs(r.total - target) }; });
       // spread over the whole search (quickest ways and fuller ones), exact amounts first, then near ones
       const cands = [...selectSmartCandidates(all.filter(c => c.off === 0), MAX_EXACT), ...selectSmartCandidates(all.filter(c => c.off > 0), MAX_NEAR)];
       const shortlist = rankTakeOuts(drawer, cands, dayScript(prof, QUICK_TRIALS), CLOSE_WEIGHT, FINALISTS);
       const ranked = rankTakeOuts(drawer, shortlist, script, CLOSE_WEIGHT, 3);
       if (ranked.length) { best = option(drawer, ranked[0].take); alternatives = ranked.slice(1).map(s => option(drawer, s.take)); }
-      else { const g = greedyBelow(drawer, takings); best = option(drawer, g); }
-    } else best = option(drawer, greedyBelow(drawer, takings));
+      else { const g = greedyTake(drawer, target, floor); best = option(drawer, g); }
+    } else best = option(drawer, greedyTake(drawer, target, floor));
   }
   const plan = script ? planTopUp(best.keep, script, { budgetMs: o.budgetMs }) : null;
   const topUp: Counts = plan ? plan.add : {};
   const bankable: Counts = {}; for (const d of DENOMS) if (d.cents >= 5000 && (best.keep[String(d.cents)] ?? 0) > 0) bankable[String(d.cents)] = best.keep[String(d.cents)];
-  const gap = best.takeOutTotal - takings;
+  const gap = best.takeOutTotal - target;
   const failNow = script ? failRate(drawer, script) : null; const failKeep = plan ? plan.before : null; const failTopUp = plan ? plan.after : null;
+  const loanBack = Math.min(loanWanted, best.takeOutTotal);
   const notes: string[] = [];
   if (!prof) notes.push('No cash history or item prices to learn from yet, so this just takes the largest notes first. It improves as you track more cash sales.');
-  if (takings <= 0) notes.push('No cash takings to bank, so nothing needs to come out.');
-  else if (gap !== 0) notes.push(`${gap > 0 ? 'Takes' : 'Leaves'} ${fmtMoney(Math.abs(gap))} ${gap > 0 ? 'more' : 'less'} than the day's takings so the float keeps the notes and coins you'll need.`);
+  if (target <= 0) notes.push('No cash takings to bank, so nothing needs to come out.');
+  else if (gap !== 0) notes.push(`${gap > 0 ? 'Takes' : 'Leaves'} ${fmtMoney(Math.abs(gap))} ${gap > 0 ? 'more' : 'less'} than ${loanBack > 0 ? "the day's takings and your loan" : "the day's takings"} so the float keeps the notes and coins you'll need.`);
   if (o.takings > drawerTotal) notes.push('The ledger holds less than the takings, so it may be out of date. Count the drawer first.');
   if (plan && failTopUp !== null && failTopUp > 0.1) notes.push(`Even with the top-up, about ${Math.round(failTopUp * 100)}% of a typical day's cash sales would get no exact change. More of the same notes and coins would not fix it cheaply.`);
-  // 0223: a loan to the drawer is cash in the drawer that is not the day's takings. The ledger counts notes and coins, not whose they are, so
-  // the float below still includes it. Say so, and say how to get a float without it, rather than guessing which notes are the loan.
-  const loanOwed = Number.isFinite(o.loanOwed) ? Math.max(0, Math.round(o.loanOwed ?? 0)) : 0;
-  if (loanOwed > 0) notes.push(`${fmtMoney(Math.min(loanOwed, drawerTotal))} of the cash in the drawer is a loan still owed back to you. This banks the day's takings only, so the float includes the loan. Take the loan back first (Take loan back) and this updates to a float without it.`);
-  return { takings, drawerTotal, usedProfile: !!prof, best, alternatives, gap, topUp: cleanCounts(topUp), failNow, failKeep, failTopUp, suggestedFloat: best.keepTotal + totalOf(topUp), bankable, loanOwed, notes, truncated };
+  // 0228: a loan to the drawer is yours, so it is taken out as well as the takings. Only the amount is tracked (the ledger counts notes and coins, not whose
+  // they are), so this says how much of the take-out is the loan and does not try to pick out which notes it was.
+  if (loanBack > 0) notes.push(`${fmtMoney(loanBack)} of this is your loan, so you take it back with the takings (${fmtMoney(takings)} takings + ${fmtMoney(loanBack)} loan). The float below is what is left without it.`);
+  if (loanOwed > loanBack) notes.push(`The drawer holds less than the takings and the whole loan together, so ${fmtMoney(loanOwed - loanBack)} of the loan is still owed back.`);
+  return { takings, drawerTotal, usedProfile: !!prof, best, alternatives, gap, topUp: cleanCounts(topUp), failNow, failKeep, failTopUp, suggestedFloat: best.keepTotal + totalOf(topUp), bankable, loanOwed, loanBack, takeOutTarget: target, takeOutFloor: floor, notes, truncated };
 }
 
 const fmtMoney = (c: number) => `$${Math.floor(c / 100)}.${String(c % 100).padStart(2, '0')}`;
@@ -97,5 +111,23 @@ function greedyBelow(pool: Counts, target: number): Counts {
   const exact = greedyChange(pool, target); if (exact) return exact;
   const out: Counts = {}; let left = target;
   for (const v of Object.keys(pool).map(Number).sort((a, b) => b - a)) { const n = Math.min(pool[String(v)] ?? 0, Math.floor(left / v)); if (n > 0) { out[String(v)] = n; left -= n * v; } }
+  return out;
+}
+/**
+ * 0228: `greedyBelow`; if that lands under `floor` (the least allowed), the way of at least `floor` nearest `target` with the fewest pieces, found by search;
+ * and failing that, extra pieces added one at a time. So a take-out never falls below the least allowed while the drawer holds enough.
+ */
+function greedyTake(pool: Counts, target: number, floor: number): Counts {
+  const out = greedyBelow(pool, target); if (totalOf(out) >= floor) return out;
+  const { results } = findCombinationsLimited(pool, target, Math.max(NEAR, target), { maxNodes: 60000, all: true, bigFirst: true });
+  const ways = results.filter(r => r.total >= floor).map(r => { const take: Counts = {}; let pieces = 0; for (const [v, q] of Object.entries(r.values)) if (q.qty_used > 0) { take[v] = q.qty_used; pieces += q.qty_used; } return { take, pieces, off: Math.abs(r.total - target) }; })
+    .sort((a, b) => a.off - b.off || a.pieces - b.pieces);
+  if (ways.length) return ways[0].take;
+  let total = totalOf(out); const values = Object.keys(pool).map(Number).sort((a, b) => a - b);
+  while (total < floor) {
+    const left = floor - total; const free = (v: number) => (pool[String(v)] ?? 0) - (out[String(v)] ?? 0);
+    const v = values.find(x => x >= left && free(x) > 0) ?? [...values].reverse().find(x => free(x) > 0);
+    if (v === undefined) break; out[String(v)] = (out[String(v)] ?? 0) + 1; total += v;
+  }
   return out;
 }
