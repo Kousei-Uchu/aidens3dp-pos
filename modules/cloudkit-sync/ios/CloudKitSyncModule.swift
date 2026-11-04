@@ -45,6 +45,14 @@ struct CloudKitStateRecord: Record {
 public class CloudKitSyncModule: Module {
   private var shareObserver: NSObjectProtocol?
   private var changeObserver: NSObjectProtocol?
+  private var accountObserver: NSObjectProtocol?
+
+  // Patch 0227: which database and which zone this till reads and writes. Worked out once per role by resolveStore() and kept here, so the
+  // many synchronous helpers below (database(), storeZoneID, makeRecord) can read it without becoming async. Guarded by a lock (withLock, because NSLock.lock() is not allowed in async code) because
+  // the module's async functions can run at the same time.
+  private let storeLock = NSLock()
+  private var storeRole: String? = nil
+  private var storeSharedZoneID: CKRecordZone.ID? = nil
 
   public func definition() -> ModuleDefinition {
     Name("CloudKitSync")
@@ -70,6 +78,14 @@ public class CloudKitSyncModule: Module {
       ) { [weak self] _ in
         self?.sendEvent("onRemoteChange", [:] as [String: Any?])
       }
+      // Patch 0227: a different Apple ID signing in can change which side of the share this till is on, so forget what was worked out.
+      self.accountObserver = NotificationCenter.default.addObserver(
+        forName: .CKAccountChanged,
+        object: nil,
+        queue: nil
+      ) { [weak self] _ in
+        self?.forgetStore()
+      }
     }
 
     OnDestroy {
@@ -77,6 +93,8 @@ public class CloudKitSyncModule: Module {
       self.shareObserver = nil
       if let observer = self.changeObserver { NotificationCenter.default.removeObserver(observer) }
       self.changeObserver = nil
+      if let observer = self.accountObserver { NotificationCenter.default.removeObserver(observer) }
+      self.accountObserver = nil
     }
 
     // Patch 8b: ask CloudKit to push when the shop's records change. True when both subscriptions are in place. Safe to call every launch.
@@ -382,7 +400,47 @@ public class CloudKitSyncModule: Module {
     return allInPlace
   }
 
-  private var storeZoneID: CKRecordZone.ID { CKRecordZone(zoneName: cloudKitZoneName).zoneID }
+  /// The zone as the owner's own Apple ID names it. Only right on the owner iPad, where the zone lives in the private database: the owner's
+  /// create, share and role check use it. Every record call uses `storeZoneID` below instead.
+  private var ownerZoneID: CKRecordZone.ID { CKRecordZone(zoneName: cloudKitZoneName).zoneID }
+
+  /// The zone every record call uses. On the owner iPad it is `ownerZoneID`. On a joined till it is the zone CloudKit listed in the shared
+  /// database, which carries the owner's own name inside its ID. Building `Store` under the joined till's own Apple ID would name a different,
+  /// empty zone. Read after `resolveStore()` has run; before that (or on a till that has done neither) it falls back to `ownerZoneID`.
+  private var storeZoneID: CKRecordZone.ID {
+    storeLock.withLock { storeSharedZoneID } ?? ownerZoneID
+  }
+
+  /// Forget the role and zone worked out so far, so the next resolveStore() looks again. Called after a join, after setting up as owner,
+  /// and when the Apple ID changes. (The Cloud sync page uses resolveStore(refresh: true) instead, which swaps the answer in one step so a poll that is
+  /// running at the same moment never finds the role empty.)
+  private func forgetStore() {
+    storeLock.withLock { storeRole = nil; storeSharedZoneID = nil }
+  }
+
+  /// Work out which side of the share this till is on, once, and keep the database and zone for every record call. The owner finds `Store`
+  /// in its private database. A joined till finds it in the shared database and keeps that zone's own ID. Returns "owner", "participant"
+  /// or "none". "none" is not kept, so a till that joins a moment later is picked up by its next call. Throws when CloudKit cannot be
+  /// asked (offline, no account), and then what was kept before is left as it was. `refresh: true` looks again even when a role is kept.
+  @discardableResult
+  private func resolveStore(refresh: Bool = false) async throws -> String {
+    if !refresh {
+      if let known = storeLock.withLock({ storeRole }) { return known }
+    }
+    let c = container()
+    let owned = try await c.privateCloudDatabase.allRecordZones()
+    if owned.contains(where: { $0.zoneID == ownerZoneID }) {
+      storeLock.withLock { storeRole = "owner"; storeSharedZoneID = nil }
+      return "owner"
+    }
+    let shared = try await c.sharedCloudDatabase.allRecordZones()
+    if let zone = shared.first(where: { $0.zoneID.zoneName == cloudKitZoneName }) {
+      storeLock.withLock { storeRole = "participant"; storeSharedZoneID = zone.zoneID }
+      return "participant"
+    }
+    storeLock.withLock { storeRole = nil; storeSharedZoneID = nil }
+    return "none"
+  }
 
   private func accountStatus() async -> String {
     do {
@@ -395,22 +453,17 @@ public class CloudKitSyncModule: Module {
   private func state() async -> CloudKitStateRecord {
     var state = CloudKitStateRecord()
     state.account = await accountStatus()
-    let container = self.container()
-    let zoneID = storeZoneID
-    // The owner's own database carries the zone under its own name...
-    if let zones = try? await container.privateCloudDatabase.allRecordZones(), zones.contains(where: { $0.zoneID == zoneID }) {
-      state.role = "owner"
-      if let link = try? await self.shareLink() { state.shareURL = link }
-    // ...while a participant sees the same zone name in the shared database it accepted.
-    } else if let zones = try? await container.sharedCloudDatabase.allRecordZones(), zones.contains(where: { $0.zoneID.zoneName == cloudKitZoneName }) {
-      state.role = "participant"
-    }
+    // Look again every time the page asks: this is how a till that has just joined (or just set up) learns its role and zone.
+    // The owner's own database carries the zone under its own name; a participant sees the same zone name in the shared database it accepted.
+    let role = (try? await resolveStore(refresh: true)) ?? "none"
+    state.role = role
+    if role == "owner", let link = try? await self.shareLink() { state.shareURL = link }
     return state
   }
 
   // The zone-wide share link, read back from the record the owner saved. Throws when the share has not been made yet.
   private func shareLink() async throws -> String {
-    let id = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: storeZoneID)
+    let id = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: ownerZoneID)
     let record = try await container().privateCloudDatabase.record(for: id)
     guard let share = record as? CKShare, let url = share.url else {
       throw Exception(name: "noInviteLink", description: "There is no invite link yet.")
@@ -419,8 +472,10 @@ public class CloudKitSyncModule: Module {
   }
 
   private func createZoneAndShare() async throws -> String {
+    // Owner-only: the zone is made in the owner's private database under the owner's own name. Setting up changes the role, so forget it.
+    defer { forgetStore() }
     let database = container().privateCloudDatabase
-    let zoneID = storeZoneID
+    let zoneID = ownerZoneID
     let zones = (try? await database.allRecordZones()) ?? []
     if !zones.contains(where: { $0.zoneID == zoneID }) {
       _ = try await database.save(CKRecordZone(zoneID: zoneID))
@@ -461,6 +516,8 @@ public class CloudKitSyncModule: Module {
 
   // `accept` reports per-share failures inside its result rather than throwing, so raise the first one.
   private func accept(_ metadatas: [CKShare.Metadata]) async throws {
+    // Joining changes the role and the zone this till must use, so forget what was worked out before the answer comes back.
+    defer { forgetStore() }
     let results = try await container().accept(metadatas)
     for (_, result) in results {
       if case .failure(let error) = result { throw error }
@@ -485,6 +542,7 @@ public class CloudKitSyncModule: Module {
   /// Create or change the logo record. With a file path the image is attached as the asset; without one the asset is cleared (a removal).
   /// Goes through the same fetch, change, save and retry loop as upsertRecord, because the asset cannot be set through copyFields.
   private func putLogo(fields: [String: Any], filePath: String?) async throws -> [String: Any] {
+    try await resolveStore()
     var lastError: Error?
     for _ in 0..<3 {
       let record: CKRecord
@@ -512,6 +570,7 @@ public class CloudKitSyncModule: Module {
 
   /// The plain fields only. `desiredKeys` leaves the asset out of the fetch, so no image is downloaded.
   private func getLogoFields() async throws -> [String: Any]? {
+    try await resolveStore()
     let plain = ["hash", "mime", "bytes", "removed", "ts", "registerId", "registerName"]
     let results = try await database().records(for: [logoRecordID], desiredKeys: plain)
     guard let result = results[logoRecordID] else { return nil }
@@ -526,6 +585,7 @@ public class CloudKitSyncModule: Module {
   /// Fetch the record with its asset and copy the image to a temporary file the JavaScript side can read. The extension comes from the
   /// stored type, because the app tells image types apart by it. Null when the record has no image.
   private func downloadLogoFile() async throws -> String? {
+    try await resolveStore()
     let record: CKRecord
     do { record = try await database().record(for: logoRecordID) }
     catch let error as CKError where error.code == .unknownItem { return nil }
@@ -554,6 +614,7 @@ public class CloudKitSyncModule: Module {
 
   /// Write one month's shard. If the name is taken, the stored one is handed back untouched (the name holds the content's id, so it is the same file).
   private func putSquareShardOnce(handle: String, fields: [String: Any], filePath: String) async throws -> [String: Any] {
+    try await resolveStore()
     guard validShardHandle(handle) else { throw NSError(domain: CKErrorDomain, code: CKError.Code.invalidArguments.rawValue) }
     let name = "squareshard-\(handle)"
     let record = makeRecord(recordType: "SquareShard", recordName: name)
@@ -571,6 +632,7 @@ public class CloudKitSyncModule: Module {
 
   /// The manifest's plain fields and CloudKit's change tag for it. Null when there is none.
   private func getSquareManifestFields() async throws -> [String: Any]? {
+    try await resolveStore()
     let results = try await database().records(for: [squareManifestID])
     guard let result = results[squareManifestID] else { return nil }
     switch result {
@@ -587,6 +649,7 @@ public class CloudKitSyncModule: Module {
   /// Replace the manifest only if it is still the one the caller read. `expectedTag` is that record's change tag, or empty or nil when
   /// the caller saw no manifest. If another register wrote in between, nothing is written and `changed` is true.
   private func putSquareManifest(fields: [String: Any], expectedTag: String?) async throws -> [String: Any] {
+    try await resolveStore()
     var found: CKRecord? = nil
     do { found = try await database().record(for: squareManifestID) }
     catch let error as CKError where error.code == .unknownItem { found = nil }
@@ -611,6 +674,7 @@ public class CloudKitSyncModule: Module {
   /// The migration record's plain fields and CloudKit's change tag for it (as `tag`). Null when there is none. recordToDict is not changed
   /// for this, because every other record type reads its fields straight into rows and a stray `tag` field would end up in them.
   private func getMigrationFields() async throws -> [String: Any]? {
+    try await resolveStore()
     let id = CKRecord.ID(recordName: "migration-v1", zoneID: storeZoneID)
     do {
       let record = try await database().record(for: id)
@@ -626,6 +690,7 @@ public class CloudKitSyncModule: Module {
   /// when the caller saw no record (then it is created, and a record that has appeared in the meantime counts as changed). Same shape as
   /// putSquareManifest. If another iPad wrote in between, nothing is written and `changed` is true.
   private func putMigrationIfUnchanged(fields: [String: Any], expectedTag: String?) async throws -> [String: Any] {
+    try await resolveStore()
     let id = CKRecord.ID(recordName: "migration-v1", zoneID: storeZoneID)
     var found: CKRecord? = nil
     do { found = try await database().record(for: id) }
@@ -652,6 +717,7 @@ public class CloudKitSyncModule: Module {
 
   /// Fetch one shard with its asset and copy the file to a temporary path the JavaScript side can read. Null when it is not there.
   private func downloadSquareShardFile(handle: String) async throws -> String? {
+    try await resolveStore()
     guard validShardHandle(handle) else { return nil }
     let id = CKRecord.ID(recordName: "squareshard-\(handle)", zoneID: storeZoneID)
     let record: CKRecord
@@ -670,10 +736,10 @@ public class CloudKitSyncModule: Module {
 
   // --- Patch 4 helpers -------------------------------------------------------
 
+  /// The database for every record call: the shared one on a joined till, the private one otherwise. Right after `resolveStore()` has run.
   private func database() -> CKDatabase {
-    // Prefer private; roles may differ. For reading shared zone records the shared database is used by participants,
-    // but this module will be called in the right context by the backend. Use private for now; the backend decides.
-    container().privateCloudDatabase
+    let role = storeLock.withLock { storeRole }
+    return role == "participant" ? container().sharedCloudDatabase : container().privateCloudDatabase
   }
 
   private func makeRecord(recordType: String, recordName: String) -> CKRecord {
@@ -705,6 +771,7 @@ public class CloudKitSyncModule: Module {
   /// record over a name that already exists (serverRecordChanged), which made every second write of the same sale,
   /// rollup, cart, settings or layout record fail. Fields not mentioned are left as they were.
   private func putRecord(recordType: String, recordName: String, fields: [String: Any], encrypted: [String: Any] = [:]) async throws -> [String: Any] {
+    // upsertRecord resolves the database and zone itself.
     try await upsertRecord(recordType: recordType, recordName: recordName, fields: fields, encrypted: encrypted)
   }
 
@@ -734,6 +801,7 @@ public class CloudKitSyncModule: Module {
   /// refuses for a name that already exists (serverRecordChanged), so anything that is updated in place goes through here:
   /// fetch the current record, change its fields, save, and try again if someone else saved in between.
   private func upsertRecord(recordType: String, recordName: String, fields: [String: Any], encrypted: [String: Any] = [:]) async throws -> [String: Any] {
+    try await resolveStore()
     let id = CKRecord.ID(recordName: recordName, zoneID: storeZoneID)
     var lastError: Error?
     for _ in 0..<3 {
@@ -758,6 +826,7 @@ public class CloudKitSyncModule: Module {
   /// Write a record that must never change once it exists (a ledger entry). If it is already there, hand back the stored
   /// one untouched, so a retry or a second register uploading the same entry is harmless.
   private func putRecordOnce(recordType: String, recordName: String, fields: [String: Any]) async throws -> [String: Any] {
+    try await resolveStore()
     let record = makeRecord(recordType: recordType, recordName: recordName)
     copyFields(fields, into: record)
     do {
@@ -772,6 +841,7 @@ public class CloudKitSyncModule: Module {
   /// Records of a type created after `since` (seconds since 1970), oldest first. Reads on the creation time, which
   /// CloudKit sets itself, so a record uploaded late by an offline iPad is found by the checkpoint logic in JavaScript.
   private func listCreatedSince(recordType: String, since: Double, limit: Int, after: String?) async throws -> [String: Any] {
+    try await resolveStore()
     let date = Date(timeIntervalSince1970: since)
     let query = CKQuery(recordType: recordType, predicate: NSPredicate(format: "creationDate > %@", date as NSDate))
     query.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
@@ -779,6 +849,7 @@ public class CloudKitSyncModule: Module {
   }
 
   private func getRecord(recordType: String, recordName: String) async throws -> [String: Any]? {
+    try await resolveStore()
     let id = CKRecord.ID(recordName: recordName, zoneID: storeZoneID)
     do {
       let record = try await database().record(for: id)
@@ -790,6 +861,7 @@ public class CloudKitSyncModule: Module {
   }
 
   private func listRecords(recordType: String, limit: Int, after: String?, desiredKeys: [String]? = nil) async throws -> [String: Any] {
+    try await resolveStore()
     let query = CKQuery(recordType: recordType, predicate: NSPredicate(value: true))
     query.sortDescriptors = [NSSortDescriptor(key: "modificationDate", ascending: false)]
     return try await runQuery(query, limit: limit, after: after, desiredKeys: desiredKeys)
