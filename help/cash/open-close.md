@@ -6,7 +6,7 @@ needs: [cashDrawer]
 summary: Opening the drawer with a float, recording money paid in and out, correcting the contents, and counting and closing at the end of the day (the Z-report).
 tags: [open drawer, float, paid in, paid out, count, close, z-report, over, short, correct contents, expected, shift, banking]
 related: [cash, pay/cash]
-updated: 2026-10-18
+updated: 2026-11-04
 ---
 This page covers the jobs on the **Cash drawer** screen (More ▸ Cash drawer): starting the day, recording money that goes in or out, fixing the record, and counting up at the end.
 
@@ -62,9 +62,11 @@ At the end of the day:
 4. Tap **Confirm**.
 
 Confirm closes the drawer straight away and does not ask again, so be sure of your count first. Then:
-- The iPad's share sheet opens with the **Z-report**, a short text summary. Send it to yourself by email or Messages, or save it to Files. **This is the only copy the app gives you**, so do it now.
 - The drawer shows **No drawer open.** again, on every register.
 - The notes and coins you counted become what the record says is in the drawer, and the next opening starts from them.
+- The **Take your takings out** sheet opens straight away. It is the [[cash/float-report]] for every cash sale since the takings were last taken out, from all registers, plus any loan you put in and have not taken back. Take out the cash it suggests, then tap **I took this out: record it**.
+- If you are not ready, tap **Leave it for now**. The takings and any loan stay marked as not yet taken out, and they are still there in the Daily float report the next day and when you open the drawer again.
+- Last, the iPad's share sheet opens with the **Z-report**, a short text summary, with a line saying what was taken out (or that it was not). Send it to yourself by email or Messages, or save it to Files. **This is the only copy the app gives you**, so do it now.
 
 ### The Z-report
 It lists the date and time, when the drawer was opened, and then:
@@ -101,7 +103,7 @@ The daily float report's **I took this out: record it** button records the banki
 The text is made when you confirm and is only shown in the share sheet. The app keeps no copy of the text. What it does keep is one line in the events history file (`events.csv`) saying the drawer closed, who was signed in, and the counted amount, with a message holding the expected amount and the difference (both in cents) and the notes and coins counted. Opening, paid in and paid out add events lines too, and paid in and paid out include the reason you typed. **Correct contents** does not.
 
 ### Closing by mistake
-There is no way to undo a close. If you closed early, open the drawer again: it carries the counted notes and coins forward, but it is a new shift, and **Cash sales** counts only from the new opening. The day's figures are then split across two Z-reports.
+There is no way to undo a close. If you closed early, open the drawer again: it carries the counted notes and coins forward, and any takings or loan you left for later, but it is a new shift, and **Cash sales** counts only from the new opening. The day's figures are then split across two Z-reports.
 
 ### Worked example
 You open with a $200.00 float. During the day the cash sales come to $350.00 (net of refunds, with rounding included). You bank $300.00 with a **Paid out**. **Expected** is $200.00 + $350.00 − $300.00 = **$250.00**. You count $245.00 in the drawer, so the sheet says **Short by $5.00** and the Z-report says **Difference -$5.00**. After you confirm, the record says $245.00 is in the drawer, in exactly the notes and coins you tapped.
@@ -138,15 +140,15 @@ flowchart TD
 The pad's starting point (`base`) is the ledger's counts for **Opening float** and **Correct drawer contents**, and empty for **Paid in**, **Paid out** and **Count the drawer**. `submit` then turns the pad into a change to the record:
 - **Open** and **Correct** record `diffCounts(entered, ledger.counts)`, the difference between what is on the pad and what the ledger held. Opening also sets the shift (`open`, `openedAt`, `floatCents` = the pad total, paid in and out at 0, the staff name) and writes a `shift_open` event.
 - **Paid in** records the entered counts and adds the total to `paidInCents`. **Paid out** records the same counts as negatives and adds the total to `paidOutCents`, after the `shortfall` check against the ledger. Both write an event with the reason.
-- **Close** records `diffCounts(entered, ledger.counts)` as `close`, so afterwards the ledger holds exactly the counted notes and coins, then resets the shift to closed with all totals at 0, writes `shift_close`, and opens the share sheet.
+- **Close** records `diffCounts(entered, ledger.counts)` as `close`, so afterwards the ledger holds exactly the counted notes and coins, then resets the shift to closed with all totals at 0 (`closedShift` in `src/lib/drawerBanking.ts`), keeping `collectSince` (when takings were last taken out, else when the drawer opened) and any `loanCents` still owed, writes `shift_close`, and opens the float report as **Take your takings out**. The Z-report is shared when that sheet closes. Opening again goes through `openedShift`, which carries `collectSince` and the loan into the new shift.
 
 Expected is `floatCents + cash + paidInCents - paidOutCents`, with `cash` from `ledgerCashSince(ledger, shift.openedAt)`: the entries in the shared ledger that belong to a sale (cash received, change given, a cash refund, a cancelled part-sale) since the drawer opened, from every register, in physical cash. Difference is counted minus expected.
 
 ### Reading the code for a fault
 - **Expected is wrong by exactly one sale.** That sale is before `openedAt`, was paid by card or gift card, or its cash was not tapped on the change screen so the ledger never saw it. Cash from every register counts.
 - **The Opening float pad is empty.** The ledger was empty. It was never opened or counted on this iPad, or the saved copy could not be read.
-- **You closed but cannot find the Z-report.** The share sheet was dismissed, and the text is not stored. The shift resets as soon as you confirm, whatever happens to the share sheet. The events line still has the counted amount, and the expected amount and difference in cents.
-- **Tests.** `tests/cashledger.test.ts` covers the pad, applying entries, the history cap and reading saved data. The shift sums (Expected, Difference) and the Z-report text are written inside `Drawer` and have no test of their own.
+- **You closed but cannot find the Z-report.** The share sheet was dismissed, and the text is not stored. The shift resets as soon as you confirm, whatever happens to the banking sheet or the share sheet. The events line still has the counted amount, and the expected amount and difference in cents.
+- **Tests.** `tests/cashledger.test.ts` covers the pad, applying entries, the history cap and reading saved data; `tests/drawerbanking.test.ts` covers closing, opening and banking the shift. The shift sums (Expected, Difference) and the Z-report text are written inside `Drawer` and have no test of their own.
 
 ### Known gaps
 Close has no confirmation step, and the Z-report is not saved in the app. Both are noted rather than changed here.

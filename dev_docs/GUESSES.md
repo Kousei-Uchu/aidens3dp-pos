@@ -680,7 +680,7 @@ Each is a guess, change any you disagree with.
 
 Each is a guess, change any you disagree with.
 
-1. **The suggested float is not adjusted for a loan.** The ledger counts notes and coins and cannot tell which of them are the loan, so the report banks the day's takings only and the float still includes the loan cash. A note says to take the loan back first, and the report then updates.
+1. **(Reversed by 0228.)** ~~The suggested float is not adjusted for a loan.~~ The suggested float now takes the loan into account; see "Float, loan and banking (0228, 0229)" below.
 2. **The assistant sees the loan as one new field, `loan_owed_back`,** inside `shift` for `cash_drawer` and in the float result of `cash_calculator`, and only while a loan is owed and the shift is open. The tool description is unchanged, because a longer one failed the owner-confirmed 8000-token budget test (985 left, 1000 needed).
 3. **The Daily float report reads the loan from the shared shift** (`loanOwed(shift)`), so on a till that has moved to CloudKit it is the shop's loan, not this iPad's.
 
@@ -723,3 +723,19 @@ Each is a guess, change any you disagree with.
 5. **A joined till keeps the zone ID CloudKit listed** in the shared database, and does not build one from its own Apple ID.
 6. **Creating the zone, the share link and the owner check stay owner-only,** on the private database under the owner's own zone name.
 7. **No JavaScript changed.** The pushes (0225) already subscribe to both databases, and the read after a push goes through the same record functions, so it now reads the owner's zone on a joined till.
+
+## Float, loan and banking (0228, 0229)
+
+Your notes on step 2 of the go-live checklist. Each is a guess, change any you disagree with.
+
+1. **The loan is an amount, not notes.** The take-out aims at takings plus the loan owed. The report says how much of it is the loan (`loanBack`) and does not try to mark which notes were the loan. The float is what is left.
+2. **The 75% floor is on the takings only,** with the whole loan added on top (`takeOutFloor` = `ceil(0.75 x takings)` + loan). If the drawer cannot make that amount from its notes, it takes the nearest larger amount and the note says how much more.
+3. **A drawer too small for takings plus loan:** it takes everything it can, the loan is repaid only as far as the take-out covers it, and the rest is still owed.
+4. **"Takings" means the whole period across all registers.** Every cash sale since `Shift.collectSince` (set when the drawer closes or cash is banked), else since the drawer opened, else the start of today for old data. The assistant's `cash_calculator` float uses the same start.
+5. **`collectSince` is kept across closing and opening,** and is part of the shared `drawer-shift` record. Closing no longer clears it, which is what showed $0 the next day.
+6. **The banking time uses the iPad's own clock.** Sales stamped by another iPad with a different clock could fall on the wrong side of it.
+7. **Count & close opens the banking sheet straight away.** Recording is still an explicit tap on **I took this out: record it**, because the app cannot know the cash left the drawer. **Leave it for now** carries the takings and the loan into the next shift.
+8. **The "Loan not taken back" confirm on closing is removed,** because the banking step that follows takes the loan back or leaves it marked as owed.
+9. **The Z-report is shared after the banking step,** with one line saying what was taken out, or that it was not.
+10. **A closed drawer with takings or a loan waiting shows a reminder** on the Cash drawer screen.
+11. **`Drawer.tsx` and `FloatReport.tsx` were read-checked, not type-checked,** because the React Native types were not available where the patch was made. The pure parts are tested.
