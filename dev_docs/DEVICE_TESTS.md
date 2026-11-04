@@ -1484,3 +1484,19 @@ Needs the same two iPads and two Apple IDs as T74 and T85: A owns the shop's zon
 8. Sign B out of iCloud, then try step 4 again. Pass: the write fails with an error and nothing is written to any zone. Sign B back in. Pass: the next tick works again.
 9. On A, leave the Cloud sync page open and tap **Check again** several times while B writes a sale. Pass: B's write still lands in the owner's zone each time.
 10. On a till that has neither set up nor joined, open Cloud sync. Pass: it offers Set up and Join as before and writes nothing.
+
+## T113. Loan, close and bank flow (0228, 0229)
+
+Needs one iPad (A) only, on Shopify storage. It does not need CloudKit, so it can run before the Mac build. The two screens (`Drawer.tsx`, `FloatReport.tsx`) were not type-checked, so a screen error is possible.
+
+1. Open the drawer with a float of about $200. Tap **Paid in**, put in $20, switch on **This is a loan to the drawer**. Pass: **Paid in** says it includes a $20.00 loan.
+2. Make a few cash sales on A, tapping the cash on the change screen, to about $120 of takings.
+3. Open **Daily float report**. Pass: it reads takings, plus your loan $20.00, equals the total to take out; **Take out (takings and loan)** is that total; the float is what is left. The take-out is at least 75% of the takings plus the $20 (for $120 takings, at least $110).
+4. Tap **Count & close (Z-report)**, count the drawer, **Confirm**. Pass: no "Loan not taken back" prompt; the drawer shows no drawer open; **Take your takings out** opens at once with the same takings and loan.
+5. Tap **I took this out: record it**, confirm. Pass: a Paid out entry is in the cash history with "Loan taken back"; the share sheet then opens with the Z-report and a line "Taken out for banking ... (includes the $20.00 loan)".
+6. Repeat steps 1 to 4, but tap **Leave it for now**. Pass: the share sheet opens with the Z-report and the line "Takings not yet taken out". The Cash drawer screen shows an amber note that takings (and the loan) are waiting.
+7. The next day, or after changing the iPad's date forward, open **Daily float report**. Pass: the takings are still shown, not $0.
+8. Open the drawer again. Pass: the loan still shows as owed, and the Daily float report still includes the earlier takings.
+9. Take the takings out now, and pass if the report afterwards shows $0 takings and no loan.
+10. In the assistant, ask what to take out. Pass: it gives the same total, and says how much of it is the loan.
+
