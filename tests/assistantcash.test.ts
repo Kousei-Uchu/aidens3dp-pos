@@ -265,7 +265,8 @@ test('a loan owed back shows in the drawer view, and only while one is owed', ()
   assert.equal(v.shift.loan_owed_back, '$20.00'); assert.equal(v.shift.paid_in, '$20.00');
   assert.equal((buildDrawerView(drawer(), NOW) as any).shift.loan_owed_back, undefined);
   assert.equal((buildDrawerView(drawer({}, { loanCents: 0 }), NOW) as any).shift.loan_owed_back, undefined);
-  assert.deepEqual((buildDrawerView(drawer({}, { open: false, loanCents: 2000 }), NOW) as any).shift, { open: false });
+  assert.deepEqual((buildDrawerView(drawer({}, { open: false, loanCents: 2000 }), NOW) as any).shift, { open: false, loan_owed_back: '$20.00' });
+  assert.deepEqual((buildDrawerView(drawer({}, { open: false }), NOW) as any).shift, { open: false });
 });
 test('the float suggestion says how much of the drawer is a loan, and says nothing without one', () => {
   const r: any = floatInfo(drawer({}, { loanCents: 2000 }), NOW);

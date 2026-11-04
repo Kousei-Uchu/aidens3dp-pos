@@ -30,7 +30,7 @@ import type { AssistantTool } from './assistantTools';
 // ---------- what the tools are given ----------
 /** What the drawer tools read. The real shift and ledger fit these, and a test can build them by hand. */
 export type DrawerIn = {
-  shift: { open: boolean; openedAt?: string; floatCents: number; paidInCents: number; paidOutCents: number; /** 0223: a loan to the drawer still owed back (Shift.loanCents) */ loanCents?: number };
+  shift: { open: boolean; openedAt?: string; floatCents: number; paidInCents: number; paidOutCents: number; /** 0223: a loan to the drawer still owed back (Shift.loanCents) */ loanCents?: number; /** 0228: takings from this time are not yet taken out (Shift.collectSince) */ collectSince?: string };
   ledger: CashLedger;
   /** Sales and refunds from every register (the drawer is shared, 0203), for how long a "typical day" is when the float is judged. */
   sales: readonly { ts: string; type: string; tenders?: readonly { kind: string }[] }[];
@@ -77,7 +77,7 @@ export function buildDrawerView(d: DrawerIn, now: number): Record<string, unknow
     view.shift = { open: true, ...(sh.openedAt ? { opened_at: whenText(sh.openedAt) ?? 'unknown' } : {}), float: fmt(sh.floatCents), cash_sales_since_open: fmt(cash), paid_in: fmt(sh.paidInCents), paid_out: fmt(sh.paidOutCents), expected_in_drawer: fmt(expected), ...(loanOwedOf(sh) > 0 ? { loan_owed_back: fmt(loanOwedOf(sh)) } : {}) };
     const gap = heldTotal - expected;
     view.ledger_compared_with_expected = gap === 0 ? 'The ledger matches the expected amount.' : `The ledger holds ${fmt(Math.abs(gap))} ${gap > 0 ? 'more' : 'less'} than the expected amount. Counting the drawer will settle it.`;
-  } else view.shift = { open: false };
+  } else view.shift = { open: false, ...(loanOwedOf(sh) > 0 ? { loan_owed_back: fmt(loanOwedOf(sh)) } : {}) };
   view.ledger_holds = countsView(held);
   view.cash_takings_today = fmt(ledgerCashSince(d.ledger, startOfDay(now)));
   view.recent_movements = d.ledger.entries.slice(0, MAX_MOVES).map(e => ({ when: whenText(e.ts) ?? 'unknown', what: LEDGER_LABEL[e.kind] ?? 'Other', amount: fmt(entryTotal(e)) }));
@@ -145,9 +145,10 @@ export function splitInfo(a: { total: number; parts?: number; first?: number; ro
 export function floatInfo(d: DrawerIn, now: number, takingsOverride?: number): Record<string, unknown> {
   const held = positive(d.ledger.counts);
   if (totalOf(held) === 0) return { error: 'The ledger holds no cash, so there is nothing to base a float on. The drawer needs opening or counting first.' };
-  const takings = takingsOverride ?? ledgerCashSince(d.ledger, startOfDay(now));
+  // 0228: the takings not yet taken out (since the last banking, or since the drawer opened), the same period the Daily float report uses
+  const takings = takingsOverride ?? ledgerCashSince(d.ledger, d.shift.collectSince ?? (d.shift.open && d.shift.openedAt ? d.shift.openedAt : startOfDay(now)));
   const profile = buildProfile({ entries: d.ledger.entries as CashLedger['entries'], sales: d.sales as { ts: string; type: string; tenders?: { kind: string }[] }[], prices: d.prices as number[], now });
-  const rep = recommendFloat({ drawer: held, takings, profile, budgetMs: 1500, loanOwed: d.shift.open ? loanOwedOf(d.shift) : 0 });
+  const rep = recommendFloat({ drawer: held, takings, profile, budgetMs: 1500, loanOwed: loanOwedOf(d.shift) });
   return {
     cash_takings: fmt(rep.takings), drawer_holds: fmt(rep.drawerTotal),
     ...(rep.loanOwed > 0 ? { loan_owed_back: fmt(rep.loanOwed) } : {}),
