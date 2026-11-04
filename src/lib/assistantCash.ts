@@ -151,7 +151,7 @@ export function floatInfo(d: DrawerIn, now: number, takingsOverride?: number): R
   return {
     cash_takings: fmt(rep.takings), drawer_holds: fmt(rep.drawerTotal),
     ...(rep.loanOwed > 0 ? { loan_owed_back: fmt(rep.loanOwed) } : {}),
-    take_out_to_bank: countsView(rep.best.takeOut), leave_as_float: countsView(rep.best.keep),
+    ...(rep.loanBack > 0 ? { loan_included_in_take_out: fmt(rep.loanBack) } : {}), take_out_to_bank: countsView(rep.best.takeOut), leave_as_float: countsView(rep.best.keep),
     ...(totalOf(rep.topUp) > 0 ? { top_up_from_bank: countsView(rep.topUp) } : {}), suggested_float: fmt(rep.suggestedFloat),
     ...(totalOf(rep.bankable) > 0 ? { big_notes_better_banked: countsView(rep.bankable) } : {}),
     ...(rep.failNow !== null ? { sales_without_exact_change: { drawer_now: pct(rep.failNow), after_banking: pct(rep.failKeep), after_top_up: pct(rep.failTopUp) } } : {}),
@@ -165,7 +165,7 @@ export const cashCalculatorTool: AssistantTool = {
     amount_due: 'shop', cash_due_after_rounding: 'shop', amount_given: 'shop', short_by: 'shop', change_to_give: 'shop', largest_notes_first: COUNTS_GATE,
     from_this_drawer: { possible: 'shop', fewest_pieces: 'shop', note: 'shop', ...COUNTS_GATE },
     total: 'shop', split: 'shop', payments: flat('number', 'amount'), last_payment_if_paid_in_cash: 'shop',
-    cash_takings: 'shop', drawer_holds: 'shop', loan_owed_back: 'shop', take_out_to_bank: COUNTS_GATE, leave_as_float: COUNTS_GATE, top_up_from_bank: COUNTS_GATE, suggested_float: 'shop',
+    cash_takings: 'shop', drawer_holds: 'shop', loan_owed_back: 'shop', loan_included_in_take_out: 'shop', take_out_to_bank: COUNTS_GATE, leave_as_float: COUNTS_GATE, top_up_from_bank: COUNTS_GATE, suggested_float: 'shop',
     big_notes_better_banked: COUNTS_GATE, sales_without_exact_change: flat('drawer_now', 'after_banking', 'after_top_up'), notes: 'shop', search_cut_short: 'shop',
   },
   def: { type: 'function', function: {

@@ -11,20 +11,49 @@ const profile = (o: Partial<CashProfile>): CashProfile => ({ ...emptyProfile(), 
 const prof = profile({ amounts: [{ cents: 500, p: 0.4 }, { cents: 800, p: 0.3 }, { cents: 1500, p: 0.3 }], needPerSale: { '500': 0.8, '200': 0.6, '100': 1.2, '1000': 0.3 }, inPerSale: {}, horizon: 6, confidence: 1, source: 'history', samples: 30 });
 const ts = (h: number) => new Date(Date.UTC(2026, 9, 10, h)).toISOString();
 
-// 0223: a loan to the drawer is named in the report and changes nothing else
-test('a loan owed back is reported and noted, and does not change what is banked', () => {
-  const drawer: Counts = { '5000': 1, '2000': 3, '1000': 4, '500': 2, '100': 10 };
+// 0228: a loan to the drawer is taken out with the takings, as an amount only, and the float is what is left without it
+test('a loan owed back is added to what is taken out, and the float is reduced by it', () => {
+  const drawer: Counts = { '5000': 1, '2000': 3, '1000': 4, '500': 2, '100': 10 }; // $170
   const plain = recommendFloat({ drawer, takings: 4000 });
   const loan = recommendFloat({ drawer, takings: 4000, loanOwed: 2000 });
-  assert.equal(plain.loanOwed, 0); assert.ok(!plain.notes.some(n => /loan/.test(n)));
-  assert.equal(loan.loanOwed, 2000); assert.ok(loan.notes.some(n => /\$20\.00 of the cash in the drawer is a loan/.test(n)));
-  assert.deepEqual(loan.best.takeOut, plain.best.takeOut); assert.equal(loan.suggestedFloat, plain.suggestedFloat);
+  assert.equal(plain.loanOwed, 0); assert.equal(plain.loanBack, 0); assert.ok(!plain.notes.some(n => /loan/.test(n)));
+  assert.equal(loan.loanOwed, 2000); assert.equal(loan.loanBack, 2000); assert.equal(loan.takeOutTarget, 6000); assert.equal(loan.best.takeOutTotal, 6000); assert.equal(loan.gap, 0);
+  assert.equal(loan.suggestedFloat, plain.suggestedFloat - 2000); assert.equal(loan.best.keepTotal, totalOf(drawer) - 6000);
+  assert.ok(loan.notes.some(n => /\$20\.00 of this is your loan/.test(n)));
 });
-test('a loan amount that makes no sense is ignored or capped to what the drawer holds', () => {
+test('a loan is taken back even when there are no takings', () => {
+  const r = recommendFloat({ drawer: { '2000': 2, '500': 2 }, takings: 0, loanOwed: 2000 });
+  assert.equal(r.best.takeOutTotal, 2000); assert.equal(r.loanBack, 2000); assert.ok(!r.notes.some(n => /No cash takings/.test(n)));
+});
+test('a loan amount that makes no sense is ignored, and one the drawer cannot cover is capped and still shown as owed', () => {
   const drawer: Counts = { '2000': 1 };
-  for (const bad of [NaN, -500, undefined]) assert.equal(recommendFloat({ drawer, takings: 0, loanOwed: bad as number }).loanOwed, 0);
+  for (const bad of [NaN, -500, undefined]) { const r = recommendFloat({ drawer, takings: 0, loanOwed: bad as number }); assert.equal(r.loanOwed, 0); assert.equal(r.loanBack, 0); }
   const big = recommendFloat({ drawer, takings: 0, loanOwed: 99900 });
-  assert.equal(big.loanOwed, 99900); assert.ok(big.notes.some(n => /^\$20\.00 of the cash/.test(n)));
+  assert.equal(big.loanOwed, 99900); assert.equal(big.loanBack, 2000); assert.ok(big.notes.some(n => /still owed back/.test(n)));
+});
+test('the loan is always taken in full, with the profile too, and the takings floor sits on top of it', () => {
+  const drawer: Counts = { '5000': 1, '2000': 4, '1000': 6, '500': 8, '200': 10, '100': 12 };
+  const r = recommendFloat({ drawer, takings: 3000, loanOwed: 5000, profile: prof, budgetMs: 200, maxNodes: 30000 });
+  assert.equal(r.takeOutFloor, Math.ceil(3000 * 0.75) + 5000);
+  for (const o of [r.best, ...r.alternatives]) assert.ok(o.takeOutTotal >= r.takeOutFloor, `took ${o.takeOutTotal}`);
+});
+
+// 0228: never less than 75% of the takings goes to you
+test('the take-out is never less than three quarters of the takings, with or without a history', () => {
+  const drawer: Counts = { '5000': 1, '2000': 4, '1000': 6, '500': 8, '200': 10, '100': 12, '50': 6, '20': 5, '10': 5, '5': 5 };
+  for (const takings of [800, 2300, 3900, 6500]) {
+    const floor = Math.ceil(takings * 0.75);
+    const withProfile = recommendFloat({ drawer, takings, profile: prof, budgetMs: 200, maxNodes: 30000 });
+    assert.equal(withProfile.takeOutFloor, floor);
+    for (const o of [withProfile.best, ...withProfile.alternatives]) assert.ok(o.takeOutTotal >= floor, `takings ${takings}: took ${o.takeOutTotal}`);
+    assert.ok(recommendFloat({ drawer, takings }).best.takeOutTotal >= floor, `no history, takings ${takings}`);
+  }
+});
+test('the takings floor holds when the notes in the drawer do not make the amount, and it says how far over it goes', () => {
+  const r = recommendFloat({ drawer: { '5000': 1, '2000': 1 }, takings: 3000 }); // $20 is under 75% of $30, so $50 comes out instead
+  assert.deepEqual(r.best.takeOut, { '5000': 1 }); assert.equal(r.gap, 2000); assert.ok(r.notes.some(n => /Takes \$20\.00 more/.test(n)));
+  const short = recommendFloat({ drawer: { '500': 2 }, takings: 3000 }); // the drawer holds less than the takings: everything it holds, never more
+  assert.equal(short.best.takeOutTotal, 1000);
 });
 
 test('ledgerTakings: received minus change minus cash refunds since a time, and how many sales', () => {

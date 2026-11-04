@@ -269,8 +269,8 @@ test('a loan owed back shows in the drawer view, and only while one is owed', ()
 });
 test('the float suggestion says how much of the drawer is a loan, and says nothing without one', () => {
   const r: any = floatInfo(drawer({}, { loanCents: 2000 }), NOW);
-  assert.equal(r.loan_owed_back, '$20.00'); assert.ok(r.notes.some((n: string) => /loan still owed back/.test(n)));
-  const none: any = floatInfo(drawer(), NOW); assert.equal(none.loan_owed_back, undefined); assert.ok(!none.notes.some((n: string) => /loan/.test(n)));
+  assert.equal(r.loan_owed_back, '$20.00'); assert.equal(r.loan_included_in_take_out, '$20.00'); assert.ok(r.notes.some((n: string) => /your loan/.test(n)));
+  const none: any = floatInfo(drawer(), NOW); assert.equal(none.loan_owed_back, undefined); assert.equal(none.loan_included_in_take_out, undefined); assert.ok(!none.notes.some((n: string) => /loan/.test(n)));
 });
 test('the loan field gets through the gate to a shop-level reader', () => {
   const res = out(run('cash_drawer', {}, state({ drawer: drawer({}, { paidInCents: 2000, loanCents: 2000 }) }), resolvePolicy('remote')));
