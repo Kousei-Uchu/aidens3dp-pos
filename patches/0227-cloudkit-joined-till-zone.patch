@@ -1,0 +1,453 @@
+diff --git a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+index 3c2ae89..4ea3d2d 100644
+--- a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
++++ b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+@@ -1,6 +1,6 @@
+ # CloudKit sync: decisions, status and roadmap
+ 
+-Aiden’s 3D Printing POS · updated 4 November 2026 · checked against `main` at commit 9018d4a (patch 0225). Parts 1 and 2 were re-audited against the code and the GUESSES, PROGRESS and DEVICE_TESTS docs in patch 0221; patches 0222 to 0225 were folded in by patch 0226
++Aiden’s 3D Printing POS · updated 4 November 2026 · checked against `main` at commit 6f9a763 (patch 0226), then updated for patch 0227. Parts 1 and 2 were re-audited against the code and the GUESSES, PROGRESS and DEVICE_TESTS docs in patch 0221; patches 0222 to 0225 were folded in by patch 0226; patch 0227 (joined tills) is folded in by itself
+ 
+ This replaces the 31 October decisions doc. Nothing from that doc has been dropped: every decision, question, answer and note is in Part 3, with the original numbering (items 1 to 27, Q1 to Q14, N1 to N3, O1 to O5), so existing cross-references still work. Parts 1 and 2 are new. They say where the work is up to and where it is going.
+ 
+@@ -10,14 +10,14 @@ Tags used throughout: **Sync** (goes to iCloud and is shared between registers),
+ 
+ ### In one paragraph
+ 
+-Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0225 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer), patch 6a (the wider shared settings, the cash and refund notices, the logo, the grid layout and the Square history months) and patch 6c (training progress and the audit log), they add the in-app iCloud note and the drawer audit, and they finish patch 7 (the migration lease 0212, the import runner 0213, the count check 0214, the wiring 0215 and the screen section 0216), the two leftovers (resolving another register's payment 0217, creating a missing Shopify order 0218), the owner-only export (6e, 0219) and the switch (patch 8, 0220). After a docs audit (0221, 0222) and the loan in the float report (0223), they add the encrypted secrets and cashier pass codes (6d, 0224, switched off) and the change pushes (8b, 0225, which do not retire the poll). **The code is complete but not live in practice.** Every register still runs on Shopify metaobjects until an owner iPad presses **Set up sync** and the import finishes and passes its count check. Only then does each till in the shop's share move itself to CloudKit on its next poll (about 25 seconds). Nothing starts the import automatically. Three changes already affect the Shopify path today: saved-cart merging (0204), the safe settings reader (0205) and the loan lines in the float report and the assistant's cash view (0223).
++Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0227 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer), patch 6a (the wider shared settings, the cash and refund notices, the logo, the grid layout and the Square history months) and patch 6c (training progress and the audit log), they add the in-app iCloud note and the drawer audit, and they finish patch 7 (the migration lease 0212, the import runner 0213, the count check 0214, the wiring 0215 and the screen section 0216), the two leftovers (resolving another register's payment 0217, creating a missing Shopify order 0218), the owner-only export (6e, 0219) and the switch (patch 8, 0220). After a docs audit (0221, 0222) and the loan in the float report (0223), they add the encrypted secrets and cashier pass codes (6d, 0224, switched off) and the change pushes (8b, 0225, which do not retire the poll), and 0227 makes a joined till use the owner's zone in the shared database instead of an empty zone of its own (gate 4, below). **The code is complete but not live in practice.** Every register still runs on Shopify metaobjects until an owner iPad presses **Set up sync** and the import finishes and passes its count check. Only then does each till in the shop's share move itself to CloudKit on its next poll (about 25 seconds). Nothing starts the import automatically. Three changes already affect the Shopify path today: saved-cart merging (0204), the safe settings reader (0205) and the loan lines in the float report and the assistant's cash view (0223).
+ 
+ ### Four things gate turning CloudKit on
+ 
+ 1. **The Swift has never been compiled or run.** Every patch since 0192 says so. It needs a Mac build in Xcode, and nothing has touched a real CloudKit zone.
+ 2. **The two-Apple-ID encryption test (O4, device test T85).** Waits for a second Apple ID and iPad. Until it passes, sale card details are not written at all (the `omit` switch, below), and the encrypted secrets and pass codes (patch 6d, built in 0224) and the assistant audit log (0211) are not sent or read either, because they use the same switch.
+ 3. **The real-shop run of T102 to T109.** Patch 8 (0220) is built: the rollback flag, the move and the gap send exist, and a till moves to CloudKit by itself once it sees the import `done`. What is missing is proof on a real shop. The only brake today is that the import does not start until an owner presses **Set up sync**, so do not press it until T102 to T105 have passed. The change pushes (8b, 0225) are written but the 25 second poll stays as the fallback, so they are not a gate on moving; T111 only decides whether the tick can later be slowed or retired.
+-4. **Joined tills probably cannot see the owner's records (found by reading the Swift in 0225, not yet seen on a device).** Every record call in `CloudKitSyncModule.swift` goes through `database()`, which always returns the private database, and builds its zone ID as `CKRecordZone(zoneName: "Store")`, which is owned by the current Apple ID. The shared database is used once, in `state()`, only to report the role. In CloudKit a joined till finds the owner's zone in the shared database under the owner's own zone ID, so a joined iPad would read and write its own empty private zone. If that is right, only the owner iPad works and every other till breaks at the cut-over. T74 (join) and T85 would show it first. Fixing it means resolving the owner's zone ID and the right database once per role and using both for every record call. It has not been done. Do not move a second till until it is fixed or a device test shows it works.
++4. **Joined tills used the wrong zone (found by reading the Swift in 0225; fixed in code in 0227, not compiled, not yet seen on a device).** Before 0227 every record call in `CloudKitSyncModule.swift` went through `database()`, which always returned the private database, and built its zone ID as `CKRecordZone(zoneName: "Store")`, which is owned by the current Apple ID. A joined iPad would therefore have read and written its own empty private zone, and only the owner iPad would have worked. In CloudKit a joined till finds the owner's zone in the shared database under the owner's own zone ID. **As built (0227):** `resolveStore()` looks for `Store` in the private database (this iPad is the owner) and then in the shared database (it is a participant, and it keeps the zone ID CloudKit listed). `database()` and `storeZoneID` read that answer, and every function that reads or writes a record resolves it first. Only creating the zone, the share link and the owner check still name the zone under the current Apple ID. It is looked up again after a join, after setting up as owner, when the Apple ID changes and each time the Cloud sync page reads the state. **Still to do:** compile it on the Mac and run T112 (a joined till writes to the owner's zone and reads it back) right after T74. Do not move a second till until T112 passes.
+ 
+ ### The card-field switch
+ 
+@@ -25,9 +25,9 @@ Patches 1 to 3 (entitlements and the native module, the zone and share, and the
+ 
+ ## Part 2. What has been built, and where we are going
+ 
+-### 2.1 Patch ledger, 0188 to 0225
++### 2.1 Patch ledger, 0188 to 0227
+ 
+-All of these were requested by you, in order. Patch 0226 (this catch-up) is a docs and help patch and is not in the table. “Pure code” means no native code and no behaviour change.
++All of these were requested by you, in order. Patch 0226 (the docs catch-up) is a docs and help patch and is not in the table. “Pure code” means no native code and no behaviour change.
+ 
+ | Patch | Date | What it did | Status |
+ |---|---|---|---|
+@@ -69,6 +69,7 @@ All of these were requested by you, in order. Patch 0226 (this catch-up) is a do
+ | 0223 | 3 Nov | **Loans in the float report and the assistant's cash view.** `recommendFloat` takes an optional `loanOwed`, the Daily float report passes it and adds a note when a loan is owed, and the assistant's `cash_drawer` and `cash_calculator` results gain `loan_owed_back`. **Not done on purpose:** the suggested float is not reduced for the loan, because the ledger cannot tell which notes are the loan. | Live today (not CloudKit-dependent). 5 new tests. |
+ | 0224 | 3 Nov | **6d: encrypted secrets and cashier pass codes** (`secretsShared.ts`, `cloudkit/secretCloud.ts`, `secretSync.ts`, `secretSyncIO.ts`). One `Secret` record per secret (`shopify` as one packed login, `pass`, `claim`, `receipt`, `assistant`, `badge.<staff id>`), value in one encrypted `secure_json`, three plain labels. Joined per secret by `mergeSecret` (one side changed, that side wins; both changed, the shop wins and the run reports it; a removal is never sent). Part of the 6e export. Swift: `putSecret`, `listSecrets`. **Never run on a device, Swift not compiled, and nothing is sent or read until `setSaleCardMode('encrypted')`.** T110. | Switched off. |
+ | 0225 | 3 Nov | **8b: change pushes** (`startSubscriptions`, `CloudKitPushSubscriber.swift`, `cloudkit/pushPoll.ts`, `aps-environment` in the plugin). A silent subscription on the private and the shared database; a push becomes one coalesced `pollShared`. **Never run on a device, Swift not compiled. The 25 second poll is NOT retired.** Needs Push Notifications on the App ID or the build does not sign. Reading the Swift for this patch is how gate 4 was found. T111. | Inactive until a till is on CloudKit. |
++| 0227 | 4 Nov | **Gate 4: joined tills use the owner's zone** (`CloudKitSyncModule.swift`). `resolveStore()` finds `Store` in the private database (owner) or in the shared database (participant, keeping the zone ID CloudKit listed); `database()` and `storeZoneID` follow it; every record function resolves first; the owner-only create, share link and role check keep the owner's own zone name; the answer is forgotten after a join, a set-up and an Apple ID change, and re-read each time the Cloud sync page asks. No JavaScript changed. **Never run on a device, Swift not compiled.** New source-reading tests in `tests/cloudkitswift.test.ts`, device test T112. | Needed before any second till can move. |
+ 
+ ### 2.2 Build status of each decision
+ 
+@@ -124,8 +125,9 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ | 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | **Complete in code.** The lease (0212), the import runner with its phases and checkpoints (0213) the count check that marks the import done (0214), the controller wired into `sync.ts` (0215) and the screen section (0216) are built. The one-off uploads of local-only data are already done by the catch-ups (events, attempts, audit log) and the poll (training). Still to do: run T102 to T105 on a real shop. |
+ | 8 | Retire polling, add the rollback flag, decide dual-write or cut over | **Built in code (0220), except retiring polling.** Cut over in one go; the flag, the move and the rollback are done. T109. |
+ | 8b | Push-driven change callbacks (CloudKit subscriptions) so the 25 s poll can be retired | **Built in code (0225), never run on a device, Swift not compiled. The poll is NOT retired.** A silent database subscription on both the private and the shared database (`startSubscriptions`), a `CloudKitPushSubscriber` that turns the push into the `onRemoteChange` event, `pushPoll.ts` that turns pushes into one coalesced `pollShared`, and `aps-environment` in the plugin. The 25 second tick in `App.tsx` stays as the fallback because iOS may delay or drop silent pushes. Retire or slow the tick only after T111 shows pushes arriving reliably. Needs Push Notifications enabled on the App ID, or the build does not sign. |
++| 8c | Joined tills use the owner's zone (gate 4) | **Built in code (0227), Swift not compiled, never run on a device.** Gated on the Mac build and T112. |
+ 
+-**Next up:** run T102 to T109 on a real shop, in order, before any till moves. 6d is built (0224) and its secrets are in the 6e export; it stays off until the encryption test (T85) and T110 pass. 8b is built (0225) and speeds up reads with change pushes but keeps the 25 second tick; slow or remove the tick only after T111. The two smaller leftovers are built: resolving another register's payment (item 9, 0217) and creating another register's missing Shopify order (item 8, 0218).
++**Next up:** build on the Mac, join a second iPad (T74) and run T112 first, because a joined till cannot be trusted until it passes; then T102 to T109 on a real shop, in order, before any till moves. 6d is built (0224) and its secrets are in the 6e export; it stays off until the encryption test (T85) and T110 pass. 8b is built (0225) and speeds up reads with change pushes but keeps the 25 second tick; slow or remove the tick only after T111. The two smaller leftovers are built: resolving another register's payment (item 9, 0217) and creating another register's missing Shopify order (item 8, 0218).
+ 
+ ### 2.4 Open items and things to confirm
+ 
+@@ -158,6 +160,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ - The switch: cut over in one go with no dual-write, a till moves on the poll rather than at relaunch, each till sends its own gap sales once, a moved till never falls back by itself, and after a rollback it stays on Shopify until **Use iCloud again** is pressed (0220).
+ - Shared secrets (0224): the Shopify login is one secret; every secret is one `Secret` record with the value in one encrypted field; nothing is sent or read until the same switch as card details; the join uses a remembered fingerprint, and when both sides changed **the shop's value wins** (not newest wins) and the run reports a conflict; a removal is never sent; nothing deletes a secret record; pass codes sync so any iPad can print a pass again (GUESSES, Shared secrets and pass codes (0224)).
+ - Change pushes (0225): the 25 second tick stays; both databases are always subscribed with fixed ids; the subscription is silent only; subscribing happens from the tick once a till is on CloudKit; a push reads only the shop's shared records; at least 2 seconds between push reads; `aps-environment` is `development` in the plugin (GUESSES, Change pushes (0225)).
++- Joined tills (0227): the role is worked out by looking in the private database first and then the shared one, so an iPad that is both an owner and a participant counts as the owner; the answer is kept in memory only, never stored; a lookup that fails (offline, no account) throws instead of guessing, so a joined till never writes into a zone of its own; and a till that is neither owner nor participant keeps using the private database as before (GUESSES, Joined tills (0227)).
+ - Loans in reports (0223): the suggested float is not reduced for a loan owed back, the assistant gets a `loan_owed_back` field and not a longer tool description, and the float note tells the person to take the loan back first (GUESSES, Loans in the float report and the assistant (0223)). Patches 0221 and 0222 are docs only and add no assumption beyond the corrected claim already recorded in GUESSES 0213 item 6.
+ 
+ **Known gaps and risks:**
+@@ -179,6 +182,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ - Training progress: two registers writing the same person's module in the same instant could lose one mark until the next poll, which joins them again. A reset cannot be lost this way, because the higher reset count always wins (0210).
+ - The switch (0220): the 25 second poll stays (8b). The rollback is per iPad, so a till rolled back while the others stay on iCloud reads an old copy until every till is done. A till that has moved never falls back by itself, even with iCloud signed out. Settings, layout and carts written in the gap between the import finishing and a till moving are not sent specially: the next poll merges them by version. A till that never joined the share stays on Shopify.
+ - Change pushes (0225): never run on a device, and the Swift has not been compiled. It subscribes both databases from the tick once a till is on CloudKit, so the first read after a move is by the tick, not a push. A push reads only the shop's shared records (`pollShared`), not the outbox. Silent pushes can be delayed or dropped by iOS, especially in low power mode or after a force quit (iOS does not wake a force-quit app for a silent push), so the 25 second tick is the real guarantee. The `aps-environment` entitlement is `development` in the plugin and is expected to become `production` in a distribution archive: check that on the first TestFlight build. If Expo also forwards the call to another subscriber (for example a notifications library), both complete the handler; this has not been tried.
++- Joined tills (0227): never run on a device, and the Swift has not been compiled. Written from how CloudKit names a shared zone (the owner's name sits inside the zone ID), not from watching one. An iPad that pressed **Set up this till** and later joined someone else's share is treated as the owner of its own empty zone, so do not set up on the iPad that is meant to join. Each read of the Cloud sync page's state asks CloudKit for both lists of zones again.
+ - Secrets (0224): never run on a device, and the Swift has not been compiled. Nothing deletes a secret record, so a cashier who is removed keeps an encrypted `badge.<id>` record in the shop's zone, and every register that already took it keeps its copy until that register removes it. A removal on one register is not sent. When both sides changed, the shop's value replaces this register's and the run reports it, but no screen tells the person yet. Taking a new Shopify login saves it through `saveCreds`, which normalises the domain and drops the cached token, so the next run may send the normalised form once before it settles. A secret that this device cannot read (for example the other Apple ID in T85) is skipped, never overwritten. The export zip now contains these secrets (O5): keep it owner-only.
+ - Missing-order recovery (0218) and the audit log (0211) both depend on the CloudKit sale and the encrypted switch for their full effect: an order made from another register has no customer name or card references, and gift card sales are left for a person.
+ **CloudKit dashboard steps needed before it works on a real zone:**
+@@ -192,7 +196,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ - The `SquareManifest` and `SquareShard` types (0209) are read by record name, so they need no index. The development environment creates them on first write; they must be deployed to Production like the others.
+ - The schema must be deployed to the Production environment, which is separate and empty. The migration would run again there.
+ 
+-**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) T96 (shared logo), T97 (shared layout) and T98 (shared Square history) T99 (shared training progress), T100 (shared audit log) and T101 (the migration lease). T102 (the import runner, 0213), T103 (the count check, 0214), T104 (the controller, 0215), T105 (the screen, 0216), T106 (resolving another register's payment, 0217), T107 (missing-order recovery, 0218), T108 (the owner export, 0219) T109 (the switch, 0220) T110 (shared secrets, 0224, run after T85) and T111 (change pushes, 0225) are written. Run T102 to T105 first, because they exercise the import; T109 needs a real shop where they passed, with iPads A (owner), B (in the share) and C (not in the share).
++**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) T96 (shared logo), T97 (shared layout) and T98 (shared Square history) T99 (shared training progress), T100 (shared audit log) and T101 (the migration lease). T102 (the import runner, 0213), T103 (the count check, 0214), T104 (the controller, 0215), T105 (the screen, 0216), T106 (resolving another register's payment, 0217), T107 (missing-order recovery, 0218), T108 (the owner export, 0219) T109 (the switch, 0220) T110 (shared secrets, 0224, run after T85) and T111 (change pushes, 0225) and T112 (a joined till uses the owner's zone, 0227) are written. Run T102 to T105 first, because they exercise the import; T109 needs a real shop where they passed, with iPads A (owner), B (in the share) and C (not in the share).
+ 
+ **Yours to do, not code:** the shop’s privacy policy and the App Store privacy details (these changes add payment and staff data to what is stored), and the CloudKit container and App ID setup from patch 1.
+ 
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index b9ec38f..90910cc 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1469,3 +1469,18 @@ Needs the owner iPad (A) and a second iPad (B) that has joined the shop, on a sh
+ 9. Start a practice run on B and change something on A. Pass: B does not read the shop or subscribe during practice, and the real data is unchanged after leaving practice.
+ 10. On a till that is still on Shopify storage, look at the dashboard. Pass: no subscription was made for it.
+ 11. Install a build with the entitlement removed (a debug build). Pass: the app still works and polls every tick; Cloud sync does not show an error about pushes.
++
++## T112. A joined till uses the owner's zone (0227)
++
++Needs the same two iPads and two Apple IDs as T74 and T85: A owns the shop's zone, B joined through the invite link. Run this straight after T74, before anything else that needs two iPads. Nothing in this patch has been run on a device, and the Swift has not been compiled, so a build error is possible first. Do not press **Set up this till** on B.
++
++1. Build and install on both iPads, then open **Cloud sync** on each. Pass: A says it holds the shop records, B says it has joined the shop. On B, tap **Check again**. Pass: it still says joined.
++2. On A, write a test sale (a debug build, card mode `omit`) and note its sale id. Open the Development dashboard for the container, in the owner's Apple ID, in the `Store` zone. Pass: the record `sale-<id>` is there.
++3. On B, read the shop's sales. Pass: A's test sale appears, with the same amounts.
++4. On B, write a different test sale and note its id. Pass: in the dashboard, still under the owner's Apple ID, the record `sale-<id>` is in the same `Store` zone as A's. **Most important:** B's Apple ID's own private database has no `Store` zone and no `sale-<id>` record.
++5. On A, read the shop's sales. Pass: B's test sale appears.
++6. On B, open the cash drawer and start or change a shift. Pass: the `drawer-shift` record in the owner's `Store` zone changes, and A shows the change after one tick.
++7. On B, change a setting that is shared (the shop name). Pass: A shows it after one tick, and the `Settings` record is in the owner's zone.
++8. Sign B out of iCloud, then try step 4 again. Pass: the write fails with an error and nothing is written to any zone. Sign B back in. Pass: the next tick works again.
++9. On A, leave the Cloud sync page open and tap **Check again** several times while B writes a sale. Pass: B's write still lands in the owner's zone each time.
++10. On a till that has neither set up nor joined, open Cloud sync. Pass: it offers Set up and Join as before and writes nothing.
+diff --git a/dev_docs/GUESSES.md b/dev_docs/GUESSES.md
+index 192a1b5..be9e639 100644
+--- a/dev_docs/GUESSES.md
++++ b/dev_docs/GUESSES.md
+@@ -711,3 +711,15 @@ Each is a guess, change any you disagree with.
+ 6. **At least 2 seconds between push reads.** A burst becomes one read now and one later, reads never overlap, and a push that arrives during a read earns exactly one more.
+ 7. **Expo's `appDelegateSubscribers`** receives the push, so nothing is written into the generated AppDelegate for it.
+ 8. **`aps-environment` is `development` in the plugin,** and an existing value is kept. A distribution archive is expected to carry `production`; check on the first TestFlight build.
++
++## Joined tills (0227)
++
++Each is a guess, change any you disagree with.
++
++1. **The role is found by looking in the private database first, then the shared one.** An iPad that owns a `Store` zone counts as the owner even if it also joined someone else's share. This matters in testing: do not press **Set up this till** on the iPad that is meant to join.
++2. **The answer lives in memory only.** It is not saved to disk. It is looked up again after a join, after setting up as owner, when the Apple ID changes, and each time the Cloud sync page reads the state. That costs two zone lookups per read of the page.
++3. **A lookup that fails throws.** If CloudKit cannot be asked (offline, no account) a record call fails instead of falling back to the private database, so a joined till can never write into a zone of its own by mistake.
++4. **A till that is neither owner nor participant keeps using the private database,** as before. It is not remembered, so a till that joins a moment later is picked up on its next call.
++5. **A joined till keeps the zone ID CloudKit listed** in the shared database, and does not build one from its own Apple ID.
++6. **Creating the zone, the share link and the owner check stay owner-only,** on the private database under the owner's own zone name.
++7. **No JavaScript changed.** The pushes (0225) already subscribe to both databases, and the read after a push goes through the same record functions, so it now reads the owner's zone on a joined till.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 87534b9..cc845a1 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -201,6 +201,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0218 | 2026-11-02 | CloudKit item 8 leftover: **another register creates a missing Shopify order** (your request: do the rest of the docs). The problem found first: today the shared sale row is written after the order, so a sale left in a dead iPad's queue leaves no trace anywhere. So with CloudKit on the outbox gets an `early` step that writes the sale before the receipt and the order (CloudKit only, sales only, not in practice mode; a failure is not fatal and the final entry step writes it again with the order on it); `runItem` now returns the finished sale and the entry fields come from one helper. `orderRecovery.ts` has the rules (stranded sale, claim handle and fields, stale claims, the gift card exception, the notice); `cloudkit/orderRecoverySync.ts` is the job: at most every ten minutes, three sales per run, a write-once claim first (so two registers cannot both create it), then `runItem` on the sale, then a notice. Run from `pollShared`. New `tests/orderrecovery.test.ts` (14 tests). Guesses and known gaps under 0218. |
+ | 0219 | 2026-11-02 | CloudKit patch 6e: **the owner-only CloudKit export** (your request: do the rest of the docs), plus corrections. The export: `exportAll.ts` is the pure half (the list of every record type, `readAll` that reads a whole list and fails loudly, `collectExport` that builds the files, manifest and README, `zipExport` with fflate); `exportAllIO.ts` writes the zip to the cache folder, adds the logo picture, and refuses in a practice run; the Cloud sync page has an owner-only **Back up everything** button that confirms first and shares the zip. New `tests/exportall.test.ts` (9 tests) and `tests/lazybackend.test.ts` (3 tests). **Corrections to earlier patches, found by a real type check and by installing `fflate` so the whole suite ran:** (1) the tsc setup in this repo does not check anything here (`expo/tsconfig.base` is missing), so the "tsc clean" I reported for 0213 to 0218 meant nothing. I ran a lenient check of every file I touched and it found two real bugs in 0216: `migrationPanel.ts` read `phase` from a failure result that has none (a failed count check), and `CloudSync.tsx` used `useApp` without importing it. Both fixed here, with tests. (2) With `fflate` installed the suite showed two failures in `demoguard.test.ts` that my patches caused: 0215 put `put()` calls in `sync.ts` outside the guarded seam, and the new export wrote a file with no guard. The direct backend handles now live in `cloudkit/lazyBackend.ts` (the write stops on the same guard as the seam) and the export checks the guard. With `fflate` installed the whole suite passes (1868, 0 failing). |
+ | 0220 | 2026-11-02 | CloudKit patch 8: **the switch** (your request: do the rest of the docs). Rules in `backendChoice.ts` (flag values, start-up kind, when to move, which of a till's own sales are the gap, what the page says), job in `cloudkit/backendSwitch.ts` (`install`, `check`, `rollBack`, `allowSwitch`, `view`), flag storage in `cloudkit/backendFlagIO.ts` (guarded, local). `App.tsx` now installs the backend through the switch instead of always Shopify; `pollShared` calls `backendSwitch.check()` first. Cloud sync page: where this till keeps shared data, with the rollback and its way back. **Decisions made here, in GUESSES:** cut over in one go (no dual-write); a switched till never falls back by itself; the gap is closed by sending a till's own recent sales, not by dual-writing. **Not done:** retiring the 25 s poll, which needs CloudKit subscriptions in Swift (8b). New `tests/backendchoice.test.ts` (9 tests) and `tests/backendswitch.test.ts` (11 tests); full suite 1891, 0 failing with `fflate` installed; a lenient type check of the new files is clean. |
++| 0227 | 2026-11-04 | CloudKit gate 4: **a joined till uses the owner's zone** (your request: continue the decisions doc after 0226; step 1 of tier 2 of the go-live checklist). Swift only, **never run on a device and not compiled.** `resolveStore()` looks for `Store` in the private database (owner) and then in the shared database (participant, keeping the zone ID CloudKit listed); `database()` and `storeZoneID` read that answer and every record function resolves it first. Creating the zone, the share link and the owner check keep the owner's own zone name. The answer is forgotten after a join, a set-up and an Apple ID change, and re-read each time the Cloud sync page asks. New source-reading tests in `tests/cloudkitswift.test.ts` (4), device test T112, GUESSES section for 0227, and `CLOUDKIT_SYNC_DECISIONS.md` gate 4, ledger, plan table and assumptions updated. | CloudKit patch 8c |
+ | 0226 | 2026-11-04 | Docs and help only (your request: the first "Claude does this" batch of the go-live checklist, tier 1). **`CLOUDKIT_SYNC_DECISIONS.md` caught up to patch 0225:** header (commit 9018d4a), Part 1 summary and the gate 2 and gate 3 lines, ledger retitled 0188 to 0225 with rows for 0221 to 0225 (0224 and 0225 marked never run, Swift uncompiled), working assumptions for 0223 to 0225 in 2.4, and item 23 re-checked. Part 1, 2.2 and 2.3 were read against each other and agree. **GUESSES.md** gains a section for 0223, which had none. **Help:** three places still contradicted the shop-wide Smart change rule and are fixed (`help/cash/smart-change.md` "Turning it on", `help/settings/payments.md` "What each choice affects", and the heading above the one-drawer paragraph in `help/cash/index.md`); `help/help.json` rebuilt, `help:check` passes. Gate 4 (joined tills) is deliberately left as written: it is tier 2, patch 0227. No code changed; the Jest suite was not run. |
+ | 0225 | 2026-11-03 | CloudKit patch 8b: **change pushes** (your request: start on 8b). Built, **never run on a device, Swift not compiled, and the 25 second poll is NOT retired.** Swift: `startSubscriptions` (a silent `CKDatabaseSubscription` on the private and the shared database, fixed ids, found before saved, `registerForRemoteNotifications`), an `onRemoteChange` event, and `CloudKitPushSubscriber.swift` registered through `appDelegateSubscribers`. JS: `cloudkit/pushPoll.ts` (subscribe once, retry after failure, a burst becomes one read, reads never overlap, a push during a read earns one more, nothing in practice mode or off CloudKit), created in `sync.ts` and started from the existing tick in `App.tsx`; the module typings. Plugin: `aps-environment` set to `development` through a pure `applyEntitlements`. Tests: 9 in `pushpoll.test.ts`, 2 Swift text checks, 2 plugin checks. Full suite 1933 pass, 0 fail. Device test T111, a GUESSES section with eight guesses, decisions doc updated. **Found while reading the Swift and recorded as gate 4 in the decisions doc: every record call uses the private database and a zone ID owned by the current Apple ID, so a joined till most likely reads and writes its own empty zone, not the owner's shared one. Not verified on a device and not fixed here.** |
+ | 0224 | 2026-11-03 | CloudKit patch 6d: **encrypted secrets and cashier pass codes** (your request: start on 6d). Built, **switched off, never run on a device, Swift not compiled.** One `Secret` record per secret (`shopify` packed as one login, `pass`, `claim`, `receipt`, `assistant`, `badge.<staff id>`), value in one encrypted `secure_json` field, plain labels only. New: `secretsShared.ts` (record shape, size cap, fingerprint, `mergeSecret`), `cloudkit/secretCloud.ts`, `secretSync.ts`, `secretSyncIO.ts` (Keychain side, loaded on demand, checks the practice-mode guard itself), Swift `putSecret` and `listSecrets` with `Secret` in the encrypted key list, module typings, a `sync.ts` call once per poll, and a `secrets` file in the 6e export (as O5 decided). Nothing is sent or read until `setSaleCardMode('encrypted')`, which waits for T85. Rules: one side changed, that side wins; both changed, the shop wins and the run reports it; a removal is never sent; nothing deletes a record; an unreadable shop record is skipped. 24 new tests (`secretsshared`, `secretsync`); two existing tests changed on purpose (`cloudkitswift` pins the encrypted key list, `exportall` now requires the `secrets` file). Device test T110 written. Full suite 1920 pass, 0 fail. GUESSES section added with ten guesses, decisions doc updated (N1, items 3, 20, O2, the 6d row, gaps, dashboard steps). Left open: no screen tells the person about a conflict, and a removed cashier's pass code stays in the shop's zone. |
+diff --git a/modules/cloudkit-sync/ios/CloudKitSyncModule.swift b/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
+index 02b6ea1..ffb9d1b 100644
+--- a/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
++++ b/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
+@@ -45,6 +45,14 @@ struct CloudKitStateRecord: Record {
+ public class CloudKitSyncModule: Module {
+   private var shareObserver: NSObjectProtocol?
+   private var changeObserver: NSObjectProtocol?
++  private var accountObserver: NSObjectProtocol?
++
++  // Patch 0227: which database and which zone this till reads and writes. Worked out once per role by resolveStore() and kept here, so the
++  // many synchronous helpers below (database(), storeZoneID, makeRecord) can read it without becoming async. Guarded by a lock (withLock, because NSLock.lock() is not allowed in async code) because
++  // the module's async functions can run at the same time.
++  private let storeLock = NSLock()
++  private var storeRole: String? = nil
++  private var storeSharedZoneID: CKRecordZone.ID? = nil
+ 
+   public func definition() -> ModuleDefinition {
+     Name("CloudKitSync")
+@@ -70,6 +78,14 @@ public class CloudKitSyncModule: Module {
+       ) { [weak self] _ in
+         self?.sendEvent("onRemoteChange", [:] as [String: Any?])
+       }
++      // Patch 0227: a different Apple ID signing in can change which side of the share this till is on, so forget what was worked out.
++      self.accountObserver = NotificationCenter.default.addObserver(
++        forName: .CKAccountChanged,
++        object: nil,
++        queue: nil
++      ) { [weak self] _ in
++        self?.forgetStore()
++      }
+     }
+ 
+     OnDestroy {
+@@ -77,6 +93,8 @@ public class CloudKitSyncModule: Module {
+       self.shareObserver = nil
+       if let observer = self.changeObserver { NotificationCenter.default.removeObserver(observer) }
+       self.changeObserver = nil
++      if let observer = self.accountObserver { NotificationCenter.default.removeObserver(observer) }
++      self.accountObserver = nil
+     }
+ 
+     // Patch 8b: ask CloudKit to push when the shop's records change. True when both subscriptions are in place. Safe to call every launch.
+@@ -382,7 +400,47 @@ public class CloudKitSyncModule: Module {
+     return allInPlace
+   }
+ 
+-  private var storeZoneID: CKRecordZone.ID { CKRecordZone(zoneName: cloudKitZoneName).zoneID }
++  /// The zone as the owner's own Apple ID names it. Only right on the owner iPad, where the zone lives in the private database: the owner's
++  /// create, share and role check use it. Every record call uses `storeZoneID` below instead.
++  private var ownerZoneID: CKRecordZone.ID { CKRecordZone(zoneName: cloudKitZoneName).zoneID }
++
++  /// The zone every record call uses. On the owner iPad it is `ownerZoneID`. On a joined till it is the zone CloudKit listed in the shared
++  /// database, which carries the owner's own name inside its ID. Building `Store` under the joined till's own Apple ID would name a different,
++  /// empty zone. Read after `resolveStore()` has run; before that (or on a till that has done neither) it falls back to `ownerZoneID`.
++  private var storeZoneID: CKRecordZone.ID {
++    storeLock.withLock { storeSharedZoneID } ?? ownerZoneID
++  }
++
++  /// Forget the role and zone worked out so far, so the next resolveStore() looks again. Called after a join, after setting up as owner,
++  /// and when the Apple ID changes. (The Cloud sync page uses resolveStore(refresh: true) instead, which swaps the answer in one step so a poll that is
++  /// running at the same moment never finds the role empty.)
++  private func forgetStore() {
++    storeLock.withLock { storeRole = nil; storeSharedZoneID = nil }
++  }
++
++  /// Work out which side of the share this till is on, once, and keep the database and zone for every record call. The owner finds `Store`
++  /// in its private database. A joined till finds it in the shared database and keeps that zone's own ID. Returns "owner", "participant"
++  /// or "none". "none" is not kept, so a till that joins a moment later is picked up by its next call. Throws when CloudKit cannot be
++  /// asked (offline, no account), and then what was kept before is left as it was. `refresh: true` looks again even when a role is kept.
++  @discardableResult
++  private func resolveStore(refresh: Bool = false) async throws -> String {
++    if !refresh {
++      if let known = storeLock.withLock({ storeRole }) { return known }
++    }
++    let c = container()
++    let owned = try await c.privateCloudDatabase.allRecordZones()
++    if owned.contains(where: { $0.zoneID == ownerZoneID }) {
++      storeLock.withLock { storeRole = "owner"; storeSharedZoneID = nil }
++      return "owner"
++    }
++    let shared = try await c.sharedCloudDatabase.allRecordZones()
++    if let zone = shared.first(where: { $0.zoneID.zoneName == cloudKitZoneName }) {
++      storeLock.withLock { storeRole = "participant"; storeSharedZoneID = zone.zoneID }
++      return "participant"
++    }
++    storeLock.withLock { storeRole = nil; storeSharedZoneID = nil }
++    return "none"
++  }
+ 
+   private func accountStatus() async -> String {
+     do {
+@@ -395,22 +453,17 @@ public class CloudKitSyncModule: Module {
+   private func state() async -> CloudKitStateRecord {
+     var state = CloudKitStateRecord()
+     state.account = await accountStatus()
+-    let container = self.container()
+-    let zoneID = storeZoneID
+-    // The owner's own database carries the zone under its own name...
+-    if let zones = try? await container.privateCloudDatabase.allRecordZones(), zones.contains(where: { $0.zoneID == zoneID }) {
+-      state.role = "owner"
+-      if let link = try? await self.shareLink() { state.shareURL = link }
+-    // ...while a participant sees the same zone name in the shared database it accepted.
+-    } else if let zones = try? await container.sharedCloudDatabase.allRecordZones(), zones.contains(where: { $0.zoneID.zoneName == cloudKitZoneName }) {
+-      state.role = "participant"
+-    }
++    // Look again every time the page asks: this is how a till that has just joined (or just set up) learns its role and zone.
++    // The owner's own database carries the zone under its own name; a participant sees the same zone name in the shared database it accepted.
++    let role = (try? await resolveStore(refresh: true)) ?? "none"
++    state.role = role
++    if role == "owner", let link = try? await self.shareLink() { state.shareURL = link }
+     return state
+   }
+ 
+   // The zone-wide share link, read back from the record the owner saved. Throws when the share has not been made yet.
+   private func shareLink() async throws -> String {
+-    let id = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: storeZoneID)
++    let id = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: ownerZoneID)
+     let record = try await container().privateCloudDatabase.record(for: id)
+     guard let share = record as? CKShare, let url = share.url else {
+       throw Exception(name: "noInviteLink", description: "There is no invite link yet.")
+@@ -419,8 +472,10 @@ public class CloudKitSyncModule: Module {
+   }
+ 
+   private func createZoneAndShare() async throws -> String {
++    // Owner-only: the zone is made in the owner's private database under the owner's own name. Setting up changes the role, so forget it.
++    defer { forgetStore() }
+     let database = container().privateCloudDatabase
+-    let zoneID = storeZoneID
++    let zoneID = ownerZoneID
+     let zones = (try? await database.allRecordZones()) ?? []
+     if !zones.contains(where: { $0.zoneID == zoneID }) {
+       _ = try await database.save(CKRecordZone(zoneID: zoneID))
+@@ -461,6 +516,8 @@ public class CloudKitSyncModule: Module {
+ 
+   // `accept` reports per-share failures inside its result rather than throwing, so raise the first one.
+   private func accept(_ metadatas: [CKShare.Metadata]) async throws {
++    // Joining changes the role and the zone this till must use, so forget what was worked out before the answer comes back.
++    defer { forgetStore() }
+     let results = try await container().accept(metadatas)
+     for (_, result) in results {
+       if case .failure(let error) = result { throw error }
+@@ -485,6 +542,7 @@ public class CloudKitSyncModule: Module {
+   /// Create or change the logo record. With a file path the image is attached as the asset; without one the asset is cleared (a removal).
+   /// Goes through the same fetch, change, save and retry loop as upsertRecord, because the asset cannot be set through copyFields.
+   private func putLogo(fields: [String: Any], filePath: String?) async throws -> [String: Any] {
++    try await resolveStore()
+     var lastError: Error?
+     for _ in 0..<3 {
+       let record: CKRecord
+@@ -512,6 +570,7 @@ public class CloudKitSyncModule: Module {
+ 
+   /// The plain fields only. `desiredKeys` leaves the asset out of the fetch, so no image is downloaded.
+   private func getLogoFields() async throws -> [String: Any]? {
++    try await resolveStore()
+     let plain = ["hash", "mime", "bytes", "removed", "ts", "registerId", "registerName"]
+     let results = try await database().records(for: [logoRecordID], desiredKeys: plain)
+     guard let result = results[logoRecordID] else { return nil }
+@@ -526,6 +585,7 @@ public class CloudKitSyncModule: Module {
+   /// Fetch the record with its asset and copy the image to a temporary file the JavaScript side can read. The extension comes from the
+   /// stored type, because the app tells image types apart by it. Null when the record has no image.
+   private func downloadLogoFile() async throws -> String? {
++    try await resolveStore()
+     let record: CKRecord
+     do { record = try await database().record(for: logoRecordID) }
+     catch let error as CKError where error.code == .unknownItem { return nil }
+@@ -554,6 +614,7 @@ public class CloudKitSyncModule: Module {
+ 
+   /// Write one month's shard. If the name is taken, the stored one is handed back untouched (the name holds the content's id, so it is the same file).
+   private func putSquareShardOnce(handle: String, fields: [String: Any], filePath: String) async throws -> [String: Any] {
++    try await resolveStore()
+     guard validShardHandle(handle) else { throw NSError(domain: CKErrorDomain, code: CKError.Code.invalidArguments.rawValue) }
+     let name = "squareshard-\(handle)"
+     let record = makeRecord(recordType: "SquareShard", recordName: name)
+@@ -571,6 +632,7 @@ public class CloudKitSyncModule: Module {
+ 
+   /// The manifest's plain fields and CloudKit's change tag for it. Null when there is none.
+   private func getSquareManifestFields() async throws -> [String: Any]? {
++    try await resolveStore()
+     let results = try await database().records(for: [squareManifestID])
+     guard let result = results[squareManifestID] else { return nil }
+     switch result {
+@@ -587,6 +649,7 @@ public class CloudKitSyncModule: Module {
+   /// Replace the manifest only if it is still the one the caller read. `expectedTag` is that record's change tag, or empty or nil when
+   /// the caller saw no manifest. If another register wrote in between, nothing is written and `changed` is true.
+   private func putSquareManifest(fields: [String: Any], expectedTag: String?) async throws -> [String: Any] {
++    try await resolveStore()
+     var found: CKRecord? = nil
+     do { found = try await database().record(for: squareManifestID) }
+     catch let error as CKError where error.code == .unknownItem { found = nil }
+@@ -611,6 +674,7 @@ public class CloudKitSyncModule: Module {
+   /// The migration record's plain fields and CloudKit's change tag for it (as `tag`). Null when there is none. recordToDict is not changed
+   /// for this, because every other record type reads its fields straight into rows and a stray `tag` field would end up in them.
+   private func getMigrationFields() async throws -> [String: Any]? {
++    try await resolveStore()
+     let id = CKRecord.ID(recordName: "migration-v1", zoneID: storeZoneID)
+     do {
+       let record = try await database().record(for: id)
+@@ -626,6 +690,7 @@ public class CloudKitSyncModule: Module {
+   /// when the caller saw no record (then it is created, and a record that has appeared in the meantime counts as changed). Same shape as
+   /// putSquareManifest. If another iPad wrote in between, nothing is written and `changed` is true.
+   private func putMigrationIfUnchanged(fields: [String: Any], expectedTag: String?) async throws -> [String: Any] {
++    try await resolveStore()
+     let id = CKRecord.ID(recordName: "migration-v1", zoneID: storeZoneID)
+     var found: CKRecord? = nil
+     do { found = try await database().record(for: id) }
+@@ -652,6 +717,7 @@ public class CloudKitSyncModule: Module {
+ 
+   /// Fetch one shard with its asset and copy the file to a temporary path the JavaScript side can read. Null when it is not there.
+   private func downloadSquareShardFile(handle: String) async throws -> String? {
++    try await resolveStore()
+     guard validShardHandle(handle) else { return nil }
+     let id = CKRecord.ID(recordName: "squareshard-\(handle)", zoneID: storeZoneID)
+     let record: CKRecord
+@@ -670,10 +736,10 @@ public class CloudKitSyncModule: Module {
+ 
+   // --- Patch 4 helpers -------------------------------------------------------
+ 
++  /// The database for every record call: the shared one on a joined till, the private one otherwise. Right after `resolveStore()` has run.
+   private func database() -> CKDatabase {
+-    // Prefer private; roles may differ. For reading shared zone records the shared database is used by participants,
+-    // but this module will be called in the right context by the backend. Use private for now; the backend decides.
+-    container().privateCloudDatabase
++    let role = storeLock.withLock { storeRole }
++    return role == "participant" ? container().sharedCloudDatabase : container().privateCloudDatabase
+   }
+ 
+   private func makeRecord(recordType: String, recordName: String) -> CKRecord {
+@@ -705,6 +771,7 @@ public class CloudKitSyncModule: Module {
+   /// record over a name that already exists (serverRecordChanged), which made every second write of the same sale,
+   /// rollup, cart, settings or layout record fail. Fields not mentioned are left as they were.
+   private func putRecord(recordType: String, recordName: String, fields: [String: Any], encrypted: [String: Any] = [:]) async throws -> [String: Any] {
++    // upsertRecord resolves the database and zone itself.
+     try await upsertRecord(recordType: recordType, recordName: recordName, fields: fields, encrypted: encrypted)
+   }
+ 
+@@ -734,6 +801,7 @@ public class CloudKitSyncModule: Module {
+   /// refuses for a name that already exists (serverRecordChanged), so anything that is updated in place goes through here:
+   /// fetch the current record, change its fields, save, and try again if someone else saved in between.
+   private func upsertRecord(recordType: String, recordName: String, fields: [String: Any], encrypted: [String: Any] = [:]) async throws -> [String: Any] {
++    try await resolveStore()
+     let id = CKRecord.ID(recordName: recordName, zoneID: storeZoneID)
+     var lastError: Error?
+     for _ in 0..<3 {
+@@ -758,6 +826,7 @@ public class CloudKitSyncModule: Module {
+   /// Write a record that must never change once it exists (a ledger entry). If it is already there, hand back the stored
+   /// one untouched, so a retry or a second register uploading the same entry is harmless.
+   private func putRecordOnce(recordType: String, recordName: String, fields: [String: Any]) async throws -> [String: Any] {
++    try await resolveStore()
+     let record = makeRecord(recordType: recordType, recordName: recordName)
+     copyFields(fields, into: record)
+     do {
+@@ -772,6 +841,7 @@ public class CloudKitSyncModule: Module {
+   /// Records of a type created after `since` (seconds since 1970), oldest first. Reads on the creation time, which
+   /// CloudKit sets itself, so a record uploaded late by an offline iPad is found by the checkpoint logic in JavaScript.
+   private func listCreatedSince(recordType: String, since: Double, limit: Int, after: String?) async throws -> [String: Any] {
++    try await resolveStore()
+     let date = Date(timeIntervalSince1970: since)
+     let query = CKQuery(recordType: recordType, predicate: NSPredicate(format: "creationDate > %@", date as NSDate))
+     query.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
+@@ -779,6 +849,7 @@ public class CloudKitSyncModule: Module {
+   }
+ 
+   private func getRecord(recordType: String, recordName: String) async throws -> [String: Any]? {
++    try await resolveStore()
+     let id = CKRecord.ID(recordName: recordName, zoneID: storeZoneID)
+     do {
+       let record = try await database().record(for: id)
+@@ -790,6 +861,7 @@ public class CloudKitSyncModule: Module {
+   }
+ 
+   private func listRecords(recordType: String, limit: Int, after: String?, desiredKeys: [String]? = nil) async throws -> [String: Any] {
++    try await resolveStore()
+     let query = CKQuery(recordType: recordType, predicate: NSPredicate(value: true))
+     query.sortDescriptors = [NSSortDescriptor(key: "modificationDate", ascending: false)]
+     return try await runQuery(query, limit: limit, after: after, desiredKeys: desiredKeys)
+diff --git a/tests/cloudkitswift.test.ts b/tests/cloudkitswift.test.ts
+index 5993aa2..85169a1 100644
+--- a/tests/cloudkitswift.test.ts
++++ b/tests/cloudkitswift.test.ts
+@@ -107,3 +107,32 @@ test('a database push becomes the onRemoteChange event, and anything else is rep
+   assert.deepEqual(JSON.parse(readFileSync('modules/cloudkit-sync/expo-module.config.json', 'utf8')).apple.appDelegateSubscribers, ['CloudKitPushSubscriber']);
+   assert.match(readFileSync('modules/cloudkit-sync/index.ts', 'utf8'), /export async function startSubscriptions[\s\S]*export function onRemoteChange/);
+ });
++
++// Patch 0227: a joined till must use the owner's zone in the shared database, not an empty zone of its own in the private one.
++test('the database and zone come from the role, worked out by resolveStore (0227)', () => {
++  const d = body('database');
++  assert.match(d, /sharedCloudDatabase/); assert.match(d, /privateCloudDatabase/); assert.match(d, /participant/);
++  assert.match(src, /private var storeZoneID: CKRecordZone\.ID \{[\s\S]*?storeSharedZoneID[\s\S]*?ownerZoneID/);
++  const r = body('resolveStore');
++  assert.match(r, /privateCloudDatabase\.allRecordZones\(\)/); assert.match(r, /sharedCloudDatabase\.allRecordZones\(\)/);
++  assert.match(r, /storeSharedZoneID = zone\.zoneID/, 'the participant keeps the zone ID CloudKit listed, not one built from its own Apple ID');
++});
++test('every function that reads or writes a record resolves the store first (0227)', () => {
++  for (const f of ['putLogo', 'getLogoFields', 'downloadLogoFile', 'putSquareShardOnce', 'getSquareManifestFields', 'putSquareManifest', 'downloadSquareShardFile',
++    'getMigrationFields', 'putMigrationIfUnchanged', 'upsertRecord', 'putRecordOnce', 'listCreatedSince', 'getRecord', 'listRecords']) {
++    const b = body(f);
++    assert.match(b, /try await resolveStore\(\)/, `${f} resolves the store`);
++    assert.ok(b.indexOf('resolveStore()') < Math.min(...['database()', 'storeZoneID', 'makeRecord(', 'logoRecordID', 'squareManifestID'].map(k => b.indexOf(k) < 0 ? Infinity : b.indexOf(k))), `${f} resolves before it uses the database or zone`);
++  }
++});
++test('only the owner-only code names the zone under the current Apple ID (0227)', () => {
++  for (const f of ['shareLink', 'createZoneAndShare', 'resolveStore']) assert.match(body(f), /ownerZoneID/, `${f} is owner-side`);
++  for (const f of ['makeRecord', 'getRecord', 'upsertRecord', 'putRecordOnce', 'listRecords', 'runQuery', 'putLogo', 'getMigrationFields']) assert.doesNotMatch(body(f), /ownerZoneID/, `${f} uses the resolved zone`);
++  assert.equal(src.split('CKRecordZone(zoneName: cloudKitZoneName)').length - 1, 1, 'the default zone ID is built in one place');
++});
++test('a join, a set-up and an Apple ID change make the next call look again (0227)', () => {
++  assert.match(body('accept'), /defer \{ forgetStore\(\) \}/);
++  assert.match(body('createZoneAndShare'), /defer \{ forgetStore\(\) \}/);
++  assert.match(src, /\.CKAccountChanged[\s\S]*?forgetStore\(\)/);
++  assert.match(body('state'), /resolveStore\(refresh: true\)/);
++});
