@@ -1,0 +1,228 @@
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index fc64fed..a01ae1e 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -201,6 +201,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0218 | 2026-11-02 | CloudKit item 8 leftover: **another register creates a missing Shopify order** (your request: do the rest of the docs). The problem found first: today the shared sale row is written after the order, so a sale left in a dead iPad's queue leaves no trace anywhere. So with CloudKit on the outbox gets an `early` step that writes the sale before the receipt and the order (CloudKit only, sales only, not in practice mode; a failure is not fatal and the final entry step writes it again with the order on it); `runItem` now returns the finished sale and the entry fields come from one helper. `orderRecovery.ts` has the rules (stranded sale, claim handle and fields, stale claims, the gift card exception, the notice); `cloudkit/orderRecoverySync.ts` is the job: at most every ten minutes, three sales per run, a write-once claim first (so two registers cannot both create it), then `runItem` on the sale, then a notice. Run from `pollShared`. New `tests/orderrecovery.test.ts` (14 tests). Guesses and known gaps under 0218. |
+ | 0219 | 2026-11-02 | CloudKit patch 6e: **the owner-only CloudKit export** (your request: do the rest of the docs), plus corrections. The export: `exportAll.ts` is the pure half (the list of every record type, `readAll` that reads a whole list and fails loudly, `collectExport` that builds the files, manifest and README, `zipExport` with fflate); `exportAllIO.ts` writes the zip to the cache folder, adds the logo picture, and refuses in a practice run; the Cloud sync page has an owner-only **Back up everything** button that confirms first and shares the zip. New `tests/exportall.test.ts` (9 tests) and `tests/lazybackend.test.ts` (3 tests). **Corrections to earlier patches, found by a real type check and by installing `fflate` so the whole suite ran:** (1) the tsc setup in this repo does not check anything here (`expo/tsconfig.base` is missing), so the "tsc clean" I reported for 0213 to 0218 meant nothing. I ran a lenient check of every file I touched and it found two real bugs in 0216: `migrationPanel.ts` read `phase` from a failure result that has none (a failed count check), and `CloudSync.tsx` used `useApp` without importing it. Both fixed here, with tests. (2) With `fflate` installed the suite showed two failures in `demoguard.test.ts` that my patches caused: 0215 put `put()` calls in `sync.ts` outside the guarded seam, and the new export wrote a file with no guard. The direct backend handles now live in `cloudkit/lazyBackend.ts` (the write stops on the same guard as the seam) and the export checks the guard. With `fflate` installed the whole suite passes (1868, 0 failing). |
+ | 0220 | 2026-11-02 | CloudKit patch 8: **the switch** (your request: do the rest of the docs). Rules in `backendChoice.ts` (flag values, start-up kind, when to move, which of a till's own sales are the gap, what the page says), job in `cloudkit/backendSwitch.ts` (`install`, `check`, `rollBack`, `allowSwitch`, `view`), flag storage in `cloudkit/backendFlagIO.ts` (guarded, local). `App.tsx` now installs the backend through the switch instead of always Shopify; `pollShared` calls `backendSwitch.check()` first. Cloud sync page: where this till keeps shared data, with the rollback and its way back. **Decisions made here, in GUESSES:** cut over in one go (no dual-write); a switched till never falls back by itself; the gap is closed by sending a till's own recent sales, not by dual-writing. **Not done:** retiring the 25 s poll, which needs CloudKit subscriptions in Swift (8b). New `tests/backendchoice.test.ts` (9 tests) and `tests/backendswitch.test.ts` (11 tests); full suite 1891, 0 failing with `fflate` installed; a lenient type check of the new files is clean. |
++| 0232 | 2026-11-11 | Build fix, found on the first launch on iPad (iOS 27.0.1): the app crashed at launch with `UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`, because iOS 27 requires the UIScene lifecycle for apps built with its SDK and Expo SDK 54's AppDelegate makes the window itself. `plugins/withCloudKit.js` now adds the scene manifest to Info.plist, stops the AppDelegate starting React Native, and appends a `SceneDelegate` to `AppDelegate.swift` that makes the window, starts React Native, hands URLs and universal links back to the AppDelegate's methods, and records CloudKit share links (`userDidAcceptCloudKitShareWith` on the scene, `cloudKitShareMetadata` on a cold launch), because iOS no longer calls the AppDelegate's version under scenes. Five tests in `tests/cloudkitplugin.test.ts`; a real `expo prebuild` was run and the output read. **The Swift is not compiled and has not run on a device.** Expo's own fix is SDK 57 or later; this is a workaround on SDK 54. Needs `npm run ios:reset`. | Build |
+ | 0231 | 2026-11-11 | Build fix, found on the first Mac build (Xcode 27, iOS 27.2 SDK). `plugins/withCloudKit.js` now adds a loop to the Podfile's `post_install` that lifts any pod target below iOS 15.0 to the app's 17.0, because Xcode 27 refuses to build below 15.0 and three resource bundles (RNDeviceInfo 9.0, RNCAsyncStorage 13.4, RNSVG 12.4) still said less. Two tests in `tests/cloudkitplugin.test.ts`. Needs `npm run ios:reset` to regenerate `ios/`. Not run through a real prebuild here. | Build |
+ | 0230 | 2026-11-04 | Docs and help only (your request: step 2 notes, update the HTML, two iPads). `CLOUDKIT_SYNC_DECISIONS.md` (header, summary, ledger rows 0228 to 0230, 0223 marked reversed, assumptions reviewed, dashboard note for `collectSince`, two iPads instead of three), `GUESSES.md`, the two Cash help pages, device test T113. `help.json` rebuilt. No code changed. | CloudKit docs |
+ | 0229 | 2026-11-04 | **Count & close includes taking the takings out.** `Shift.collectSince` (`src/lib/drawerBanking.ts`) survives closing and opening, so the next day's report no longer shows $0. Closing opens the report as "Take your takings out"; "Leave it for now" carries takings and loan into the next shift; the Z-report is shared after. The "Loan not taken back" prompt is gone. `collectSince` is stored on the `drawer-shift` record. New `tests/drawerbanking.test.ts`. Screens read-checked only. | Cash |
+diff --git a/plugins/withCloudKit.js b/plugins/withCloudKit.js
+index 302ce05..64010a7 100644
+--- a/plugins/withCloudKit.js
++++ b/plugins/withCloudKit.js
+@@ -11,7 +11,9 @@
+ //      build setting, because the Podfile alone does not change the app target.
+ //   4. Raises any pod target that still asks for iOS older than 15 (some resource bundles declare 9.0 to 13.4), because Xcode 27 refuses
+ //      to build below 15.0 (0231). It goes inside the Podfile's own post_install block.
+-//   5. Adds the AppDelegate method iOS calls when someone taps a CloudKit share link on this device
++//   5. Adopts the UIScene lifecycle (0232). iOS 27 apps built with the iOS 27 SDK crash at launch without it. It adds the scene manifest, moves
++//      React Native's window set-up out of the AppDelegate into a SceneDelegate, and hands URLs and CloudKit share links on from there.
++//   6. Adds the AppDelegate method iOS calls when someone taps a CloudKit share link on this device
+ //      (`userDidAcceptCloudKitShareWith`). Expo forwards a fixed set of delegate calls and this is not one of them, so the
+ //      method has to be written into the generated AppDelegate. It only records the link and points at the CloudKit
+ //      module, which does the accepting (patch 2 of dev_docs/CLOUDKIT_SYNC_PLAN.md).
+@@ -146,13 +148,111 @@ const withPodsTarget = (config) =>
+     return c;
+   });
+ 
++// 0232: the UIScene lifecycle. A build with the iOS 27 SDK stops at launch (UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption)
++// unless the app declares a scene and creates its window in a scene delegate. Expo SDK 54's generated AppDelegate makes the window itself,
++// so this (1) declares the scene in Info.plist, (2) stops the AppDelegate starting React Native and keeps the launch options for the scene,
++// and (3) appends a SceneDelegate to AppDelegate.swift that makes the window and starts React Native in it. URLs and universal links that
++// iOS now delivers to the scene go back through the AppDelegate's own methods, so expo-linking still sees them. A CloudKit share link also
++// arrives at the scene now (`userDidAcceptCloudKitShareWith` on the scene, or `cloudKitShareMetadata` on a cold launch).
++// Written for the SDK 54 template. If its text is not found this throws, because a scene manifest without a SceneDelegate gives a black screen.
++const SCENE_MARKER = '// Scene lifecycle (added here by plugins/withCloudKit.js).';
++
++function applySceneManifest(plist) {
++  plist.UIApplicationSceneManifest = {
++    UIApplicationSupportsMultipleScenes: false,
++    UISceneConfigurations: {
++      UIWindowSceneSessionRoleApplication: [
++        { UISceneConfigurationName: 'Default Configuration', UISceneDelegateClassName: '$(PRODUCT_MODULE_NAME).SceneDelegate' },
++      ],
++    },
++  };
++  return plist;
++}
++
++const SCENE_DELEGATE = [
++  '',
++  SCENE_MARKER,
++  '// iOS 27 needs an app to use scenes. The window is made here, and React Native starts in it.',
++  'class SceneDelegate: UIResponder, UIWindowSceneDelegate {',
++  '  var window: UIWindow?',
++  '',
++  '  private var appDelegate: AppDelegate? { UIApplication.shared.delegate as? AppDelegate }',
++  '',
++  '  func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {',
++  '    guard let windowScene = scene as? UIWindowScene, let appDelegate = appDelegate, let factory = appDelegate.reactNativeFactory else { return }',
++  '    let window = UIWindow(windowScene: windowScene)',
++  '    self.window = window',
++  '    appDelegate.window = window',
++  '    var launchOptions: [UIApplication.LaunchOptionsKey: Any] = appDelegate.launchOptionsForScene ?? [:]',
++  '    if let url = connectionOptions.urlContexts.first?.url { launchOptions[.url] = url }',
++  '    if let metadata = connectionOptions.cloudKitShareMetadata { SceneDelegate.recordShare(metadata) }',
++  '    factory.startReactNative(withModuleName: "main", in: window, launchOptions: launchOptions.isEmpty ? nil : launchOptions)',
++  '    for activity in connectionOptions.userActivities {',
++  '      _ = appDelegate.application(UIApplication.shared, continue: activity, restorationHandler: { _ in })',
++  '    }',
++  '  }',
++  '',
++  '  // Links: handed to the AppDelegate methods so Expo\'s linking still sees them.',
++  '  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {',
++  '    guard let appDelegate = appDelegate else { return }',
++  '    for context in URLContexts { _ = appDelegate.application(UIApplication.shared, open: context.url, options: [:]) }',
++  '  }',
++  '',
++  '  func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {',
++  '    _ = appDelegate?.application(UIApplication.shared, continue: userActivity, restorationHandler: { _ in })',
++  '  }',
++  '',
++  '  // A tapped CloudKit share link, with the app already running. Same as the AppDelegate method above, which iOS no longer calls under scenes.',
++  '  func windowScene(_ windowScene: UIWindowScene, userDidAcceptCloudKitShareWith metadata: CKShare.Metadata) {',
++  '    SceneDelegate.recordShare(metadata)',
++  '  }',
++  '',
++  '  static func recordShare(_ metadata: CKShare.Metadata) {',
++  '    if let url = metadata.share.url?.absoluteString {',
++  `      UserDefaults.standard.set(url, forKey: "${PENDING_INVITE_KEY}")`,
++  '    }',
++  `    NotificationCenter.default.post(name: Notification.Name("${SHARE_NOTIFICATION}"), object: metadata)`,
++  '  }',
++  '}',
++  '',
++].join('\n');
++
++function injectSceneLifecycle(contents, language = 'swift') {
++  if (language !== 'swift') throw new Error('withCloudKit: the scene lifecycle is only written into a Swift AppDelegate.');
++  if (contents.includes(SCENE_MARKER)) return contents;
++  const startBlock = /^[ \t]*#if os\(iOS\) \|\| os\(tvOS\)\r?\n[ \t]*window = UIWindow\(frame: UIScreen\.main\.bounds\)[\s\S]*?startReactNative\([\s\S]*?\)\r?\n[ \t]*#endif[ \t]*\r?\n/m;
++  const property = /^([ \t]*)var reactNativeFactory: RCTReactNativeFactory\?[ \t]*\r?\n/m;
++  if (!startBlock.test(contents) || !property.test(contents)) {
++    throw new Error('withCloudKit: the generated AppDelegate.swift does not look like the Expo SDK 54 template (no window and startReactNative block, or no reactNativeFactory property), so the scene lifecycle was not added. Without it the app stops at launch on iOS 27. See plugins/withCloudKit.js.');
++  }
++  let out = contents.replace(startBlock, '    // The window is made in SceneDelegate now. The launch options wait here until it starts React Native.\n    launchOptionsForScene = launchOptions\n');
++  out = out.replace(property, (m, pad) => `${m}${pad}var launchOptionsForScene: [UIApplication.LaunchOptionsKey: Any]?\n`);
++  if (!/^\s*import CloudKit\s*$/m.test(out)) out = out.replace(/^(\s*import [^\n]+\n)/m, '$1import CloudKit\n');
++  return out.replace(/\s*$/, '\n') + SCENE_DELEGATE;
++}
++
++const withSceneManifest = (config) =>
++  withInfoPlist(config, (c) => {
++    applySceneManifest(c.modResults);
++    return c;
++  });
++
++const withSceneDelegate = (config) =>
++  withAppDelegate(config, (c) => {
++    c.modResults.contents = injectSceneLifecycle(c.modResults.contents, c.modResults.language);
++    return c;
++  });
++
+ const withShareLinkHandler = (config) =>
+   withAppDelegate(config, (c) => {
+     c.modResults.contents = injectShareLinkHandler(c.modResults.contents, c.modResults.language);
+     return c;
+   });
+ 
+-module.exports = (config) => withPodsTarget(withShareLinkHandler(withProjectTarget(withPodfileTarget(withSharingSupport(withIcloudEntitlements(config))))));
++module.exports = (config) =>
++  withSceneManifest(withSceneDelegate(withPodsTarget(withShareLinkHandler(withProjectTarget(withPodfileTarget(withSharingSupport(withIcloudEntitlements(config))))))));
+ module.exports.injectShareLinkHandler = injectShareLinkHandler;
+ module.exports.injectPodsTarget = injectPodsTarget;
++module.exports.injectSceneLifecycle = injectSceneLifecycle;
++module.exports.applySceneManifest = applySceneManifest;
+ module.exports.applyEntitlements = applyEntitlements;
+diff --git a/tests/cloudkitplugin.test.ts b/tests/cloudkitplugin.test.ts
+index 48e48b6..608645a 100644
+--- a/tests/cloudkitplugin.test.ts
++++ b/tests/cloudkitplugin.test.ts
+@@ -117,3 +117,83 @@ test('the Podfile edit is made once, and a Podfile with no post_install is left
+   assert.equal(injectPodsTarget("target 'x' do\nend\n"), "target 'x' do\nend\n");
+ });
+ 
++// 0232: the UIScene lifecycle. This is the shape of the Expo SDK 54 template's AppDelegate.swift (the window and startReactNative block is
++// what the plugin has to find). The tests check the text, since the Swift is not compiled here.
++const { injectSceneLifecycle, applySceneManifest } = require('../plugins/withCloudKit') as {
++  injectSceneLifecycle: (contents: string, language?: string) => string;
++  applySceneManifest: (plist: Record<string, unknown>) => Record<string, any>;
++};
++const SDK54 = [
++  'import Expo',
++  'import React',
++  'import ReactAppDependencyProvider',
++  '',
++  '@UIApplicationMain',
++  'public class AppDelegate: ExpoAppDelegate {',
++  '  var window: UIWindow?',
++  '',
++  '  var reactNativeDelegate: ExpoReactNativeFactoryDelegate?',
++  '  var reactNativeFactory: RCTReactNativeFactory?',
++  '',
++  '  public override func application(',
++  '    _ application: UIApplication,',
++  '    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil',
++  '  ) -> Bool {',
++  '    let delegate = ReactNativeDelegate()',
++  '    bindReactNativeFactory(factory)',
++  '',
++  '#if os(iOS) || os(tvOS)',
++  '    window = UIWindow(frame: UIScreen.main.bounds)',
++  '    factory.startReactNative(',
++  '      withModuleName: "main",',
++  '      in: window,',
++  '      launchOptions: launchOptions)',
++  '#endif',
++  '',
++  '    return super.application(application, didFinishLaunchingWithOptions: launchOptions)',
++  '  }',
++  '}',
++  '',
++  'class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {',
++  '}',
++  '',
++].join('\n');
++
++test('the scene manifest names a SceneDelegate in the app module and allows one scene', () => {
++  const m = applySceneManifest({ CFBundleVersion: '1' });
++  assert.equal(m.CFBundleVersion, '1');
++  assert.equal(m.UIApplicationSceneManifest.UIApplicationSupportsMultipleScenes, false);
++  const cfg = m.UIApplicationSceneManifest.UISceneConfigurations.UIWindowSceneSessionRoleApplication;
++  assert.equal(cfg.length, 1); assert.equal(cfg[0].UISceneDelegateClassName, '$(PRODUCT_MODULE_NAME).SceneDelegate');
++});
++test('the AppDelegate stops making the window, and a SceneDelegate starts React Native in one', () => {
++  const out = injectSceneLifecycle(SDK54);
++  const appPart = out.slice(0, out.indexOf('class SceneDelegate'));
++  assert.ok(!/UIWindow\(frame/.test(appPart)); assert.ok(!/startReactNative/.test(appPart));
++  assert.ok(appPart.includes('launchOptionsForScene = launchOptions'));
++  assert.ok(appPart.includes('var launchOptionsForScene: [UIApplication.LaunchOptionsKey: Any]?'));
++  assert.ok(/class SceneDelegate: UIResponder, UIWindowSceneDelegate/.test(out));
++  assert.ok(/UIWindow\(windowScene: windowScene\)/.test(out)); assert.ok(/factory\.startReactNative\(withModuleName: "main", in: window/.test(out));
++  assert.ok(/import CloudKit/.test(out));
++});
++test('the SceneDelegate hands links to the AppDelegate and records a CloudKit share link', () => {
++  const out = injectSceneLifecycle(SDK54);
++  assert.ok(/openURLContexts/.test(out)); assert.ok(/appDelegate\.application\(UIApplication\.shared, open: context\.url/.test(out));
++  assert.ok(/continue userActivity: NSUserActivity/.test(out));
++  assert.ok(/windowScene\(_ windowScene: UIWindowScene, userDidAcceptCloudKitShareWith metadata: CKShare\.Metadata\)/.test(out));
++  assert.ok(/connectionOptions\.cloudKitShareMetadata/.test(out));
++  assert.ok(out.includes('forKey: "cloudkitPendingInvite"')); assert.ok(out.includes('Notification.Name("cloudkitDidAcceptShare")'));
++});
++test('the scene edit is made once, and an unknown AppDelegate fails loudly instead of leaving a black screen', () => {
++  const once = injectSceneLifecycle(SDK54);
++  assert.equal(injectSceneLifecycle(once), once);
++  assert.throws(() => injectSceneLifecycle('import Expo\nclass AppDelegate {}\n'), /does not look like the Expo SDK 54 template/);
++  assert.throws(() => injectSceneLifecycle(SDK54, 'objc'), /only written into a Swift AppDelegate/);
++});
++test('the scene edit and the existing share-link method can both be applied, in either order', () => {
++  const a = injectSceneLifecycle(injectShareLinkHandler(SDK54));
++  const b = injectShareLinkHandler(injectSceneLifecycle(SDK54));
++  for (const out of [a, b]) { assert.ok(out.includes('class SceneDelegate')); assert.ok(out.includes('userDidAcceptCloudKitShareWith')); }
++  assert.equal((a.match(/import CloudKit/g) ?? []).length, 1); assert.equal((b.match(/import CloudKit/g) ?? []).length, 1);
++});
++
