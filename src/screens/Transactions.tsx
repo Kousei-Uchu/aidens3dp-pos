@@ -14,6 +14,8 @@ import RefundScreen from './Refund';
 import type { SaleRecord, Tender } from '../lib/types';
 import { Share } from 'react-native';
 import { loadSquareSales } from '../lib/squareHistoryIO';
+import { mergeSales, otherRegisterName } from '../lib/transactionsMerge';
+import { pullSalesHistory } from '../lib/sync';
 
 type Entry = { key: string; ts: string; name: string; totalCents: number; customer?: string; kind: 'sale' | 'refund'; summary: string; order?: PosOrder; sale?: SaleRecord; pending: boolean; haystack: string };
 
@@ -21,7 +23,7 @@ const tenderWord = (k: string) => (k === 'card' ? 'Card' : k === 'cash' ? 'Cash'
 const dayLabel = (ts: string) => { const d = new Date(ts); const t = new Date(); const y = new Date(Date.now() - 86400000); const same = (a: Date, b: Date) => a.toDateString() === b.toDateString(); return same(d, t) ? 'Today' : same(d, y) ? 'Yesterday' : d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' }); };
 
 export default function Transactions() {
-  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const sales = useApp(s => s.pos.sales); const outbox = useApp(s => s.pos.outbox);
+  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const sales = useApp(s => s.pos.sales); const sharedSales = useApp(s => s.pos.shared?.sales); const ownId = useApp(s => s.settings.registerId); const outbox = useApp(s => s.pos.outbox);
   const [orders, setOrders] = useState<PosOrder[]>([]); const [next, setNext] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [q, setQ] = useState('');
   const [showSq, setShowSq] = useState(false); const [sqSales, setSqSales] = useState<SaleRecord[]>([]); const [sqBusy, setSqBusy] = useState(false);
   const toggleSq = async () => { if (showSq) { setShowSq(false); return; } setShowSq(true); if (!sqSales.length) { setSqBusy(true); try { setSqSales(await loadSquareSales()); } catch (e: any) { alertMsg('Could not load Square history', e.message); } setSqBusy(false); } };
@@ -32,20 +34,21 @@ export default function Transactions() {
     try { const r = await listOrders({ query: 'tag:pos', first: 25, after: more ? next : null }); setOrders(o => (more ? [...o, ...r.orders] : r.orders)); setNext(r.next); } catch (e: any) { if (!/network|connection/i.test(e.message)) alertMsg('Could not load orders', e.message, 'orders'); }
     setBusy(false);
   }, [next]);
-  useEffect(() => { void load(false); }, []);
+  useEffect(() => { void load(false); void pullSalesHistory().catch(() => {}); }, []); // the other registers' sales (throttled)
+  const allSales = useMemo(() => mergeSales(sales, sharedSales, ownId), [sales, sharedSales, ownId]);
 
   // Transactions is the POS's own sales log. Shopify orders are fetched only to link a sale to its order
   // (for the receipt name and the return flow); they are listed on More ▸ Orders, never here.
   const entries = useMemo<Entry[]>(() => {
     const byUuid = new Map<string, PosOrder>(); for (const o of orders) if (o.saleUuid) byUuid.set(o.saleUuid, o);
     const out: Entry[] = []; const pending = new Set(outbox.map(o => o.id));
-    for (const s of sales) { const o = byUuid.get(s.uuid);
+    for (const s of allSales) { const o = byUuid.get(s.uuid); const other = otherRegisterName(s, ownId);
       out.push({ key: s.uuid, ts: s.ts, name: s.orderName ?? o?.name ?? (s.type === 'refund' ? 'Refund' : 'Sale'), totalCents: s.netCents, customer: s.customer?.name, kind: s.type, order: o, sale: s, pending: pending.has(s.uuid) && !o,
-        summary: s.tenders.map(t => tenderWord(t.kind)).join(' + ') || '-', haystack: [s.orderName, s.customer?.name, s.note, ...s.lines.map(l => l.title)].join(' ').toLowerCase() }); }
+        summary: `${other ? other + ' · ' : ''}${s.tenders.map(t => tenderWord(t.kind)).join(' + ') || '-'}`, haystack: [s.orderName, s.customer?.name, s.note, other, ...s.lines.map(l => l.title)].join(' ').toLowerCase() }); }
     if (showSq) for (const s of sqSales) out.push({ key: s.uuid, ts: s.ts, name: s.orderName ?? 'Square', totalCents: s.netCents, customer: s.customer?.name, kind: s.type, sale: s, pending: false,
       summary: `Square · ${s.tenders.map(t => tenderWord(t.kind)).join(' + ') || '-'}`, haystack: [s.orderName, s.customer?.name, s.note, ...s.lines.map(l => l.title)].join(' ').toLowerCase() });
     return out.sort((a, b) => b.ts.localeCompare(a.ts));
-  }, [sales, orders, outbox, showSq, sqSales]);
+  }, [allSales, ownId, orders, outbox, showSq, sqSales]);
   const shown = useMemo(() => { const t = q.trim().toLowerCase().replace(/^#/, ''); return t ? entries.filter(e => e.haystack.replace(/#/g, '').includes(t)) : entries; }, [entries, q]);
   const rows = useMemo(() => { const out: ({ h: string } | Entry)[] = []; let last = ''; for (const e of shown) { const d = dayLabel(e.ts); if (d !== last) { out.push({ h: d }); last = d; } out.push(e); } return out; }, [shown]);
 
@@ -56,7 +59,7 @@ export default function Transactions() {
         <Field kind="search" placeholder="Receipt #, customer, note or item" value={q} onChangeText={t => setQ(t)} style={{ marginBottom: 0 }} />
         <View style={{ flexDirection: 'row', marginTop: 8, marginLeft: 4 }}><Chip label={sqBusy ? 'Loading Square history…' : 'Square history'} icon="archive-outline" active={showSq} onPress={() => void toggleSq()} /></View>
       </View>
-      <FlatList data={rows} keyExtractor={(r, i) => ('h' in r ? `h${r.h}${i}` : r.key)} refreshControl={<RefreshControl refreshing={busy} onRefresh={() => void load(false)} />}
+      <FlatList data={rows} keyExtractor={(r, i) => ('h' in r ? `h${r.h}${i}` : r.key)} refreshControl={<RefreshControl refreshing={busy} onRefresh={() => { void pullSalesHistory(true).catch(() => {}); void load(false); }} />}
         ListEmptyComponent={<Empty icon="receipt-outline" title="No transactions yet" sub={q ? 'No sale or refund matches that.' : 'Completed sales appear here.'} />}
         ListFooterComponent={<View style={{ padding: 16, gap: 8 }}>{next && !q ? <Btn title="Load more" kind="secondary" small onPress={() => void load(true)} /> : null}</View>}
         renderItem={({ item: r }) => 'h' in r ? <Txt size={13} sub weight="600" style={{ marginTop: 14, marginBottom: 4, marginHorizontal: 20, textTransform: 'uppercase' }}>{r.h}</Txt> : (
