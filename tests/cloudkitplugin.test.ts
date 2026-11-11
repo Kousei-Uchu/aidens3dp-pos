@@ -88,3 +88,32 @@ test('an Objective-C AppDelegate is left alone rather than having Swift written 
   const objc = '@implementation AppDelegate\n@end\n';
   assert.equal(injectShareLinkHandler(objc, 'objc'), objc);
 });
+
+// 0231: Xcode 27 builds for iOS 15.0 and up only, so pod targets that still ask for less are lifted from inside the Podfile's post_install.
+const { injectPodsTarget } = require('../plugins/withCloudKit') as { injectPodsTarget: (contents: string) => string };
+const PODFILE = [
+  "target 'aidens3dpos' do",
+  '  use_expo_modules!',
+  '  post_install do |installer|',
+  '    react_native_post_install(',
+  '      installer,',
+  "      config[:reactNativePath],",
+  '      :mac_catalyst_enabled => false',
+  '    )',
+  '  end',
+  'end',
+  '',
+].join('\n');
+test('the Podfile gets a loop that lifts pod targets below iOS 15, inside post_install and before the React Native call', () => {
+  const out = injectPodsTarget(PODFILE);
+  assert.ok(out.includes("if v && v.to_f < 15.0"));
+  assert.ok(out.includes("= '17.0' if"));
+  assert.ok(out.indexOf('installer.pods_project.targets.each') > out.indexOf('post_install do |installer|'));
+  assert.ok(out.indexOf('installer.pods_project.targets.each') < out.indexOf('react_native_post_install('));
+});
+test('the Podfile edit is made once, and a Podfile with no post_install is left alone', () => {
+  const once = injectPodsTarget(PODFILE);
+  assert.equal(injectPodsTarget(once), once);
+  assert.equal(injectPodsTarget("target 'x' do\nend\n"), "target 'x' do\nend\n");
+});
+

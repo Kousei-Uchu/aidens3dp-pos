@@ -9,14 +9,16 @@
 //      and hear about new records while it is not in front (the subscriptions are made by the CloudKit module, patch 8b).
 //   3. Raises the iOS deployment target to 17, which CKSyncEngine needs. It sets both the Podfile platform and the Xcode
 //      build setting, because the Podfile alone does not change the app target.
-//   4. Adds the AppDelegate method iOS calls when someone taps a CloudKit share link on this device
+//   4. Raises any pod target that still asks for iOS older than 15 (some resource bundles declare 9.0 to 13.4), because Xcode 27 refuses
+//      to build below 15.0 (0231). It goes inside the Podfile's own post_install block.
+//   5. Adds the AppDelegate method iOS calls when someone taps a CloudKit share link on this device
 //      (`userDidAcceptCloudKitShareWith`). Expo forwards a fixed set of delegate calls and this is not one of them, so the
 //      method has to be written into the generated AppDelegate. It only records the link and points at the CloudKit
 //      module, which does the accepting (patch 2 of dev_docs/CLOUDKIT_SYNC_PLAN.md).
 // The aps-environment entitlement was left out until the push subscriptions landed. They have (patch 8b), so it is set now. An app with it
 // must be signed with a push-enabled provisioning profile: enable Push Notifications for the App ID in the Apple Developer account first, or
 // the build fails to sign.
-const { withEntitlementsPlist, withInfoPlist, withPodfileProperties, withXcodeProject, withAppDelegate } = require('@expo/config-plugins');
+const { withEntitlementsPlist, withInfoPlist, withPodfileProperties, withPodfile, withXcodeProject, withAppDelegate } = require('@expo/config-plugins');
 
 const CONTAINER = 'iCloud.com.aidens3dp.pos';
 const DEPLOYMENT_TARGET = '17.0';
@@ -116,12 +118,41 @@ function injectShareLinkHandler(contents, language = 'swift') {
   return withImport.slice(0, body.close) + handler + withImport.slice(body.close);
 }
 
+// 0231: Xcode 27 only builds for iOS 15.0 and up, and a few pods' resource bundles (RNDeviceInfo, RNCAsyncStorage, RNSVG) still say 9.0 to 13.4,
+// which stops the build. This writes a small loop at the top of the Podfile's post_install block that lifts any pod target below 15.0 to ours.
+const PODS_MARKER = '# Raise pod targets below iOS 15 (added here by plugins/withCloudKit.js).';
+function injectPodsTarget(contents) {
+  if (contents.includes(PODS_MARKER)) return contents;
+  const hook = /^([ \t]*)post_install do \|installer\|[ \t]*\r?\n/m;
+  const m = hook.exec(contents);
+  if (!m) return contents;
+  const pad = m[1] + '  ';
+  const snippet = [
+    `${pad}${PODS_MARKER}`,
+    `${pad}installer.pods_project.targets.each do |t|`,
+    `${pad}  t.build_configurations.each do |bc|`,
+    `${pad}    v = bc.build_settings['IPHONEOS_DEPLOYMENT_TARGET']`,
+    `${pad}    bc.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '${DEPLOYMENT_TARGET}' if v && v.to_f < 15.0`,
+    `${pad}  end`,
+    `${pad}end`,
+    '',
+  ].join('\n');
+  return contents.slice(0, m.index + m[0].length) + snippet + contents.slice(m.index + m[0].length);
+}
+
+const withPodsTarget = (config) =>
+  withPodfile(config, (c) => {
+    c.modResults.contents = injectPodsTarget(c.modResults.contents);
+    return c;
+  });
+
 const withShareLinkHandler = (config) =>
   withAppDelegate(config, (c) => {
     c.modResults.contents = injectShareLinkHandler(c.modResults.contents, c.modResults.language);
     return c;
   });
 
-module.exports = (config) => withShareLinkHandler(withProjectTarget(withPodfileTarget(withSharingSupport(withIcloudEntitlements(config)))));
+module.exports = (config) => withPodsTarget(withShareLinkHandler(withProjectTarget(withPodfileTarget(withSharingSupport(withIcloudEntitlements(config))))));
 module.exports.injectShareLinkHandler = injectShareLinkHandler;
+module.exports.injectPodsTarget = injectPodsTarget;
 module.exports.applyEntitlements = applyEntitlements;
