@@ -11,7 +11,9 @@
 //      build setting, because the Podfile alone does not change the app target.
 //   4. Raises any pod target that still asks for iOS older than 15 (some resource bundles declare 9.0 to 13.4), because Xcode 27 refuses
 //      to build below 15.0 (0231). It goes inside the Podfile's own post_install block.
-//   5. Adds the AppDelegate method iOS calls when someone taps a CloudKit share link on this device
+//   5. Adopts the UIScene lifecycle (0232). iOS 27 apps built with the iOS 27 SDK crash at launch without it. It adds the scene manifest, moves
+//      React Native's window set-up out of the AppDelegate into a SceneDelegate, and hands URLs and CloudKit share links on from there.
+//   6. Adds the AppDelegate method iOS calls when someone taps a CloudKit share link on this device
 //      (`userDidAcceptCloudKitShareWith`). Expo forwards a fixed set of delegate calls and this is not one of them, so the
 //      method has to be written into the generated AppDelegate. It only records the link and points at the CloudKit
 //      module, which does the accepting (patch 2 of dev_docs/CLOUDKIT_SYNC_PLAN.md).
@@ -146,13 +148,111 @@ const withPodsTarget = (config) =>
     return c;
   });
 
+// 0232: the UIScene lifecycle. A build with the iOS 27 SDK stops at launch (UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption)
+// unless the app declares a scene and creates its window in a scene delegate. Expo SDK 54's generated AppDelegate makes the window itself,
+// so this (1) declares the scene in Info.plist, (2) stops the AppDelegate starting React Native and keeps the launch options for the scene,
+// and (3) appends a SceneDelegate to AppDelegate.swift that makes the window and starts React Native in it. URLs and universal links that
+// iOS now delivers to the scene go back through the AppDelegate's own methods, so expo-linking still sees them. A CloudKit share link also
+// arrives at the scene now (`userDidAcceptCloudKitShareWith` on the scene, or `cloudKitShareMetadata` on a cold launch).
+// Written for the SDK 54 template. If its text is not found this throws, because a scene manifest without a SceneDelegate gives a black screen.
+const SCENE_MARKER = '// Scene lifecycle (added here by plugins/withCloudKit.js).';
+
+function applySceneManifest(plist) {
+  plist.UIApplicationSceneManifest = {
+    UIApplicationSupportsMultipleScenes: false,
+    UISceneConfigurations: {
+      UIWindowSceneSessionRoleApplication: [
+        { UISceneConfigurationName: 'Default Configuration', UISceneDelegateClassName: '$(PRODUCT_MODULE_NAME).SceneDelegate' },
+      ],
+    },
+  };
+  return plist;
+}
+
+const SCENE_DELEGATE = [
+  '',
+  SCENE_MARKER,
+  '// iOS 27 needs an app to use scenes. The window is made here, and React Native starts in it.',
+  'class SceneDelegate: UIResponder, UIWindowSceneDelegate {',
+  '  var window: UIWindow?',
+  '',
+  '  private var appDelegate: AppDelegate? { UIApplication.shared.delegate as? AppDelegate }',
+  '',
+  '  func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {',
+  '    guard let windowScene = scene as? UIWindowScene, let appDelegate = appDelegate, let factory = appDelegate.reactNativeFactory else { return }',
+  '    let window = UIWindow(windowScene: windowScene)',
+  '    self.window = window',
+  '    appDelegate.window = window',
+  '    var launchOptions: [UIApplication.LaunchOptionsKey: Any] = appDelegate.launchOptionsForScene ?? [:]',
+  '    if let url = connectionOptions.urlContexts.first?.url { launchOptions[.url] = url }',
+  '    if let metadata = connectionOptions.cloudKitShareMetadata { SceneDelegate.recordShare(metadata) }',
+  '    factory.startReactNative(withModuleName: "main", in: window, launchOptions: launchOptions.isEmpty ? nil : launchOptions)',
+  '    for activity in connectionOptions.userActivities {',
+  '      _ = appDelegate.application(UIApplication.shared, continue: activity, restorationHandler: { _ in })',
+  '    }',
+  '  }',
+  '',
+  '  // Links: handed to the AppDelegate methods so Expo\'s linking still sees them.',
+  '  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {',
+  '    guard let appDelegate = appDelegate else { return }',
+  '    for context in URLContexts { _ = appDelegate.application(UIApplication.shared, open: context.url, options: [:]) }',
+  '  }',
+  '',
+  '  func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {',
+  '    _ = appDelegate?.application(UIApplication.shared, continue: userActivity, restorationHandler: { _ in })',
+  '  }',
+  '',
+  '  // A tapped CloudKit share link, with the app already running. Same as the AppDelegate method above, which iOS no longer calls under scenes.',
+  '  func windowScene(_ windowScene: UIWindowScene, userDidAcceptCloudKitShareWith metadata: CKShare.Metadata) {',
+  '    SceneDelegate.recordShare(metadata)',
+  '  }',
+  '',
+  '  static func recordShare(_ metadata: CKShare.Metadata) {',
+  '    if let url = metadata.share.url?.absoluteString {',
+  `      UserDefaults.standard.set(url, forKey: "${PENDING_INVITE_KEY}")`,
+  '    }',
+  `    NotificationCenter.default.post(name: Notification.Name("${SHARE_NOTIFICATION}"), object: metadata)`,
+  '  }',
+  '}',
+  '',
+].join('\n');
+
+function injectSceneLifecycle(contents, language = 'swift') {
+  if (language !== 'swift') throw new Error('withCloudKit: the scene lifecycle is only written into a Swift AppDelegate.');
+  if (contents.includes(SCENE_MARKER)) return contents;
+  const startBlock = /^[ \t]*#if os\(iOS\) \|\| os\(tvOS\)\r?\n[ \t]*window = UIWindow\(frame: UIScreen\.main\.bounds\)[\s\S]*?startReactNative\([\s\S]*?\)\r?\n[ \t]*#endif[ \t]*\r?\n/m;
+  const property = /^([ \t]*)var reactNativeFactory: RCTReactNativeFactory\?[ \t]*\r?\n/m;
+  if (!startBlock.test(contents) || !property.test(contents)) {
+    throw new Error('withCloudKit: the generated AppDelegate.swift does not look like the Expo SDK 54 template (no window and startReactNative block, or no reactNativeFactory property), so the scene lifecycle was not added. Without it the app stops at launch on iOS 27. See plugins/withCloudKit.js.');
+  }
+  let out = contents.replace(startBlock, '    // The window is made in SceneDelegate now. The launch options wait here until it starts React Native.\n    launchOptionsForScene = launchOptions\n');
+  out = out.replace(property, (m, pad) => `${m}${pad}var launchOptionsForScene: [UIApplication.LaunchOptionsKey: Any]?\n`);
+  if (!/^\s*import CloudKit\s*$/m.test(out)) out = out.replace(/^(\s*import [^\n]+\n)/m, '$1import CloudKit\n');
+  return out.replace(/\s*$/, '\n') + SCENE_DELEGATE;
+}
+
+const withSceneManifest = (config) =>
+  withInfoPlist(config, (c) => {
+    applySceneManifest(c.modResults);
+    return c;
+  });
+
+const withSceneDelegate = (config) =>
+  withAppDelegate(config, (c) => {
+    c.modResults.contents = injectSceneLifecycle(c.modResults.contents, c.modResults.language);
+    return c;
+  });
+
 const withShareLinkHandler = (config) =>
   withAppDelegate(config, (c) => {
     c.modResults.contents = injectShareLinkHandler(c.modResults.contents, c.modResults.language);
     return c;
   });
 
-module.exports = (config) => withPodsTarget(withShareLinkHandler(withProjectTarget(withPodfileTarget(withSharingSupport(withIcloudEntitlements(config))))));
+module.exports = (config) =>
+  withSceneManifest(withSceneDelegate(withPodsTarget(withShareLinkHandler(withProjectTarget(withPodfileTarget(withSharingSupport(withIcloudEntitlements(config))))))));
 module.exports.injectShareLinkHandler = injectShareLinkHandler;
 module.exports.injectPodsTarget = injectPodsTarget;
+module.exports.injectSceneLifecycle = injectSceneLifecycle;
+module.exports.applySceneManifest = applySceneManifest;
 module.exports.applyEntitlements = applyEntitlements;

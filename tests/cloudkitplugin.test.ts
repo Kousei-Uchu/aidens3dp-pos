@@ -117,3 +117,83 @@ test('the Podfile edit is made once, and a Podfile with no post_install is left 
   assert.equal(injectPodsTarget("target 'x' do\nend\n"), "target 'x' do\nend\n");
 });
 
+// 0232: the UIScene lifecycle. This is the shape of the Expo SDK 54 template's AppDelegate.swift (the window and startReactNative block is
+// what the plugin has to find). The tests check the text, since the Swift is not compiled here.
+const { injectSceneLifecycle, applySceneManifest } = require('../plugins/withCloudKit') as {
+  injectSceneLifecycle: (contents: string, language?: string) => string;
+  applySceneManifest: (plist: Record<string, unknown>) => Record<string, any>;
+};
+const SDK54 = [
+  'import Expo',
+  'import React',
+  'import ReactAppDependencyProvider',
+  '',
+  '@UIApplicationMain',
+  'public class AppDelegate: ExpoAppDelegate {',
+  '  var window: UIWindow?',
+  '',
+  '  var reactNativeDelegate: ExpoReactNativeFactoryDelegate?',
+  '  var reactNativeFactory: RCTReactNativeFactory?',
+  '',
+  '  public override func application(',
+  '    _ application: UIApplication,',
+  '    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil',
+  '  ) -> Bool {',
+  '    let delegate = ReactNativeDelegate()',
+  '    bindReactNativeFactory(factory)',
+  '',
+  '#if os(iOS) || os(tvOS)',
+  '    window = UIWindow(frame: UIScreen.main.bounds)',
+  '    factory.startReactNative(',
+  '      withModuleName: "main",',
+  '      in: window,',
+  '      launchOptions: launchOptions)',
+  '#endif',
+  '',
+  '    return super.application(application, didFinishLaunchingWithOptions: launchOptions)',
+  '  }',
+  '}',
+  '',
+  'class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {',
+  '}',
+  '',
+].join('\n');
+
+test('the scene manifest names a SceneDelegate in the app module and allows one scene', () => {
+  const m = applySceneManifest({ CFBundleVersion: '1' });
+  assert.equal(m.CFBundleVersion, '1');
+  assert.equal(m.UIApplicationSceneManifest.UIApplicationSupportsMultipleScenes, false);
+  const cfg = m.UIApplicationSceneManifest.UISceneConfigurations.UIWindowSceneSessionRoleApplication;
+  assert.equal(cfg.length, 1); assert.equal(cfg[0].UISceneDelegateClassName, '$(PRODUCT_MODULE_NAME).SceneDelegate');
+});
+test('the AppDelegate stops making the window, and a SceneDelegate starts React Native in one', () => {
+  const out = injectSceneLifecycle(SDK54);
+  const appPart = out.slice(0, out.indexOf('class SceneDelegate'));
+  assert.ok(!/UIWindow\(frame/.test(appPart)); assert.ok(!/startReactNative/.test(appPart));
+  assert.ok(appPart.includes('launchOptionsForScene = launchOptions'));
+  assert.ok(appPart.includes('var launchOptionsForScene: [UIApplication.LaunchOptionsKey: Any]?'));
+  assert.ok(/class SceneDelegate: UIResponder, UIWindowSceneDelegate/.test(out));
+  assert.ok(/UIWindow\(windowScene: windowScene\)/.test(out)); assert.ok(/factory\.startReactNative\(withModuleName: "main", in: window/.test(out));
+  assert.ok(/import CloudKit/.test(out));
+});
+test('the SceneDelegate hands links to the AppDelegate and records a CloudKit share link', () => {
+  const out = injectSceneLifecycle(SDK54);
+  assert.ok(/openURLContexts/.test(out)); assert.ok(/appDelegate\.application\(UIApplication\.shared, open: context\.url/.test(out));
+  assert.ok(/continue userActivity: NSUserActivity/.test(out));
+  assert.ok(/windowScene\(_ windowScene: UIWindowScene, userDidAcceptCloudKitShareWith metadata: CKShare\.Metadata\)/.test(out));
+  assert.ok(/connectionOptions\.cloudKitShareMetadata/.test(out));
+  assert.ok(out.includes('forKey: "cloudkitPendingInvite"')); assert.ok(out.includes('Notification.Name("cloudkitDidAcceptShare")'));
+});
+test('the scene edit is made once, and an unknown AppDelegate fails loudly instead of leaving a black screen', () => {
+  const once = injectSceneLifecycle(SDK54);
+  assert.equal(injectSceneLifecycle(once), once);
+  assert.throws(() => injectSceneLifecycle('import Expo\nclass AppDelegate {}\n'), /does not look like the Expo SDK 54 template/);
+  assert.throws(() => injectSceneLifecycle(SDK54, 'objc'), /only written into a Swift AppDelegate/);
+});
+test('the scene edit and the existing share-link method can both be applied, in either order', () => {
+  const a = injectSceneLifecycle(injectShareLinkHandler(SDK54));
+  const b = injectShareLinkHandler(injectSceneLifecycle(SDK54));
+  for (const out of [a, b]) { assert.ok(out.includes('class SceneDelegate')); assert.ok(out.includes('userDidAcceptCloudKitShareWith')); }
+  assert.equal((a.match(/import CloudKit/g) ?? []).length, 1); assert.equal((b.match(/import CloudKit/g) ?? []).length, 1);
+});
+
