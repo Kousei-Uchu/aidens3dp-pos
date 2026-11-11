@@ -1,0 +1,330 @@
+From 7383bbf5fac3ed567ce7bcc5978a79f533d1d4f3 Mon Sep 17 00:00:00 2001
+From: c <a@b>
+Date: Wed, 11 Nov 2026 20:34:59 +1100
+Subject: [PATCH] 0237 - schema script creates every record type the app uses
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01VJoG76F131uFfYXoJyeeWe
+---
+ .gitignore                         |  1 +
+ dev_docs/PROGRESS.md               |  1 +
+ schema-fixed.ckdb                  | 84 ++++++++++++++++++++++++++++++
+ schema-now.ckdb                    | 84 ++++++++++++++++++++++++++++++
+ scripts/ckdb_add_indexes.py        | 18 ++++++-
+ scripts/cloudkit-record-types.json | 22 ++++++++
+ tests/ckdbtypes.test.ts            | 25 +++++++++
+ 7 files changed, 233 insertions(+), 2 deletions(-)
+ create mode 100644 scripts/cloudkit-record-types.json
+ create mode 100644 tests/ckdbtypes.test.ts
+
+diff --git a/.gitignore b/.gitignore
+index 67c163f..7866550 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -54,3 +54,4 @@ tools/square-history/node_modules/
+ 
+ .cloudkit.env
+ schema-before-*.ckdb
++__pycache__/
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index dc96359..b2086e3 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -201,6 +201,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0218 | 2026-11-02 | CloudKit item 8 leftover: **another register creates a missing Shopify order** (your request: do the rest of the docs). The problem found first: today the shared sale row is written after the order, so a sale left in a dead iPad's queue leaves no trace anywhere. So with CloudKit on the outbox gets an `early` step that writes the sale before the receipt and the order (CloudKit only, sales only, not in practice mode; a failure is not fatal and the final entry step writes it again with the order on it); `runItem` now returns the finished sale and the entry fields come from one helper. `orderRecovery.ts` has the rules (stranded sale, claim handle and fields, stale claims, the gift card exception, the notice); `cloudkit/orderRecoverySync.ts` is the job: at most every ten minutes, three sales per run, a write-once claim first (so two registers cannot both create it), then `runItem` on the sale, then a notice. Run from `pollShared`. New `tests/orderrecovery.test.ts` (14 tests). Guesses and known gaps under 0218. |
+ | 0219 | 2026-11-02 | CloudKit patch 6e: **the owner-only CloudKit export** (your request: do the rest of the docs), plus corrections. The export: `exportAll.ts` is the pure half (the list of every record type, `readAll` that reads a whole list and fails loudly, `collectExport` that builds the files, manifest and README, `zipExport` with fflate); `exportAllIO.ts` writes the zip to the cache folder, adds the logo picture, and refuses in a practice run; the Cloud sync page has an owner-only **Back up everything** button that confirms first and shares the zip. New `tests/exportall.test.ts` (9 tests) and `tests/lazybackend.test.ts` (3 tests). **Corrections to earlier patches, found by a real type check and by installing `fflate` so the whole suite ran:** (1) the tsc setup in this repo does not check anything here (`expo/tsconfig.base` is missing), so the "tsc clean" I reported for 0213 to 0218 meant nothing. I ran a lenient check of every file I touched and it found two real bugs in 0216: `migrationPanel.ts` read `phase` from a failure result that has none (a failed count check), and `CloudSync.tsx` used `useApp` without importing it. Both fixed here, with tests. (2) With `fflate` installed the suite showed two failures in `demoguard.test.ts` that my patches caused: 0215 put `put()` calls in `sync.ts` outside the guarded seam, and the new export wrote a file with no guard. The direct backend handles now live in `cloudkit/lazyBackend.ts` (the write stops on the same guard as the seam) and the export checks the guard. With `fflate` installed the whole suite passes (1868, 0 failing). |
+ | 0220 | 2026-11-02 | CloudKit patch 8: **the switch** (your request: do the rest of the docs). Rules in `backendChoice.ts` (flag values, start-up kind, when to move, which of a till's own sales are the gap, what the page says), job in `cloudkit/backendSwitch.ts` (`install`, `check`, `rollBack`, `allowSwitch`, `view`), flag storage in `cloudkit/backendFlagIO.ts` (guarded, local). `App.tsx` now installs the backend through the switch instead of always Shopify; `pollShared` calls `backendSwitch.check()` first. Cloud sync page: where this till keeps shared data, with the rollback and its way back. **Decisions made here, in GUESSES:** cut over in one go (no dual-write); a switched till never falls back by itself; the gap is closed by sending a till's own recent sales, not by dual-writing. **Not done:** retiring the 25 s poll, which needs CloudKit subscriptions in Swift (8b). New `tests/backendchoice.test.ts` (9 tests) and `tests/backendswitch.test.ts` (11 tests); full suite 1891, 0 failing with `fflate` installed; a lenient type check of the new files is clean. |
++| 0237 | 2026-11-11 | The CloudKit schema script now also creates every record type the app uses that the schema lacks (`scripts/cloudkit-record-types.json`, kept in step with the Swift by `tests/ckdbtypes.test.ts`), as a type with only the system fields and the two list indexes. This closes the gap in 0236: `Audit`, `Logo`, `Notice`, `Resolution`, `Secret`, `SquareHistory` and `Training` did not exist yet, so CloudKit would have made them without indexes on first write. Their own fields are deliberately not listed: Development adds each on first write with the type the app sends, and a guessed type (whole against decimal) could clash like `version` did. The indexes cannot be set from the app at startup: CloudKit changes the schema only through the dashboard or `cktool`. `schema-now.ckdb` and `schema-fixed.ckdb` now hold every type. Not run against CloudKit here. | Import |
+ | 0236 | 2026-11-11 | CloudKit list indexes, found on the first real run: **Back up everything** and the polls failed with "recordName is not queryable". Development makes a record type the first time something writes it, with no indexes, and every list in the app is an unfiltered query that needs the record name queryable and the modification time sortable. New `scripts/ckdb_add_indexes.py` adds those two indexes to every type that lacks them (fields untouched, safe to repeat) and `npm run cloudkit:schema` (`scripts/cloudkit-fix-schema.sh`) exports the live Development schema, fixes it, validates, imports and saves it as `schema-now.ckdb`. Needs `xcrun cktool save-token` once and `CK_TEAM_ID` / `CK_CONTAINER_ID` (in `.cloudkit.env`, which is git-ignored). `schema-now.ckdb` and `schema-fixed.ckdb` are replaced with the fixed export. **Not run here** (needs a Mac with Xcode); the script that adds the indexes was tested on sample schemas and your export. Run it again after the first write of Resolution, Notice, Training, Audit, Secret and Logo, which do not exist yet. Deploy the schema to Production as before. | Import |
+ | 0235 | 2026-11-11 | Import fix, found on the first real run in Development: saving shared settings failed with "invalid attempt to set value type NUMBER_INT64 for field 'version' for type 'Settings', defined to be: STRING". The schema (`schema-now.ckdb`) defines `version` as STRING on Cart, Layout and Settings (DrawerShift's is INT64), but the sync wrote a number. `cloudkitBackend.ts` `put` now sends `version` as text for those three types; every reader already uses `Number(f.version)`. No schema change and no Swift change, so no rebuild is needed beyond the JS bundle. One pin test in `tests/cloudkitbackend.test.ts`. | Import |
+ | 0234 | 2026-11-11 | Import fix, found on the first real run in Development: **Back up everything** stopped with an error about the Square history, and the sync chip kept changing. CloudKit's Development schema only gets a record type when something first writes it, and a list of a type that does not exist yet throws `unknownItem` ("Did not find record type"). `runQuery` in `CloudKitSyncModule.swift` now returns an empty list for that case, so the backup, the polls and the count check treat a type nothing has written as empty. One pin test in `tests/cloudkitswift.test.ts`. **The Swift is not compiled.** Needs a rebuild (`npm run ios`). Whether this also settles the chip is not confirmed: the chip shows whichever of many background jobs wrote the shared sync state last. | Import |
+diff --git a/schema-fixed.ckdb b/schema-fixed.ckdb
+index a87c519..5553776 100644
+--- a/schema-fixed.ckdb
++++ b/schema-fixed.ckdb
+@@ -289,3 +289,87 @@ DEFINE SCHEMA
+         GRANT CREATE TO "_icloud",
+         GRANT READ TO "_world"
+     );
++
++    RECORD TYPE Audit (
++        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
++    RECORD TYPE Logo (
++        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
++    RECORD TYPE Notice (
++        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
++    RECORD TYPE Resolution (
++        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
++    RECORD TYPE Secret (
++        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
++    RECORD TYPE SquareHistory (
++        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
++    RECORD TYPE Training (
++        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
+diff --git a/schema-now.ckdb b/schema-now.ckdb
+index a87c519..5553776 100644
+--- a/schema-now.ckdb
++++ b/schema-now.ckdb
+@@ -289,3 +289,87 @@ DEFINE SCHEMA
+         GRANT CREATE TO "_icloud",
+         GRANT READ TO "_world"
+     );
++
++    RECORD TYPE Audit (
++        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
++    RECORD TYPE Logo (
++        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
++    RECORD TYPE Notice (
++        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
++    RECORD TYPE Resolution (
++        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
++    RECORD TYPE Secret (
++        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
++    RECORD TYPE SquareHistory (
++        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
++    RECORD TYPE Training (
++        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
+diff --git a/scripts/ckdb_add_indexes.py b/scripts/ckdb_add_indexes.py
+index 3ae80ed..5445552 100644
+--- a/scripts/ckdb_add_indexes.py
++++ b/scripts/ckdb_add_indexes.py
+@@ -7,15 +7,27 @@ Record types the Development environment created on first write have neither. Fi
+ 
+   python3 scripts/ckdb_add_indexes.py schema.ckdb > schema-indexed.ckdb
+ Prints what it changed to stderr. Users and "cloudkit.share" are CloudKit's own types and are left alone.
++It also adds any record type the app uses (scripts/cloudkit-record-types.json, checked against the Swift by tests/ckdbtypes.test.ts) that the
++schema lacks, as a type with only the system fields and the two indexes. Its own fields are not listed: Development adds each one, with the
++right type, on the first write, and a field type guessed here could clash with what the app really sends.
+ """
+-import re, sys
++import json, os, re, sys
+ 
+ SKIP = {'Users', '"cloudkit.share"'}
+ REC = '        "___recordID"   REFERENCE QUERYABLE,'
+ MOD = '        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,'
+ 
++STUB = ('    RECORD TYPE {name} (\n' + '        "___createTime" TIMESTAMP QUERYABLE SORTABLE,\n        "___createdBy"  REFERENCE,\n        "___etag"       STRING,\n'
++        + MOD + '\n        "___modifiedBy" REFERENCE,\n' + REC + '\n        GRANT WRITE TO "_creator",\n        GRANT CREATE TO "_icloud",\n        GRANT READ TO "_world"\n    );')
++
++def required_types():
++    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cloudkit-record-types.json')) as f: return json.load(f)
++
+ def fix(text: str):
+     changes = []
++    have = set(re.findall(r'RECORD TYPE (\S+) \(', text))
++    missing = [t for t in required_types() if t not in have]
++    for t in missing: changes.append(f'{t}: type did not exist, added with its indexes')
+     def one(m):
+         name, body = m.group(1), m.group(2)
+         if name in SKIP: return m.group(0)
+@@ -36,7 +48,9 @@ def fix(text: str):
+             i = next((k for k, l in enumerate(out) if l.strip()), 0)
+             out[i:i] = add
+         return f'RECORD TYPE {name} (' + '\n'.join(out) + '\n    );'
+-    return re.sub(r'RECORD TYPE (\S+) \((.*?)\n    \);', one, text, flags=re.S), changes
++    out = re.sub(r'RECORD TYPE (\S+) \((.*?)\n    \);', one, text, flags=re.S)
++    if missing: out = out.rstrip('\n') + '\n\n' + '\n\n'.join(STUB.format(name=t) for t in missing) + '\n'
++    return out, changes
+ 
+ if __name__ == '__main__':
+     src = open(sys.argv[1]).read()
+diff --git a/scripts/cloudkit-record-types.json b/scripts/cloudkit-record-types.json
+new file mode 100644
+index 0000000..3833187
+--- /dev/null
++++ b/scripts/cloudkit-record-types.json
+@@ -0,0 +1,22 @@
++[
++ "Attempt",
++ "Audit",
++ "Cart",
++ "DrawerCheckpoint",
++ "DrawerShift",
++ "Event",
++ "Layout",
++ "LedgerEntry",
++ "Logo",
++ "Migration",
++ "Notice",
++ "Resolution",
++ "Rollup",
++ "Sale",
++ "Secret",
++ "Settings",
++ "SquareHistory",
++ "SquareManifest",
++ "SquareShard",
++ "Training"
++]
+diff --git a/tests/ckdbtypes.test.ts b/tests/ckdbtypes.test.ts
+new file mode 100644
+index 0000000..071e1ee
+--- /dev/null
++++ b/tests/ckdbtypes.test.ts
+@@ -0,0 +1,25 @@
++// Location: tests/ckdbtypes.test.ts
++// scripts/cloudkit-record-types.json lists every CloudKit record type the app uses, and the schema script adds any that is missing (with the
++// two indexes every list needs). A type the Swift uses that is not in the list would be created by CloudKit with no indexes on first write.
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { execFileSync } from 'node:child_process';
++
++const swift = readFileSync('modules/cloudkit-sync/ios/CloudKitSyncModule.swift', 'utf8');
++const listed: string[] = JSON.parse(readFileSync('scripts/cloudkit-record-types.json', 'utf8'));
++
++test('every record type the Swift writes or lists is in scripts/cloudkit-record-types.json', () => {
++  const used = [...new Set([...swift.matchAll(/recordType: "([A-Za-z]+)"/g)].map(m => m[1]))].sort();
++  assert.ok(used.length >= 15, 'found the types');
++  assert.deepEqual(used.filter(t => !listed.includes(t)), []);
++});
++test('the schema script adds a missing type with its indexes, fixes a weak one, leaves a good one, and is a no-op the second time', () => {
++  const sample = 'DEFINE SCHEMA\n\n    RECORD TYPE Event (\n        "___modTime"    TIMESTAMP,\n        "___recordID"   REFERENCE,\n        kind            STRING,\n        GRANT READ TO "_world"\n    );\n';
++  const run = (input: string) => execFileSync('python3', ['-c', 'import sys; sys.path.insert(0, "scripts"); import ckdb_add_indexes as m; o, c = m.fix(sys.stdin.read()); sys.stdout.write(o); sys.stderr.write("\\n".join(c))'], { input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
++  const once = run(sample);
++  assert.match(once, /RECORD TYPE Event \([\s\S]*?"___recordID"   REFERENCE QUERYABLE,[\s\S]*?\);/);
++  assert.match(once, /kind            STRING/, 'the type\'s own fields are kept');
++  for (const t of listed) assert.match(once, new RegExp(`RECORD TYPE ${t} \\(`), t);
++  assert.equal(run(once), once, 'a second run changes nothing');
++});
+-- 
+2.43.0
+

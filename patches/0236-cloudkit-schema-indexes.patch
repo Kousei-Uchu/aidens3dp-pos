@@ -1,0 +1,360 @@
+From a66363cbb991a5efcda0d60eac0588c2e18acd1f Mon Sep 17 00:00:00 2001
+From: c <a@b>
+Date: Wed, 11 Nov 2026 20:21:58 +1100
+Subject: [PATCH] 0236 - CloudKit list indexes: script and npm run
+ cloudkit:schema
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01VJoG76F131uFfYXoJyeeWe
+---
+ .gitignore                     |  3 ++
+ dev_docs/PROGRESS.md           |  1 +
+ package.json                   |  1 +
+ schema-fixed.ckdb              | 82 +++++++++++++++++++++++++++++++++
+ schema-now.ckdb                | 84 +++++++++++++++++++++++++++++++++-
+ scripts/ckdb_add_indexes.py    | 45 ++++++++++++++++++
+ scripts/cloudkit-fix-schema.sh | 26 +++++++++++
+ 7 files changed, 241 insertions(+), 1 deletion(-)
+ create mode 100644 scripts/ckdb_add_indexes.py
+ create mode 100755 scripts/cloudkit-fix-schema.sh
+
+diff --git a/.gitignore b/.gitignore
+index d750c72..67c163f 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -51,3 +51,6 @@ npm-debug.log*
+ tools/square-history/.env
+ tools/square-history/out/
+ tools/square-history/node_modules/
++
++.cloudkit.env
++schema-before-*.ckdb
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index fdb4140..dc96359 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -201,6 +201,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0218 | 2026-11-02 | CloudKit item 8 leftover: **another register creates a missing Shopify order** (your request: do the rest of the docs). The problem found first: today the shared sale row is written after the order, so a sale left in a dead iPad's queue leaves no trace anywhere. So with CloudKit on the outbox gets an `early` step that writes the sale before the receipt and the order (CloudKit only, sales only, not in practice mode; a failure is not fatal and the final entry step writes it again with the order on it); `runItem` now returns the finished sale and the entry fields come from one helper. `orderRecovery.ts` has the rules (stranded sale, claim handle and fields, stale claims, the gift card exception, the notice); `cloudkit/orderRecoverySync.ts` is the job: at most every ten minutes, three sales per run, a write-once claim first (so two registers cannot both create it), then `runItem` on the sale, then a notice. Run from `pollShared`. New `tests/orderrecovery.test.ts` (14 tests). Guesses and known gaps under 0218. |
+ | 0219 | 2026-11-02 | CloudKit patch 6e: **the owner-only CloudKit export** (your request: do the rest of the docs), plus corrections. The export: `exportAll.ts` is the pure half (the list of every record type, `readAll` that reads a whole list and fails loudly, `collectExport` that builds the files, manifest and README, `zipExport` with fflate); `exportAllIO.ts` writes the zip to the cache folder, adds the logo picture, and refuses in a practice run; the Cloud sync page has an owner-only **Back up everything** button that confirms first and shares the zip. New `tests/exportall.test.ts` (9 tests) and `tests/lazybackend.test.ts` (3 tests). **Corrections to earlier patches, found by a real type check and by installing `fflate` so the whole suite ran:** (1) the tsc setup in this repo does not check anything here (`expo/tsconfig.base` is missing), so the "tsc clean" I reported for 0213 to 0218 meant nothing. I ran a lenient check of every file I touched and it found two real bugs in 0216: `migrationPanel.ts` read `phase` from a failure result that has none (a failed count check), and `CloudSync.tsx` used `useApp` without importing it. Both fixed here, with tests. (2) With `fflate` installed the suite showed two failures in `demoguard.test.ts` that my patches caused: 0215 put `put()` calls in `sync.ts` outside the guarded seam, and the new export wrote a file with no guard. The direct backend handles now live in `cloudkit/lazyBackend.ts` (the write stops on the same guard as the seam) and the export checks the guard. With `fflate` installed the whole suite passes (1868, 0 failing). |
+ | 0220 | 2026-11-02 | CloudKit patch 8: **the switch** (your request: do the rest of the docs). Rules in `backendChoice.ts` (flag values, start-up kind, when to move, which of a till's own sales are the gap, what the page says), job in `cloudkit/backendSwitch.ts` (`install`, `check`, `rollBack`, `allowSwitch`, `view`), flag storage in `cloudkit/backendFlagIO.ts` (guarded, local). `App.tsx` now installs the backend through the switch instead of always Shopify; `pollShared` calls `backendSwitch.check()` first. Cloud sync page: where this till keeps shared data, with the rollback and its way back. **Decisions made here, in GUESSES:** cut over in one go (no dual-write); a switched till never falls back by itself; the gap is closed by sending a till's own recent sales, not by dual-writing. **Not done:** retiring the 25 s poll, which needs CloudKit subscriptions in Swift (8b). New `tests/backendchoice.test.ts` (9 tests) and `tests/backendswitch.test.ts` (11 tests); full suite 1891, 0 failing with `fflate` installed; a lenient type check of the new files is clean. |
++| 0236 | 2026-11-11 | CloudKit list indexes, found on the first real run: **Back up everything** and the polls failed with "recordName is not queryable". Development makes a record type the first time something writes it, with no indexes, and every list in the app is an unfiltered query that needs the record name queryable and the modification time sortable. New `scripts/ckdb_add_indexes.py` adds those two indexes to every type that lacks them (fields untouched, safe to repeat) and `npm run cloudkit:schema` (`scripts/cloudkit-fix-schema.sh`) exports the live Development schema, fixes it, validates, imports and saves it as `schema-now.ckdb`. Needs `xcrun cktool save-token` once and `CK_TEAM_ID` / `CK_CONTAINER_ID` (in `.cloudkit.env`, which is git-ignored). `schema-now.ckdb` and `schema-fixed.ckdb` are replaced with the fixed export. **Not run here** (needs a Mac with Xcode); the script that adds the indexes was tested on sample schemas and your export. Run it again after the first write of Resolution, Notice, Training, Audit, Secret and Logo, which do not exist yet. Deploy the schema to Production as before. | Import |
+ | 0235 | 2026-11-11 | Import fix, found on the first real run in Development: saving shared settings failed with "invalid attempt to set value type NUMBER_INT64 for field 'version' for type 'Settings', defined to be: STRING". The schema (`schema-now.ckdb`) defines `version` as STRING on Cart, Layout and Settings (DrawerShift's is INT64), but the sync wrote a number. `cloudkitBackend.ts` `put` now sends `version` as text for those three types; every reader already uses `Number(f.version)`. No schema change and no Swift change, so no rebuild is needed beyond the JS bundle. One pin test in `tests/cloudkitbackend.test.ts`. | Import |
+ | 0234 | 2026-11-11 | Import fix, found on the first real run in Development: **Back up everything** stopped with an error about the Square history, and the sync chip kept changing. CloudKit's Development schema only gets a record type when something first writes it, and a list of a type that does not exist yet throws `unknownItem` ("Did not find record type"). `runQuery` in `CloudKitSyncModule.swift` now returns an empty list for that case, so the backup, the polls and the count check treat a type nothing has written as empty. One pin test in `tests/cloudkitswift.test.ts`. **The Swift is not compiled.** Needs a rebuild (`npm run ios`). Whether this also settles the chip is not confirmed: the chip shows whichever of many background jobs wrote the shared sync state last. | Import |
+ | 0233 | 2026-11-11 | Import fix, found on the first real import into Development: it stopped at the sales step with `invalid attempt to set value type STRING for field 'cogs_cents' for type 'Sale', defined to be: NUMBER_INT64`. A Shopify row holds every value as text, and a row with no readable `sale_json` was written field by field as it came, so its amounts went up as text into a type whose amounts are numbers. `saleWriteFromFields` now turns every `*_cents` field that is a whole number into a number on that path. One test in `tests/salerecords.test.ts`. If a sale already wrote a text amount into Development, that field's type is already wrong there: reset the Development environment's `Sale` type (see the checklist). | Import |
+diff --git a/package.json b/package.json
+index ae9946a..e8804e4 100644
+--- a/package.json
++++ b/package.json
+@@ -9,6 +9,7 @@
+     "prebuild": "expo prebuild --platform ios",
+     "ios:reset": "sh scripts/reset-ios.sh",
+     "ios:devices": "xcrun xctrace list devices",
++    "cloudkit:schema": "sh scripts/cloudkit-fix-schema.sh",
+     "typecheck": "tsc --noEmit",
+     "test": "tsx --test tests/*.test.ts",
+     "zeller": "sh scripts/install-zeller.sh",
+diff --git a/schema-fixed.ckdb b/schema-fixed.ckdb
+index faa7277..a87c519 100644
+--- a/schema-fixed.ckdb
++++ b/schema-fixed.ckdb
+@@ -1,5 +1,24 @@
+ DEFINE SCHEMA
+ 
++    RECORD TYPE Attempt (
++        "___createTime" TIMESTAMP,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        amountCents     INT64 QUERYABLE SORTABLE,
++        ref             STRING QUERYABLE SEARCHABLE SORTABLE,
++        registerId      STRING QUERYABLE SEARCHABLE SORTABLE,
++        registerName    STRING QUERYABLE SEARCHABLE SORTABLE,
++        saleUuid        STRING QUERYABLE SEARCHABLE SORTABLE,
++        status          STRING QUERYABLE SEARCHABLE SORTABLE,
++        ts              STRING QUERYABLE SEARCHABLE SORTABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
+     RECORD TYPE Cart (
+         "___createTime" TIMESTAMP QUERYABLE SORTABLE,
+         "___createdBy"  REFERENCE,
+@@ -59,6 +78,29 @@ DEFINE SCHEMA
+         GRANT READ TO "_world"
+     );
+ 
++    RECORD TYPE Event (
++        "___createTime" TIMESTAMP,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        amountCents     INT64 QUERYABLE SORTABLE,
++        code            STRING QUERYABLE SEARCHABLE SORTABLE,
++        detail          STRING QUERYABLE SEARCHABLE SORTABLE,
++        kind            STRING QUERYABLE SEARCHABLE SORTABLE,
++        message         STRING QUERYABLE SEARCHABLE SORTABLE,
++        reference       STRING QUERYABLE SEARCHABLE SORTABLE,
++        registerId      STRING QUERYABLE SEARCHABLE SORTABLE,
++        registerName    STRING QUERYABLE SEARCHABLE SORTABLE,
++        saleUuid        STRING QUERYABLE SEARCHABLE SORTABLE,
++        staff           STRING QUERYABLE SEARCHABLE SORTABLE,
++        ts              STRING QUERYABLE SEARCHABLE SORTABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
+     RECORD TYPE Layout (
+         "___createTime" TIMESTAMP QUERYABLE SORTABLE,
+         "___createdBy"  REFERENCE,
+@@ -181,6 +223,46 @@ DEFINE SCHEMA
+         GRANT READ TO "_world"
+     );
+ 
++    RECORD TYPE SquareManifest (
++        "___createTime" TIMESTAMP,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        count           INT64 QUERYABLE SORTABLE,
++        files           STRING QUERYABLE SEARCHABLE SORTABLE,
++        from            STRING QUERYABLE SEARCHABLE SORTABLE,
++        locations       STRING QUERYABLE SEARCHABLE SORTABLE,
++        registerId      STRING QUERYABLE SEARCHABLE SORTABLE,
++        registerName    STRING QUERYABLE SEARCHABLE SORTABLE,
++        to              STRING QUERYABLE SEARCHABLE SORTABLE,
++        ts              STRING QUERYABLE SEARCHABLE SORTABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
++    RECORD TYPE SquareShard (
++        "___createTime" TIMESTAMP,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        asset           ASSET,
++        bytes           INT64 QUERYABLE SORTABLE,
++        month           STRING QUERYABLE SEARCHABLE SORTABLE,
++        registerId      STRING QUERYABLE SEARCHABLE SORTABLE,
++        registerName    STRING QUERYABLE SEARCHABLE SORTABLE,
++        sales           INT64 QUERYABLE SORTABLE,
++        sid             STRING QUERYABLE SEARCHABLE SORTABLE,
++        ts              STRING QUERYABLE SEARCHABLE SORTABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
+     RECORD TYPE Users (
+         "___createTime" TIMESTAMP,
+         "___createdBy"  REFERENCE,
+diff --git a/schema-now.ckdb b/schema-now.ckdb
+index c57a49e..a87c519 100644
+--- a/schema-now.ckdb
++++ b/schema-now.ckdb
+@@ -1,5 +1,24 @@
+ DEFINE SCHEMA
+ 
++    RECORD TYPE Attempt (
++        "___createTime" TIMESTAMP,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        amountCents     INT64 QUERYABLE SORTABLE,
++        ref             STRING QUERYABLE SEARCHABLE SORTABLE,
++        registerId      STRING QUERYABLE SEARCHABLE SORTABLE,
++        registerName    STRING QUERYABLE SEARCHABLE SORTABLE,
++        saleUuid        STRING QUERYABLE SEARCHABLE SORTABLE,
++        status          STRING QUERYABLE SEARCHABLE SORTABLE,
++        ts              STRING QUERYABLE SEARCHABLE SORTABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
+     RECORD TYPE Cart (
+         "___createTime" TIMESTAMP QUERYABLE SORTABLE,
+         "___createdBy"  REFERENCE,
+@@ -59,6 +78,29 @@ DEFINE SCHEMA
+         GRANT READ TO "_world"
+     );
+ 
++    RECORD TYPE Event (
++        "___createTime" TIMESTAMP,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        amountCents     INT64 QUERYABLE SORTABLE,
++        code            STRING QUERYABLE SEARCHABLE SORTABLE,
++        detail          STRING QUERYABLE SEARCHABLE SORTABLE,
++        kind            STRING QUERYABLE SEARCHABLE SORTABLE,
++        message         STRING QUERYABLE SEARCHABLE SORTABLE,
++        reference       STRING QUERYABLE SEARCHABLE SORTABLE,
++        registerId      STRING QUERYABLE SEARCHABLE SORTABLE,
++        registerName    STRING QUERYABLE SEARCHABLE SORTABLE,
++        saleUuid        STRING QUERYABLE SEARCHABLE SORTABLE,
++        staff           STRING QUERYABLE SEARCHABLE SORTABLE,
++        ts              STRING QUERYABLE SEARCHABLE SORTABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
+     RECORD TYPE Layout (
+         "___createTime" TIMESTAMP QUERYABLE SORTABLE,
+         "___createdBy"  REFERENCE,
+@@ -181,6 +223,46 @@ DEFINE SCHEMA
+         GRANT READ TO "_world"
+     );
+ 
++    RECORD TYPE SquareManifest (
++        "___createTime" TIMESTAMP,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        count           INT64 QUERYABLE SORTABLE,
++        files           STRING QUERYABLE SEARCHABLE SORTABLE,
++        from            STRING QUERYABLE SEARCHABLE SORTABLE,
++        locations       STRING QUERYABLE SEARCHABLE SORTABLE,
++        registerId      STRING QUERYABLE SEARCHABLE SORTABLE,
++        registerName    STRING QUERYABLE SEARCHABLE SORTABLE,
++        to              STRING QUERYABLE SEARCHABLE SORTABLE,
++        ts              STRING QUERYABLE SEARCHABLE SORTABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
++    RECORD TYPE SquareShard (
++        "___createTime" TIMESTAMP,
++        "___createdBy"  REFERENCE,
++        "___etag"       STRING,
++        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
++        "___modifiedBy" REFERENCE,
++        "___recordID"   REFERENCE QUERYABLE,
++        asset           ASSET,
++        bytes           INT64 QUERYABLE SORTABLE,
++        month           STRING QUERYABLE SEARCHABLE SORTABLE,
++        registerId      STRING QUERYABLE SEARCHABLE SORTABLE,
++        registerName    STRING QUERYABLE SEARCHABLE SORTABLE,
++        sales           INT64 QUERYABLE SORTABLE,
++        sid             STRING QUERYABLE SEARCHABLE SORTABLE,
++        ts              STRING QUERYABLE SEARCHABLE SORTABLE,
++        GRANT WRITE TO "_creator",
++        GRANT CREATE TO "_icloud",
++        GRANT READ TO "_world"
++    );
++
+     RECORD TYPE Users (
+         "___createTime" TIMESTAMP,
+         "___createdBy"  REFERENCE,
+@@ -206,4 +288,4 @@ DEFINE SCHEMA
+         GRANT WRITE TO "_creator",
+         GRANT CREATE TO "_icloud",
+         GRANT READ TO "_world"
+-    );
+\ No newline at end of file
++    );
+diff --git a/scripts/ckdb_add_indexes.py b/scripts/ckdb_add_indexes.py
+new file mode 100644
+index 0000000..3ae80ed
+--- /dev/null
++++ b/scripts/ckdb_add_indexes.py
+@@ -0,0 +1,45 @@
++#!/usr/bin/env python3
++"""Add the indexes the POS's list queries need to every record type of an exported CloudKit schema (.ckdb).
++
++Every list in the app is a query with no filter, newest first. CloudKit refuses it ("recordName is not queryable" / "modifiedAt is not
++sortable") for any record type that lacks:  "___recordID" REFERENCE QUERYABLE  and  "___modTime" TIMESTAMP QUERYABLE SORTABLE.
++Record types the Development environment created on first write have neither. Fields are never touched, so no type can clash.
++
++  python3 scripts/ckdb_add_indexes.py schema.ckdb > schema-indexed.ckdb
++Prints what it changed to stderr. Users and "cloudkit.share" are CloudKit's own types and are left alone.
++"""
++import re, sys
++
++SKIP = {'Users', '"cloudkit.share"'}
++REC = '        "___recordID"   REFERENCE QUERYABLE,'
++MOD = '        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,'
++
++def fix(text: str):
++    changes = []
++    def one(m):
++        name, body = m.group(1), m.group(2)
++        if name in SKIP: return m.group(0)
++        lines = body.split('\n'); out = []; had_rec = had_mod = False
++        for ln in lines:
++            if re.match(r'\s*"___recordID"', ln):
++                had_rec = True
++                if not re.search(r'QUERYABLE', ln): ln = REC; changes.append(f'{name}: recordID made queryable')
++            elif re.match(r'\s*"___modTime"', ln):
++                had_mod = True
++                if not (re.search(r'QUERYABLE', ln) and re.search(r'SORTABLE', ln)): ln = MOD; changes.append(f'{name}: modTime made queryable and sortable')
++            out.append(ln)
++        # new lines go straight after the first line (the type's opening), before the fields
++        add = []
++        if not had_rec: add.append(REC); changes.append(f'{name}: recordID index added')
++        if not had_mod: add.append(MOD); changes.append(f'{name}: modTime index added')
++        if add:
++            i = next((k for k, l in enumerate(out) if l.strip()), 0)
++            out[i:i] = add
++        return f'RECORD TYPE {name} (' + '\n'.join(out) + '\n    );'
++    return re.sub(r'RECORD TYPE (\S+) \((.*?)\n    \);', one, text, flags=re.S), changes
++
++if __name__ == '__main__':
++    src = open(sys.argv[1]).read()
++    new, changes = fix(src)
++    sys.stdout.write(new)
++    print('\n'.join(changes) or 'nothing to change', file=sys.stderr)
+diff --git a/scripts/cloudkit-fix-schema.sh b/scripts/cloudkit-fix-schema.sh
+new file mode 100755
+index 0000000..5e7b3bb
+--- /dev/null
++++ b/scripts/cloudkit-fix-schema.sh
+@@ -0,0 +1,26 @@
++#!/bin/sh
++# One command for the CloudKit list indexes. Run it on the Mac after anything new has been written to CloudKit, and before Back up everything.
++#   npm run cloudkit:schema                 fix the Development environment
++#   npm run cloudkit:schema -- --check      only report what would change (nothing is imported)
++# Needs once:  xcrun cktool save-token   (a CloudKit management token), and these two values, either exported or in .cloudkit.env:
++#   CK_TEAM_ID=ABCDE12345     CK_CONTAINER_ID=iCloud.your.container
++# What it does: exports the live Development schema (so the types CloudKit made on first write are in it), adds the two indexes every
++# list query needs to each type that lacks them (scripts/ckdb_add_indexes.py; fields are never touched), validates, then imports.
++# Safe to repeat: with nothing to change it imports nothing.
++set -eu
++cd "$(dirname "$0")/.."
++[ -f .cloudkit.env ] && . ./.cloudkit.env
++: "${CK_TEAM_ID:?set CK_TEAM_ID (your Apple team id) in the environment or in .cloudkit.env}"
++: "${CK_CONTAINER_ID:?set CK_CONTAINER_ID (iCloud.your.container) in the environment or in .cloudkit.env}"
++ENV="${CK_ENVIRONMENT:-development}"
++DIR="$(mktemp -d)"; LIVE="$DIR/live.ckdb"; FIXED="$DIR/fixed.ckdb"
++xcrun cktool export-schema --team-id "$CK_TEAM_ID" --container-id "$CK_CONTAINER_ID" --environment "$ENV" --output-file "$LIVE"
++python3 scripts/ckdb_add_indexes.py "$LIVE" > "$FIXED" 2> "$DIR/changes.txt"
++cat "$DIR/changes.txt"
++if grep -q "^nothing to change" "$DIR/changes.txt"; then echo "Schema already has every index. Nothing imported."; exit 0; fi
++if [ "${1:-}" = "--check" ]; then echo "Check only: nothing imported. The fixed schema is at $FIXED"; exit 0; fi
++cp "$LIVE" "schema-before-$(date +%Y%m%d-%H%M%S).ckdb"   # a copy of what was live, in case it needs putting back
++xcrun cktool import-schema --team-id "$CK_TEAM_ID" --container-id "$CK_CONTAINER_ID" --environment "$ENV" --validate --file "$FIXED"
++xcrun cktool import-schema --team-id "$CK_TEAM_ID" --container-id "$CK_CONTAINER_ID" --environment "$ENV" --file "$FIXED"
++cp "$FIXED" schema-now.ckdb
++echo "Done. schema-now.ckdb is now the live schema."
+-- 
+2.43.0
+
