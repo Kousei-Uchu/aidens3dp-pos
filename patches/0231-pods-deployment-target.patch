@@ -1,0 +1,115 @@
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index ccdbd0a..fc64fed 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -201,6 +201,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0218 | 2026-11-02 | CloudKit item 8 leftover: **another register creates a missing Shopify order** (your request: do the rest of the docs). The problem found first: today the shared sale row is written after the order, so a sale left in a dead iPad's queue leaves no trace anywhere. So with CloudKit on the outbox gets an `early` step that writes the sale before the receipt and the order (CloudKit only, sales only, not in practice mode; a failure is not fatal and the final entry step writes it again with the order on it); `runItem` now returns the finished sale and the entry fields come from one helper. `orderRecovery.ts` has the rules (stranded sale, claim handle and fields, stale claims, the gift card exception, the notice); `cloudkit/orderRecoverySync.ts` is the job: at most every ten minutes, three sales per run, a write-once claim first (so two registers cannot both create it), then `runItem` on the sale, then a notice. Run from `pollShared`. New `tests/orderrecovery.test.ts` (14 tests). Guesses and known gaps under 0218. |
+ | 0219 | 2026-11-02 | CloudKit patch 6e: **the owner-only CloudKit export** (your request: do the rest of the docs), plus corrections. The export: `exportAll.ts` is the pure half (the list of every record type, `readAll` that reads a whole list and fails loudly, `collectExport` that builds the files, manifest and README, `zipExport` with fflate); `exportAllIO.ts` writes the zip to the cache folder, adds the logo picture, and refuses in a practice run; the Cloud sync page has an owner-only **Back up everything** button that confirms first and shares the zip. New `tests/exportall.test.ts` (9 tests) and `tests/lazybackend.test.ts` (3 tests). **Corrections to earlier patches, found by a real type check and by installing `fflate` so the whole suite ran:** (1) the tsc setup in this repo does not check anything here (`expo/tsconfig.base` is missing), so the "tsc clean" I reported for 0213 to 0218 meant nothing. I ran a lenient check of every file I touched and it found two real bugs in 0216: `migrationPanel.ts` read `phase` from a failure result that has none (a failed count check), and `CloudSync.tsx` used `useApp` without importing it. Both fixed here, with tests. (2) With `fflate` installed the suite showed two failures in `demoguard.test.ts` that my patches caused: 0215 put `put()` calls in `sync.ts` outside the guarded seam, and the new export wrote a file with no guard. The direct backend handles now live in `cloudkit/lazyBackend.ts` (the write stops on the same guard as the seam) and the export checks the guard. With `fflate` installed the whole suite passes (1868, 0 failing). |
+ | 0220 | 2026-11-02 | CloudKit patch 8: **the switch** (your request: do the rest of the docs). Rules in `backendChoice.ts` (flag values, start-up kind, when to move, which of a till's own sales are the gap, what the page says), job in `cloudkit/backendSwitch.ts` (`install`, `check`, `rollBack`, `allowSwitch`, `view`), flag storage in `cloudkit/backendFlagIO.ts` (guarded, local). `App.tsx` now installs the backend through the switch instead of always Shopify; `pollShared` calls `backendSwitch.check()` first. Cloud sync page: where this till keeps shared data, with the rollback and its way back. **Decisions made here, in GUESSES:** cut over in one go (no dual-write); a switched till never falls back by itself; the gap is closed by sending a till's own recent sales, not by dual-writing. **Not done:** retiring the 25 s poll, which needs CloudKit subscriptions in Swift (8b). New `tests/backendchoice.test.ts` (9 tests) and `tests/backendswitch.test.ts` (11 tests); full suite 1891, 0 failing with `fflate` installed; a lenient type check of the new files is clean. |
++| 0231 | 2026-11-11 | Build fix, found on the first Mac build (Xcode 27, iOS 27.2 SDK). `plugins/withCloudKit.js` now adds a loop to the Podfile's `post_install` that lifts any pod target below iOS 15.0 to the app's 17.0, because Xcode 27 refuses to build below 15.0 and three resource bundles (RNDeviceInfo 9.0, RNCAsyncStorage 13.4, RNSVG 12.4) still said less. Two tests in `tests/cloudkitplugin.test.ts`. Needs `npm run ios:reset` to regenerate `ios/`. Not run through a real prebuild here. | Build |
+ | 0230 | 2026-11-04 | Docs and help only (your request: step 2 notes, update the HTML, two iPads). `CLOUDKIT_SYNC_DECISIONS.md` (header, summary, ledger rows 0228 to 0230, 0223 marked reversed, assumptions reviewed, dashboard note for `collectSince`, two iPads instead of three), `GUESSES.md`, the two Cash help pages, device test T113. `help.json` rebuilt. No code changed. | CloudKit docs |
+ | 0229 | 2026-11-04 | **Count & close includes taking the takings out.** `Shift.collectSince` (`src/lib/drawerBanking.ts`) survives closing and opening, so the next day's report no longer shows $0. Closing opens the report as "Take your takings out"; "Leave it for now" carries takings and loan into the next shift; the Z-report is shared after. The "Loan not taken back" prompt is gone. `collectSince` is stored on the `drawer-shift` record. New `tests/drawerbanking.test.ts`. Screens read-checked only. | Cash |
+ | 0228 | 2026-11-04 | **Float maths.** The loan owed back is taken out with the takings (an amount only), the float is what is left, and the take-out is never less than 75% of the takings plus the loan. The assistant gains `loan_included_in_take_out`. Reverses the 0223 choice. New tests in `floatreport` and `assistantcash`. | Cash |
+diff --git a/plugins/withCloudKit.js b/plugins/withCloudKit.js
+index 02ca3f1..302ce05 100644
+--- a/plugins/withCloudKit.js
++++ b/plugins/withCloudKit.js
+@@ -9,14 +9,16 @@
+ //      and hear about new records while it is not in front (the subscriptions are made by the CloudKit module, patch 8b).
+ //   3. Raises the iOS deployment target to 17, which CKSyncEngine needs. It sets both the Podfile platform and the Xcode
+ //      build setting, because the Podfile alone does not change the app target.
+-//   4. Adds the AppDelegate method iOS calls when someone taps a CloudKit share link on this device
++//   4. Raises any pod target that still asks for iOS older than 15 (some resource bundles declare 9.0 to 13.4), because Xcode 27 refuses
++//      to build below 15.0 (0231). It goes inside the Podfile's own post_install block.
++//   5. Adds the AppDelegate method iOS calls when someone taps a CloudKit share link on this device
+ //      (`userDidAcceptCloudKitShareWith`). Expo forwards a fixed set of delegate calls and this is not one of them, so the
+ //      method has to be written into the generated AppDelegate. It only records the link and points at the CloudKit
+ //      module, which does the accepting (patch 2 of dev_docs/CLOUDKIT_SYNC_PLAN.md).
+ // The aps-environment entitlement was left out until the push subscriptions landed. They have (patch 8b), so it is set now. An app with it
+ // must be signed with a push-enabled provisioning profile: enable Push Notifications for the App ID in the Apple Developer account first, or
+ // the build fails to sign.
+-const { withEntitlementsPlist, withInfoPlist, withPodfileProperties, withXcodeProject, withAppDelegate } = require('@expo/config-plugins');
++const { withEntitlementsPlist, withInfoPlist, withPodfileProperties, withPodfile, withXcodeProject, withAppDelegate } = require('@expo/config-plugins');
+ 
+ const CONTAINER = 'iCloud.com.aidens3dp.pos';
+ const DEPLOYMENT_TARGET = '17.0';
+@@ -116,12 +118,41 @@ function injectShareLinkHandler(contents, language = 'swift') {
+   return withImport.slice(0, body.close) + handler + withImport.slice(body.close);
+ }
+ 
++// 0231: Xcode 27 only builds for iOS 15.0 and up, and a few pods' resource bundles (RNDeviceInfo, RNCAsyncStorage, RNSVG) still say 9.0 to 13.4,
++// which stops the build. This writes a small loop at the top of the Podfile's post_install block that lifts any pod target below 15.0 to ours.
++const PODS_MARKER = '# Raise pod targets below iOS 15 (added here by plugins/withCloudKit.js).';
++function injectPodsTarget(contents) {
++  if (contents.includes(PODS_MARKER)) return contents;
++  const hook = /^([ \t]*)post_install do \|installer\|[ \t]*\r?\n/m;
++  const m = hook.exec(contents);
++  if (!m) return contents;
++  const pad = m[1] + '  ';
++  const snippet = [
++    `${pad}${PODS_MARKER}`,
++    `${pad}installer.pods_project.targets.each do |t|`,
++    `${pad}  t.build_configurations.each do |bc|`,
++    `${pad}    v = bc.build_settings['IPHONEOS_DEPLOYMENT_TARGET']`,
++    `${pad}    bc.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '${DEPLOYMENT_TARGET}' if v && v.to_f < 15.0`,
++    `${pad}  end`,
++    `${pad}end`,
++    '',
++  ].join('\n');
++  return contents.slice(0, m.index + m[0].length) + snippet + contents.slice(m.index + m[0].length);
++}
++
++const withPodsTarget = (config) =>
++  withPodfile(config, (c) => {
++    c.modResults.contents = injectPodsTarget(c.modResults.contents);
++    return c;
++  });
++
+ const withShareLinkHandler = (config) =>
+   withAppDelegate(config, (c) => {
+     c.modResults.contents = injectShareLinkHandler(c.modResults.contents, c.modResults.language);
+     return c;
+   });
+ 
+-module.exports = (config) => withShareLinkHandler(withProjectTarget(withPodfileTarget(withSharingSupport(withIcloudEntitlements(config)))));
++module.exports = (config) => withPodsTarget(withShareLinkHandler(withProjectTarget(withPodfileTarget(withSharingSupport(withIcloudEntitlements(config))))));
+ module.exports.injectShareLinkHandler = injectShareLinkHandler;
++module.exports.injectPodsTarget = injectPodsTarget;
+ module.exports.applyEntitlements = applyEntitlements;
+diff --git a/tests/cloudkitplugin.test.ts b/tests/cloudkitplugin.test.ts
+index cd068bf..48e48b6 100644
+--- a/tests/cloudkitplugin.test.ts
++++ b/tests/cloudkitplugin.test.ts
+@@ -88,3 +88,32 @@ test('an Objective-C AppDelegate is left alone rather than having Swift written
+   const objc = '@implementation AppDelegate\n@end\n';
+   assert.equal(injectShareLinkHandler(objc, 'objc'), objc);
+ });
++
++// 0231: Xcode 27 builds for iOS 15.0 and up only, so pod targets that still ask for less are lifted from inside the Podfile's post_install.
++const { injectPodsTarget } = require('../plugins/withCloudKit') as { injectPodsTarget: (contents: string) => string };
++const PODFILE = [
++  "target 'aidens3dpos' do",
++  '  use_expo_modules!',
++  '  post_install do |installer|',
++  '    react_native_post_install(',
++  '      installer,',
++  "      config[:reactNativePath],",
++  '      :mac_catalyst_enabled => false',
++  '    )',
++  '  end',
++  'end',
++  '',
++].join('\n');
++test('the Podfile gets a loop that lifts pod targets below iOS 15, inside post_install and before the React Native call', () => {
++  const out = injectPodsTarget(PODFILE);
++  assert.ok(out.includes("if v && v.to_f < 15.0"));
++  assert.ok(out.includes("= '17.0' if"));
++  assert.ok(out.indexOf('installer.pods_project.targets.each') > out.indexOf('post_install do |installer|'));
++  assert.ok(out.indexOf('installer.pods_project.targets.each') < out.indexOf('react_native_post_install('));
++});
++test('the Podfile edit is made once, and a Podfile with no post_install is left alone', () => {
++  const once = injectPodsTarget(PODFILE);
++  assert.equal(injectPodsTarget(once), once);
++  assert.equal(injectPodsTarget("target 'x' do\nend\n"), "target 'x' do\nend\n");
++});
++
