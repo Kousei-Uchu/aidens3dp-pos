@@ -6,6 +6,7 @@ import { useApp, currentStaff } from '../state/store';
 import { checkReader, getTerminal, pairReader } from '../zellerBridge';
 import { attemptRef, describeEvent, startCharge, startRefund } from '../lib/zeller';
 import { processOutbox, pollShared, attemptSync } from '../lib/sync';
+import { getLastPoll } from '../lib/pollTiming';
 import { csv } from '../lib/csvStore';
 import { fmt } from '../lib/money';
 import { resolvedElsewhereEvent, unresolvedRows } from '../lib/attemptShared';
@@ -44,7 +45,7 @@ export default function Diagnostics() {
           <Btn title="Test purchase $1.00" icon="card-outline" busy={busy} onPress={() => void test()} disabled={!z.ready} />{lastRef ? <Btn title="Refund the $1.00 test" kind="secondary" onPress={() => void refund()} /> : null}
           <Txt size={12} sub>After reinstalling the app you must re-pair the terminal and re-enter Shopify credentials.</Txt></View></Section>
       ) : null}
-      <Section title="Sync"><Row title={`Status: ${sync.state}`} sub={sync.error ?? (sync.at ? `Last ${new Date(sync.at).toLocaleTimeString()}` : undefined)} /><Row title={`${outbox.length} sale(s) queued`} last right={<Btn small title="Sync now" spot={SPOT.diagnosticsSync} onPress={() => { void processOutbox(); void pollShared(); }} />} /></Section>
+      <Section title="Sync"><Row title={`Status: ${sync.state}`} sub={sync.error ?? (sync.at ? `Last ${new Date(sync.at).toLocaleTimeString()}` : undefined)} />{getLastPoll() ? <Row title="Last full sync" sub={getLastPoll()} /> : null}<Row title={`${outbox.length} sale(s) queued`} last right={<Btn small title="Sync now" spot={SPOT.diagnosticsSync} onPress={() => { void processOutbox(); void pollShared(); }} />} /></Section>
       <Section title="Card attempts (this device)">{attempts.slice(-8).reverse().map((a, i, arr) => <Row key={a.ref} last={i === arr.length - 1} title={`${fmt(a.amountCents)} · ${a.status}`} sub={`${a.ref}${a.resolvedBy ? ' · resolved by ' + a.resolvedBy : ''}`} />)}{!attempts.length ? <Row title="None yet" last /> : null}</Section>
       {/* 0200: only once CloudKit has sent the shop's attempts, so a register still on Shopify storage does not show an empty section */}
       {sharedAttempts.length ? <Section title="Card payments waiting (all registers)">{waiting.map((r, i) => <Row key={r.key} last={i === waiting.length - 1} title={r.title} sub={r.sub} right={r.resolvable && r.attempt ? <View style={{ flexDirection: 'row', gap: 6 }}><Btn small title="Charged" kind="secondary" busy={busy} onPress={() => void resolveElsewhere(r.attempt!, true)} /><Btn small title="Not charged" kind="secondary" busy={busy} onPress={() => void resolveElsewhere(r.attempt!, false)} /></View> : undefined} />)}{!waiting.length ? <Row title="None waiting" last /> : null}</Section> : null}

@@ -5,6 +5,8 @@ import { useApp, currentStaff, setNoticeSink, type OutboxItem, type SavedCart, t
 import { csv, setEventSink } from './csvStore';
 import { applyRecord, emptyTotals, rollupKey, type RollupRow, type Totals } from './rollup';
 import { afterPull, decodeSaleRow, emptySharedHistory, SALES_PULL_MS } from './salesHistory';
+import { singleFlight } from './singleFlight';
+import { pollTiming, setLastPoll } from './pollTiming';
 import { parseBundleConfig } from './bundles';
 import { parseGrid, type Grid } from './grid';
 import { adoptAfterSend, gridText, planLayout } from './gridMerge';
@@ -366,29 +368,43 @@ export async function importFromShopify(onProgress: (s: string) => void) {
   return { variants: vs.length, collections: collections.length, customers: customers.length, discounts: autos.length + presets.length };
 }
 
-/** Pull what other registers may have changed. Cheap enough to poll every ~20 s while foregrounded. */
-export async function pollShared() {
+/** Pull what other registers may have changed. Cheap enough to poll every ~20 s while foregrounded. A call made while a poll is still running joins it (0239). */
+const pollOnce = singleFlight(pollSharedWork);
+export async function pollShared(): Promise<void> { return pollOnce(); }
+async function pollSharedWork(): Promise<void> {
   const s = st(); if (!hasCreds()) return;
+  const t0 = Date.now(); let tl = t0; const laps: [string, number][] = []; const lap = (name: string) => { const n = Date.now(); laps.push([name, n - tl]); tl = n; }; // how long each part took, for Diagnostics (0239)
   try {
     // Practice data is never sent: the seam refuses these writes in training anyway, and skipping them here keeps a course
     // from showing a sync error for a push that was never meant to happen.
     if (!isTraining()) {
       await backendSwitch.check(); // moves this till to iCloud once the import is done (never throws)
+      lap('backend switch');
       if (s.settings.sharedSettingsPending) await pushSharedSettings();
+      lap('settings push');
       if (s.settings.scannerCalPending) await pushScannerCalibration().catch(() => {});
       if (s.settings.drawerPending) await pushDrawer().catch(() => {});
       if (s.settings.warningListPending) await pushWarningList().catch(() => {});
       await events.catchUp(); // events the live upload missed, and a register's own history once after it joins (never throws)
+      lap('events');
       await attemptSync.catchUp(); // the same for payment attempts
       await attemptSync.pull(); // then read every register's attempts back (the shop-wide list, and a payment another register resolved)
+      lap('payment attempts');
       await noticeSync.catchUp(); // cash and refund notices the live upload missed (never throws)
       await noticeSync.pull(); // and take in the ones other registers raised
+      lap('notices');
       await logoSync.run(); // the logo image, both ways (never throws)
+      lap('logo');
       await squareSync.run(); // the Square history months, both ways (never throws)
+      lap('square history');
       await trainingSync.run(); // training marks, both ways (never throws)
+      lap('training');
       await auditSync.catchUp(); // assistant log events the live upload missed, encrypted (never throws)
+      lap('assistant log');
       await secretSync.run(); // shared secrets, both ways, only with the encrypted switch on (never throws)
+      lap('secrets');
       await orderRecovery.run(); // sales another register left without a Shopify order (at most every ten minutes; never throws)
+      lap('order recovery');
     }
     // stock
     if (s.settings.locationId && s.data.stockSince) {
@@ -403,8 +419,11 @@ export async function pollShared() {
       s.patchData({ stockSince: since });
     }
     await pullSaved(); await pullLayout(); await pullSettings(); await pullScannerCalibration(); await pullDrawer(); await pullWarningList();
+    lap('carts, layout, settings, drawer');
     await pullSalesHistory().catch(() => {}); // the shop-wide sales view: an enrichment, so a failure never marks the sync bad
+    lap('sales history');
     st().set({ sync: { state: st().pos.outbox.length ? 'error' : 'idle', at: new Date().toISOString(), error: st().pos.outbox.length ? `${st().pos.outbox.length} queued` : undefined } });
+    setLastPoll(pollTiming(Date.now() - t0, laps));
   } catch (e: any) {
     st().set({ sync: { state: isNetworkError(e) ? 'offline' : 'error', at: st().sync.at, error: String(e?.message ?? e) } });
   }
