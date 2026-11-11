@@ -879,10 +879,16 @@ public class CloudKitSyncModule: Module {
       }
     }
     var results: (matchResults: [(CKRecord.ID, Result<CKRecord, Error>)], queryCursor: CKQueryOperation.Cursor?)
-    if let c = cursor {
-      results = try await db.records(continuingMatchFrom: c, desiredKeys: desiredKeys, resultsLimit: limit)
-    } else {
-      results = try await db.records(matching: query, inZoneWith: storeZoneID, desiredKeys: desiredKeys, resultsLimit: limit)
+    do {
+      if let c = cursor {
+        results = try await db.records(continuingMatchFrom: c, desiredKeys: desiredKeys, resultsLimit: limit)
+      } else {
+        results = try await db.records(matching: query, inZoneWith: storeZoneID, desiredKeys: desiredKeys, resultsLimit: limit)
+      }
+    } catch let error as CKError where error.code == .unknownItem {
+      // A record type that nothing has written yet does not exist in the Development schema ("Did not find record type"),
+      // so a list of it is empty, not a failure. Without this the backup and the polls stop at the first such type.
+      return ["rows": [], "next": NSNull()]
     }
     for (_, res) in results.matchResults {
       if case .success(let record) = res {

@@ -136,3 +136,6 @@ test('a join, a set-up and an Apple ID change make the next call look again (022
   assert.match(src, /\.CKAccountChanged[\s\S]*?forgetStore\(\)/);
   assert.match(body('state'), /resolveStore\(refresh: true\)/);
 });
+test('a list of a record type that does not exist yet is empty, not an error (0234)', () => {
+  assert.match(body('runQuery'), /catch let error as CKError where error\.code == \.unknownItem[\s\S]*?"rows": \[\]/);
+});
