@@ -1,0 +1,144 @@
+From 21a4fd9d4d7f1fdc3a8d1e4f6600d5e7e8db0235 Mon Sep 17 00:00:00 2001
+From: c <a@b>
+Date: Wed, 11 Nov 2026 21:30:47 +1100
+Subject: [PATCH] 0238 - Transactions tab shows every register's sales
+
+---
+ dev_docs/PROGRESS.md            |  1 +
+ src/lib/transactionsMerge.ts    | 19 +++++++++++++++++++
+ src/screens/Transactions.tsx    | 15 +++++++++------
+ tests/transactionsmerge.test.ts | 27 +++++++++++++++++++++++++++
+ 4 files changed, 56 insertions(+), 6 deletions(-)
+ create mode 100644 src/lib/transactionsMerge.ts
+ create mode 100644 tests/transactionsmerge.test.ts
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index b2086e3..0c9b7a2 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -201,6 +201,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0218 | 2026-11-02 | CloudKit item 8 leftover: **another register creates a missing Shopify order** (your request: do the rest of the docs). The problem found first: today the shared sale row is written after the order, so a sale left in a dead iPad's queue leaves no trace anywhere. So with CloudKit on the outbox gets an `early` step that writes the sale before the receipt and the order (CloudKit only, sales only, not in practice mode; a failure is not fatal and the final entry step writes it again with the order on it); `runItem` now returns the finished sale and the entry fields come from one helper. `orderRecovery.ts` has the rules (stranded sale, claim handle and fields, stale claims, the gift card exception, the notice); `cloudkit/orderRecoverySync.ts` is the job: at most every ten minutes, three sales per run, a write-once claim first (so two registers cannot both create it), then `runItem` on the sale, then a notice. Run from `pollShared`. New `tests/orderrecovery.test.ts` (14 tests). Guesses and known gaps under 0218. |
+ | 0219 | 2026-11-02 | CloudKit patch 6e: **the owner-only CloudKit export** (your request: do the rest of the docs), plus corrections. The export: `exportAll.ts` is the pure half (the list of every record type, `readAll` that reads a whole list and fails loudly, `collectExport` that builds the files, manifest and README, `zipExport` with fflate); `exportAllIO.ts` writes the zip to the cache folder, adds the logo picture, and refuses in a practice run; the Cloud sync page has an owner-only **Back up everything** button that confirms first and shares the zip. New `tests/exportall.test.ts` (9 tests) and `tests/lazybackend.test.ts` (3 tests). **Corrections to earlier patches, found by a real type check and by installing `fflate` so the whole suite ran:** (1) the tsc setup in this repo does not check anything here (`expo/tsconfig.base` is missing), so the "tsc clean" I reported for 0213 to 0218 meant nothing. I ran a lenient check of every file I touched and it found two real bugs in 0216: `migrationPanel.ts` read `phase` from a failure result that has none (a failed count check), and `CloudSync.tsx` used `useApp` without importing it. Both fixed here, with tests. (2) With `fflate` installed the suite showed two failures in `demoguard.test.ts` that my patches caused: 0215 put `put()` calls in `sync.ts` outside the guarded seam, and the new export wrote a file with no guard. The direct backend handles now live in `cloudkit/lazyBackend.ts` (the write stops on the same guard as the seam) and the export checks the guard. With `fflate` installed the whole suite passes (1868, 0 failing). |
+ | 0220 | 2026-11-02 | CloudKit patch 8: **the switch** (your request: do the rest of the docs). Rules in `backendChoice.ts` (flag values, start-up kind, when to move, which of a till's own sales are the gap, what the page says), job in `cloudkit/backendSwitch.ts` (`install`, `check`, `rollBack`, `allowSwitch`, `view`), flag storage in `cloudkit/backendFlagIO.ts` (guarded, local). `App.tsx` now installs the backend through the switch instead of always Shopify; `pollShared` calls `backendSwitch.check()` first. Cloud sync page: where this till keeps shared data, with the rollback and its way back. **Decisions made here, in GUESSES:** cut over in one go (no dual-write); a switched till never falls back by itself; the gap is closed by sending a till's own recent sales, not by dual-writing. **Not done:** retiring the 25 s poll, which needs CloudKit subscriptions in Swift (8b). New `tests/backendchoice.test.ts` (9 tests) and `tests/backendswitch.test.ts` (11 tests); full suite 1891, 0 failing with `fflate` installed; a lenient type check of the new files is clean. |
++| 0238 | 2026-11-11 | **Transactions tab shows every register's sales.** It listed only this register's own sales (`pos.sales`), so two iPads never matched and the tab could not show whether sync worked. It now also lists the other registers' sales that the shop-wide pull already holds (`pos.shared.sales`, filled by `pullSalesHistory`), each once, newest first, and a sale from another register is labelled with its register's name on the row (the search finds it too). Opening the tab asks for a pull (throttled); pull to refresh forces one. The pull keeps the 800 newest sales it reads (8 pages of 100) and skips this register's own, so older sales from other registers are not listed. A sale from another register still needs to be in the Shopify list (first 25 orders, `Load more` for the rest) before **Return or exchange** is available. New `src/lib/transactionsMerge.ts` and `tests/transactionsmerge.test.ts`. Not run on a device; the screen change was read-checked only. | Sync |
+ | 0237 | 2026-11-11 | The CloudKit schema script now also creates every record type the app uses that the schema lacks (`scripts/cloudkit-record-types.json`, kept in step with the Swift by `tests/ckdbtypes.test.ts`), as a type with only the system fields and the two list indexes. This closes the gap in 0236: `Audit`, `Logo`, `Notice`, `Resolution`, `Secret`, `SquareHistory` and `Training` did not exist yet, so CloudKit would have made them without indexes on first write. Their own fields are deliberately not listed: Development adds each on first write with the type the app sends, and a guessed type (whole against decimal) could clash like `version` did. The indexes cannot be set from the app at startup: CloudKit changes the schema only through the dashboard or `cktool`. `schema-now.ckdb` and `schema-fixed.ckdb` now hold every type. Not run against CloudKit here. | Import |
+ | 0236 | 2026-11-11 | CloudKit list indexes, found on the first real run: **Back up everything** and the polls failed with "recordName is not queryable". Development makes a record type the first time something writes it, with no indexes, and every list in the app is an unfiltered query that needs the record name queryable and the modification time sortable. New `scripts/ckdb_add_indexes.py` adds those two indexes to every type that lacks them (fields untouched, safe to repeat) and `npm run cloudkit:schema` (`scripts/cloudkit-fix-schema.sh`) exports the live Development schema, fixes it, validates, imports and saves it as `schema-now.ckdb`. Needs `xcrun cktool save-token` once and `CK_TEAM_ID` / `CK_CONTAINER_ID` (in `.cloudkit.env`, which is git-ignored). `schema-now.ckdb` and `schema-fixed.ckdb` are replaced with the fixed export. **Not run here** (needs a Mac with Xcode); the script that adds the indexes was tested on sample schemas and your export. Run it again after the first write of Resolution, Notice, Training, Audit, Secret and Logo, which do not exist yet. Deploy the schema to Production as before. | Import |
+ | 0235 | 2026-11-11 | Import fix, found on the first real run in Development: saving shared settings failed with "invalid attempt to set value type NUMBER_INT64 for field 'version' for type 'Settings', defined to be: STRING". The schema (`schema-now.ckdb`) defines `version` as STRING on Cart, Layout and Settings (DrawerShift's is INT64), but the sync wrote a number. `cloudkitBackend.ts` `put` now sends `version` as text for those three types; every reader already uses `Number(f.version)`. No schema change and no Swift change, so no rebuild is needed beyond the JS bundle. One pin test in `tests/cloudkitbackend.test.ts`. | Import |
+diff --git a/src/lib/transactionsMerge.ts b/src/lib/transactionsMerge.ts
+new file mode 100644
+index 0000000..004ecce
+--- /dev/null
++++ b/src/lib/transactionsMerge.ts
+@@ -0,0 +1,19 @@
++// Location: src/lib/transactionsMerge.ts
++// The Transactions tab lists this register's own sales and, now, the other registers' sales that the shop-wide pull holds
++// (pos.shared.sales, filled by pullSalesHistory). A sale is listed once: this register's own copy wins, and a shared row that
++// is this register's own, or one whose uuid is already listed, is dropped. Pure, so tests/transactionsmerge.test.ts covers it.
++import type { SaleRecord } from './types';
++
++export function mergeSales(own: SaleRecord[], shared: SaleRecord[] | undefined, ownRegisterId: string): SaleRecord[] {
++  const seen = new Set(own.map(s => s.uuid));
++  const out = [...own];
++  for (const s of shared ?? []) {
++    if (!s || !s.uuid || seen.has(s.uuid) || (ownRegisterId && s.registerId === ownRegisterId)) continue;
++    seen.add(s.uuid); out.push(s);
++  }
++  return out;
++}
++
++/** The register's name for a sale made on another register, or '' for this register's own (and for a sale with no name). */
++export const otherRegisterName = (s: SaleRecord, ownRegisterId: string): string =>
++  ownRegisterId && s.registerId && s.registerId !== ownRegisterId ? (s.registerName || 'Another register') : '';
+diff --git a/src/screens/Transactions.tsx b/src/screens/Transactions.tsx
+index c07e1dd..70f5df1 100644
+--- a/src/screens/Transactions.tsx
++++ b/src/screens/Transactions.tsx
+@@ -14,6 +14,8 @@ import RefundScreen from './Refund';
+ import type { SaleRecord, Tender } from '../lib/types';
+ import { Share } from 'react-native';
+ import { loadSquareSales } from '../lib/squareHistoryIO';
++import { mergeSales, otherRegisterName } from '../lib/transactionsMerge';
++import { pullSalesHistory } from '../lib/sync';
+ 
+ type Entry = { key: string; ts: string; name: string; totalCents: number; customer?: string; kind: 'sale' | 'refund'; summary: string; order?: PosOrder; sale?: SaleRecord; pending: boolean; haystack: string };
+ 
+@@ -21,7 +23,7 @@ const tenderWord = (k: string) => (k === 'card' ? 'Card' : k === 'cash' ? 'Cash'
+ const dayLabel = (ts: string) => { const d = new Date(ts); const t = new Date(); const y = new Date(Date.now() - 86400000); const same = (a: Date, b: Date) => a.toDateString() === b.toDateString(); return same(d, t) ? 'Today' : same(d, y) ? 'Yesterday' : d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' }); };
+ 
+ export default function Transactions() {
+-  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const sales = useApp(s => s.pos.sales); const outbox = useApp(s => s.pos.outbox);
++  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const sales = useApp(s => s.pos.sales); const sharedSales = useApp(s => s.pos.shared?.sales); const ownId = useApp(s => s.settings.registerId); const outbox = useApp(s => s.pos.outbox);
+   const [orders, setOrders] = useState<PosOrder[]>([]); const [next, setNext] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [q, setQ] = useState('');
+   const [showSq, setShowSq] = useState(false); const [sqSales, setSqSales] = useState<SaleRecord[]>([]); const [sqBusy, setSqBusy] = useState(false);
+   const toggleSq = async () => { if (showSq) { setShowSq(false); return; } setShowSq(true); if (!sqSales.length) { setSqBusy(true); try { setSqSales(await loadSquareSales()); } catch (e: any) { alertMsg('Could not load Square history', e.message); } setSqBusy(false); } };
+@@ -32,20 +34,21 @@ export default function Transactions() {
+     try { const r = await listOrders({ query: 'tag:pos', first: 25, after: more ? next : null }); setOrders(o => (more ? [...o, ...r.orders] : r.orders)); setNext(r.next); } catch (e: any) { if (!/network|connection/i.test(e.message)) alertMsg('Could not load orders', e.message, 'orders'); }
+     setBusy(false);
+   }, [next]);
+-  useEffect(() => { void load(false); }, []);
++  useEffect(() => { void load(false); void pullSalesHistory().catch(() => {}); }, []); // the other registers' sales (throttled)
++  const allSales = useMemo(() => mergeSales(sales, sharedSales, ownId), [sales, sharedSales, ownId]);
+ 
+   // Transactions is the POS's own sales log. Shopify orders are fetched only to link a sale to its order
+   // (for the receipt name and the return flow); they are listed on More ▸ Orders, never here.
+   const entries = useMemo<Entry[]>(() => {
+     const byUuid = new Map<string, PosOrder>(); for (const o of orders) if (o.saleUuid) byUuid.set(o.saleUuid, o);
+     const out: Entry[] = []; const pending = new Set(outbox.map(o => o.id));
+-    for (const s of sales) { const o = byUuid.get(s.uuid);
++    for (const s of allSales) { const o = byUuid.get(s.uuid); const other = otherRegisterName(s, ownId);
+       out.push({ key: s.uuid, ts: s.ts, name: s.orderName ?? o?.name ?? (s.type === 'refund' ? 'Refund' : 'Sale'), totalCents: s.netCents, customer: s.customer?.name, kind: s.type, order: o, sale: s, pending: pending.has(s.uuid) && !o,
+-        summary: s.tenders.map(t => tenderWord(t.kind)).join(' + ') || '-', haystack: [s.orderName, s.customer?.name, s.note, ...s.lines.map(l => l.title)].join(' ').toLowerCase() }); }
++        summary: `${other ? other + ' · ' : ''}${s.tenders.map(t => tenderWord(t.kind)).join(' + ') || '-'}`, haystack: [s.orderName, s.customer?.name, s.note, other, ...s.lines.map(l => l.title)].join(' ').toLowerCase() }); }
+     if (showSq) for (const s of sqSales) out.push({ key: s.uuid, ts: s.ts, name: s.orderName ?? 'Square', totalCents: s.netCents, customer: s.customer?.name, kind: s.type, sale: s, pending: false,
+       summary: `Square · ${s.tenders.map(t => tenderWord(t.kind)).join(' + ') || '-'}`, haystack: [s.orderName, s.customer?.name, s.note, ...s.lines.map(l => l.title)].join(' ').toLowerCase() });
+     return out.sort((a, b) => b.ts.localeCompare(a.ts));
+-  }, [sales, orders, outbox, showSq, sqSales]);
++  }, [allSales, ownId, orders, outbox, showSq, sqSales]);
+   const shown = useMemo(() => { const t = q.trim().toLowerCase().replace(/^#/, ''); return t ? entries.filter(e => e.haystack.replace(/#/g, '').includes(t)) : entries; }, [entries, q]);
+   const rows = useMemo(() => { const out: ({ h: string } | Entry)[] = []; let last = ''; for (const e of shown) { const d = dayLabel(e.ts); if (d !== last) { out.push({ h: d }); last = d; } out.push(e); } return out; }, [shown]);
+ 
+@@ -56,7 +59,7 @@ export default function Transactions() {
+         <Field kind="search" placeholder="Receipt #, customer, note or item" value={q} onChangeText={t => setQ(t)} style={{ marginBottom: 0 }} />
+         <View style={{ flexDirection: 'row', marginTop: 8, marginLeft: 4 }}><Chip label={sqBusy ? 'Loading Square history…' : 'Square history'} icon="archive-outline" active={showSq} onPress={() => void toggleSq()} /></View>
+       </View>
+-      <FlatList data={rows} keyExtractor={(r, i) => ('h' in r ? `h${r.h}${i}` : r.key)} refreshControl={<RefreshControl refreshing={busy} onRefresh={() => void load(false)} />}
++      <FlatList data={rows} keyExtractor={(r, i) => ('h' in r ? `h${r.h}${i}` : r.key)} refreshControl={<RefreshControl refreshing={busy} onRefresh={() => { void pullSalesHistory(true).catch(() => {}); void load(false); }} />}
+         ListEmptyComponent={<Empty icon="receipt-outline" title="No transactions yet" sub={q ? 'No sale or refund matches that.' : 'Completed sales appear here.'} />}
+         ListFooterComponent={<View style={{ padding: 16, gap: 8 }}>{next && !q ? <Btn title="Load more" kind="secondary" small onPress={() => void load(true)} /> : null}</View>}
+         renderItem={({ item: r }) => 'h' in r ? <Txt size={13} sub weight="600" style={{ marginTop: 14, marginBottom: 4, marginHorizontal: 20, textTransform: 'uppercase' }}>{r.h}</Txt> : (
+diff --git a/tests/transactionsmerge.test.ts b/tests/transactionsmerge.test.ts
+new file mode 100644
+index 0000000..cef61eb
+--- /dev/null
++++ b/tests/transactionsmerge.test.ts
+@@ -0,0 +1,27 @@
++// Location: tests/transactionsmerge.test.ts
++// The Transactions tab lists this register's sales and the other registers' sales once each, and labels the other registers' ones.
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { mergeSales, otherRegisterName } from '../src/lib/transactionsMerge';
++import type { SaleRecord } from '../src/lib/types';
++
++const sale = (uuid: string, registerId: string, registerName = ''): SaleRecord => ({ uuid, registerId, registerName, type: 'sale', ts: '2026-11-11T01:00:00.000Z' } as unknown as SaleRecord);
++
++test('another register\'s sales are added after this register\'s own, each once', () => {
++  const out = mergeSales([sale('a', 'r1', 'Front')], [sale('b', 'r2', 'Back'), sale('b', 'r2', 'Back'), sale('c', 'r2', 'Back')], 'r1');
++  assert.deepEqual(out.map(s => s.uuid), ['a', 'b', 'c']);
++});
++test('a shared row that is this register\'s own, or already listed, is dropped', () => {
++  const out = mergeSales([sale('a', 'r1')], [sale('a', 'r2'), sale('x', 'r1'), sale('y', 'r2')], 'r1');
++  assert.deepEqual(out.map(s => s.uuid), ['a', 'y']);
++});
++test('nothing shared, or a half-written row, changes nothing', () => {
++  assert.deepEqual(mergeSales([sale('a', 'r1')], undefined, 'r1').map(s => s.uuid), ['a']);
++  assert.deepEqual(mergeSales([sale('a', 'r1')], [null as unknown as SaleRecord, { registerId: 'r2' } as unknown as SaleRecord], 'r1').map(s => s.uuid), ['a']);
++});
++test('only a sale from another register gets a register label', () => {
++  assert.equal(otherRegisterName(sale('a', 'r1', 'Front'), 'r1'), '');
++  assert.equal(otherRegisterName(sale('b', 'r2', 'Back'), 'r1'), 'Back');
++  assert.equal(otherRegisterName(sale('c', 'r2', ''), 'r1'), 'Another register');
++  assert.equal(otherRegisterName(sale('d', 'r2', 'Back'), ''), '');
++});
+-- 
+2.43.0
+
