@@ -7,15 +7,27 @@ Record types the Development environment created on first write have neither. Fi
 
   python3 scripts/ckdb_add_indexes.py schema.ckdb > schema-indexed.ckdb
 Prints what it changed to stderr. Users and "cloudkit.share" are CloudKit's own types and are left alone.
+It also adds any record type the app uses (scripts/cloudkit-record-types.json, checked against the Swift by tests/ckdbtypes.test.ts) that the
+schema lacks, as a type with only the system fields and the two indexes. Its own fields are not listed: Development adds each one, with the
+right type, on the first write, and a field type guessed here could clash with what the app really sends.
 """
-import re, sys
+import json, os, re, sys
 
 SKIP = {'Users', '"cloudkit.share"'}
 REC = '        "___recordID"   REFERENCE QUERYABLE,'
 MOD = '        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,'
 
+STUB = ('    RECORD TYPE {name} (\n' + '        "___createTime" TIMESTAMP QUERYABLE SORTABLE,\n        "___createdBy"  REFERENCE,\n        "___etag"       STRING,\n'
+        + MOD + '\n        "___modifiedBy" REFERENCE,\n' + REC + '\n        GRANT WRITE TO "_creator",\n        GRANT CREATE TO "_icloud",\n        GRANT READ TO "_world"\n    );')
+
+def required_types():
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cloudkit-record-types.json')) as f: return json.load(f)
+
 def fix(text: str):
     changes = []
+    have = set(re.findall(r'RECORD TYPE (\S+) \(', text))
+    missing = [t for t in required_types() if t not in have]
+    for t in missing: changes.append(f'{t}: type did not exist, added with its indexes')
     def one(m):
         name, body = m.group(1), m.group(2)
         if name in SKIP: return m.group(0)
@@ -36,7 +48,9 @@ def fix(text: str):
             i = next((k for k, l in enumerate(out) if l.strip()), 0)
             out[i:i] = add
         return f'RECORD TYPE {name} (' + '\n'.join(out) + '\n    );'
-    return re.sub(r'RECORD TYPE (\S+) \((.*?)\n    \);', one, text, flags=re.S), changes
+    out = re.sub(r'RECORD TYPE (\S+) \((.*?)\n    \);', one, text, flags=re.S)
+    if missing: out = out.rstrip('\n') + '\n\n' + '\n\n'.join(STUB.format(name=t) for t in missing) + '\n'
+    return out, changes
 
 if __name__ == '__main__':
     src = open(sys.argv[1]).read()
