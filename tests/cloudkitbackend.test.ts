@@ -44,3 +44,8 @@ test('the backend sends sales through the sale record helpers, defaults to omit,
   assert.ok(src.includes('customers live in Shopify'));
   assert.ok(src.includes('opaque reference'));
 });
+
+test('a numeric version is sent as text for Cart, Layout and Settings, whose schema fields are STRING (0235)', () => {
+  const src = readFileSync('src/lib/cloudkit/cloudkitBackend.ts', 'utf8');
+  assert.match(src, /type === 'cart' \|\| type === 'layout' \|\| type === 'settings'\) && typeof fields\.version === 'number'\) fields = \{ \.\.\.fields, version: String\(fields\.version\) \}/);
+});

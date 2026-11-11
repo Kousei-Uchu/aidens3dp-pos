@@ -100,6 +100,9 @@ export const cloudkitBackend: SharedBackend = {
 
   async put(type: SharedType, handle: string, fields: Record<string, string | number | undefined | null>): Promise<BackendRow> {
     ensureNative();
+    // The Cart, Layout and Settings record types define `version` as a STRING in the CloudKit schema, and CloudKit refuses a number for it
+    // ("invalid attempt to set value type NUMBER_INT64 for field 'version'"). Every reader already does Number(f.version), so text is safe.
+    if ((type === 'cart' || type === 'layout' || type === 'settings') && typeof fields.version === 'number') fields = { ...fields, version: String(fields.version) };
     if (type === 'sale') {
       const h = handle.startsWith('sale-') ? handle.slice(5) : handle;
       const { plain, encrypted } = saleWriteFromFields(fields, cardMode);
