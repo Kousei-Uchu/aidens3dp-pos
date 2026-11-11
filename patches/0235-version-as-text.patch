@@ -1,0 +1,53 @@
+From dcaf30a4fbbad909bdd7cfe1c2a9b5f14e97436f Mon Sep 17 00:00:00 2001
+From: c <a@b>
+Date: Wed, 11 Nov 2026 19:45:33 +1100
+Subject: [PATCH] 0235
+
+---
+ dev_docs/PROGRESS.md                | 1 +
+ src/lib/cloudkit/cloudkitBackend.ts | 3 +++
+ tests/cloudkitbackend.test.ts       | 5 +++++
+ 3 files changed, 9 insertions(+)
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 9a4286b..fdb4140 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -201,6 +201,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0218 | 2026-11-02 | CloudKit item 8 leftover: **another register creates a missing Shopify order** (your request: do the rest of the docs). The problem found first: today the shared sale row is written after the order, so a sale left in a dead iPad's queue leaves no trace anywhere. So with CloudKit on the outbox gets an `early` step that writes the sale before the receipt and the order (CloudKit only, sales only, not in practice mode; a failure is not fatal and the final entry step writes it again with the order on it); `runItem` now returns the finished sale and the entry fields come from one helper. `orderRecovery.ts` has the rules (stranded sale, claim handle and fields, stale claims, the gift card exception, the notice); `cloudkit/orderRecoverySync.ts` is the job: at most every ten minutes, three sales per run, a write-once claim first (so two registers cannot both create it), then `runItem` on the sale, then a notice. Run from `pollShared`. New `tests/orderrecovery.test.ts` (14 tests). Guesses and known gaps under 0218. |
+ | 0219 | 2026-11-02 | CloudKit patch 6e: **the owner-only CloudKit export** (your request: do the rest of the docs), plus corrections. The export: `exportAll.ts` is the pure half (the list of every record type, `readAll` that reads a whole list and fails loudly, `collectExport` that builds the files, manifest and README, `zipExport` with fflate); `exportAllIO.ts` writes the zip to the cache folder, adds the logo picture, and refuses in a practice run; the Cloud sync page has an owner-only **Back up everything** button that confirms first and shares the zip. New `tests/exportall.test.ts` (9 tests) and `tests/lazybackend.test.ts` (3 tests). **Corrections to earlier patches, found by a real type check and by installing `fflate` so the whole suite ran:** (1) the tsc setup in this repo does not check anything here (`expo/tsconfig.base` is missing), so the "tsc clean" I reported for 0213 to 0218 meant nothing. I ran a lenient check of every file I touched and it found two real bugs in 0216: `migrationPanel.ts` read `phase` from a failure result that has none (a failed count check), and `CloudSync.tsx` used `useApp` without importing it. Both fixed here, with tests. (2) With `fflate` installed the suite showed two failures in `demoguard.test.ts` that my patches caused: 0215 put `put()` calls in `sync.ts` outside the guarded seam, and the new export wrote a file with no guard. The direct backend handles now live in `cloudkit/lazyBackend.ts` (the write stops on the same guard as the seam) and the export checks the guard. With `fflate` installed the whole suite passes (1868, 0 failing). |
+ | 0220 | 2026-11-02 | CloudKit patch 8: **the switch** (your request: do the rest of the docs). Rules in `backendChoice.ts` (flag values, start-up kind, when to move, which of a till's own sales are the gap, what the page says), job in `cloudkit/backendSwitch.ts` (`install`, `check`, `rollBack`, `allowSwitch`, `view`), flag storage in `cloudkit/backendFlagIO.ts` (guarded, local). `App.tsx` now installs the backend through the switch instead of always Shopify; `pollShared` calls `backendSwitch.check()` first. Cloud sync page: where this till keeps shared data, with the rollback and its way back. **Decisions made here, in GUESSES:** cut over in one go (no dual-write); a switched till never falls back by itself; the gap is closed by sending a till's own recent sales, not by dual-writing. **Not done:** retiring the 25 s poll, which needs CloudKit subscriptions in Swift (8b). New `tests/backendchoice.test.ts` (9 tests) and `tests/backendswitch.test.ts` (11 tests); full suite 1891, 0 failing with `fflate` installed; a lenient type check of the new files is clean. |
++| 0235 | 2026-11-11 | Import fix, found on the first real run in Development: saving shared settings failed with "invalid attempt to set value type NUMBER_INT64 for field 'version' for type 'Settings', defined to be: STRING". The schema (`schema-now.ckdb`) defines `version` as STRING on Cart, Layout and Settings (DrawerShift's is INT64), but the sync wrote a number. `cloudkitBackend.ts` `put` now sends `version` as text for those three types; every reader already uses `Number(f.version)`. No schema change and no Swift change, so no rebuild is needed beyond the JS bundle. One pin test in `tests/cloudkitbackend.test.ts`. | Import |
+ | 0234 | 2026-11-11 | Import fix, found on the first real run in Development: **Back up everything** stopped with an error about the Square history, and the sync chip kept changing. CloudKit's Development schema only gets a record type when something first writes it, and a list of a type that does not exist yet throws `unknownItem` ("Did not find record type"). `runQuery` in `CloudKitSyncModule.swift` now returns an empty list for that case, so the backup, the polls and the count check treat a type nothing has written as empty. One pin test in `tests/cloudkitswift.test.ts`. **The Swift is not compiled.** Needs a rebuild (`npm run ios`). Whether this also settles the chip is not confirmed: the chip shows whichever of many background jobs wrote the shared sync state last. | Import |
+ | 0233 | 2026-11-11 | Import fix, found on the first real import into Development: it stopped at the sales step with `invalid attempt to set value type STRING for field 'cogs_cents' for type 'Sale', defined to be: NUMBER_INT64`. A Shopify row holds every value as text, and a row with no readable `sale_json` was written field by field as it came, so its amounts went up as text into a type whose amounts are numbers. `saleWriteFromFields` now turns every `*_cents` field that is a whole number into a number on that path. One test in `tests/salerecords.test.ts`. If a sale already wrote a text amount into Development, that field's type is already wrong there: reset the Development environment's `Sale` type (see the checklist). | Import |
+ | 0232 | 2026-11-11 | Build fix, found on the first launch on iPad (iOS 27.0.1): the app crashed at launch with `UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`, because iOS 27 requires the UIScene lifecycle for apps built with its SDK and Expo SDK 54's AppDelegate makes the window itself. `plugins/withCloudKit.js` now adds the scene manifest to Info.plist, stops the AppDelegate starting React Native, and appends a `SceneDelegate` to `AppDelegate.swift` that makes the window, starts React Native, hands URLs and universal links back to the AppDelegate's methods, and records CloudKit share links (`userDidAcceptCloudKitShareWith` on the scene, `cloudKitShareMetadata` on a cold launch), because iOS no longer calls the AppDelegate's version under scenes. Five tests in `tests/cloudkitplugin.test.ts`; a real `expo prebuild` was run and the output read. **The Swift is not compiled and has not run on a device.** Expo's own fix is SDK 57 or later; this is a workaround on SDK 54. Needs `npm run ios:reset`. | Build |
+diff --git a/src/lib/cloudkit/cloudkitBackend.ts b/src/lib/cloudkit/cloudkitBackend.ts
+index c758ce9..18711fd 100644
+--- a/src/lib/cloudkit/cloudkitBackend.ts
++++ b/src/lib/cloudkit/cloudkitBackend.ts
+@@ -100,6 +100,9 @@ export const cloudkitBackend: SharedBackend = {
+ 
+   async put(type: SharedType, handle: string, fields: Record<string, string | number | undefined | null>): Promise<BackendRow> {
+     ensureNative();
++    // The Cart, Layout and Settings record types define `version` as a STRING in the CloudKit schema, and CloudKit refuses a number for it
++    // ("invalid attempt to set value type NUMBER_INT64 for field 'version'"). Every reader already does Number(f.version), so text is safe.
++    if ((type === 'cart' || type === 'layout' || type === 'settings') && typeof fields.version === 'number') fields = { ...fields, version: String(fields.version) };
+     if (type === 'sale') {
+       const h = handle.startsWith('sale-') ? handle.slice(5) : handle;
+       const { plain, encrypted } = saleWriteFromFields(fields, cardMode);
+diff --git a/tests/cloudkitbackend.test.ts b/tests/cloudkitbackend.test.ts
+index c57daa7..1f350d6 100644
+--- a/tests/cloudkitbackend.test.ts
++++ b/tests/cloudkitbackend.test.ts
+@@ -44,3 +44,8 @@ test('the backend sends sales through the sale record helpers, defaults to omit,
+   assert.ok(src.includes('customers live in Shopify'));
+   assert.ok(src.includes('opaque reference'));
+ });
++
++test('a numeric version is sent as text for Cart, Layout and Settings, whose schema fields are STRING (0235)', () => {
++  const src = readFileSync('src/lib/cloudkit/cloudkitBackend.ts', 'utf8');
++  assert.match(src, /type === 'cart' \|\| type === 'layout' \|\| type === 'settings'\) && typeof fields\.version === 'number'\) fields = \{ \.\.\.fields, version: String\(fields\.version\) \}/);
++});
+-- 
+2.43.0
+
