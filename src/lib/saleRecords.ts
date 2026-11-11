@@ -142,7 +142,9 @@ export function saleWriteFromFields(fields: Record<string, string | number | und
       try { const list: unknown = JSON.parse(String(v)); if (Array.isArray(list)) plain[k] = JSON.stringify(list.map(t => { const { r: _ref, ...rest } = (t ?? {}) as Record<string, unknown>; return rest; })); } catch { /* dropped */ }
       continue;
     }
-    plain[k] = v;
+    // A Shopify row holds every value as text. CloudKit fixes a field's type on the first write, and the whole-sale path
+    // above writes the amounts as numbers, so an amount from a row with no readable `sale_json` must be a number too.
+    plain[k] = /_cents$/.test(k) && typeof v === 'string' && /^-?\d+$/.test(v.trim()) ? Number(v) : v;
   }
   return { plain, encrypted: {} };
 }

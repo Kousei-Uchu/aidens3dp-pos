@@ -141,3 +141,12 @@ test('write then read in omit mode: the sale reads, with no card details anywher
   for (const x of SECRETS) assert.equal(text.includes(x), false, `leaks ${x}`);
   assert.equal(decodeSaleRow(row)!.totalCents, 3500);
 });
+
+test('a row with no whole sale writes its amounts as numbers, not text (0233)', () => {
+  const { plain } = saleWriteFromFields({ sale_uuid: 'u-9', total_cents: '1250', cogs_cents: '400', rounding_cents: '-5', order_name: '1001', employee: 'Sam' }, 'omit');
+  assert.equal(plain.total_cents, 1250);
+  assert.equal(plain.cogs_cents, 400);
+  assert.equal(plain.rounding_cents, -5);
+  assert.equal(plain.order_name, '1001');
+  assert.equal(plain.sale_uuid, 'u-9');
+});
