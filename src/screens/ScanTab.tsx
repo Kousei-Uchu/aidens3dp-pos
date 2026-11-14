@@ -25,7 +25,7 @@ export default function ScanTab() {
         <Btn title="Scan an item" icon="barcode-outline" onPress={() => setOpen(true)} />
         <Txt size={12} sub style={{ textAlign: 'center' }}>A Bluetooth scanner works once the check is open. You can also search by name, SKU or barcode there.</Txt>
       </View>
-      <LookupSheet mode={mode} visible={open} onClose={() => setOpen(false)} startWithCamera />
+      <LookupSheet mode={mode} visible={open} onClose={() => setOpen(false)} startWithCamera stockActions />
     </View>
   );
 }

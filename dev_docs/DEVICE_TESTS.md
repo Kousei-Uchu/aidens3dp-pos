@@ -1515,3 +1515,17 @@ Two iPads on the same shop, both on iCloud. Use Development, with the schema fro
 7. **Export all events.** Pass: one CSV with events from both registers.
 
 Tell me pass or fail for each, and the exact text of any error.
+
+## T115. Stock actions from Scan (0243)
+
+Setup: a companion device (or any device in companion mode) with a tracked item that has a barcode. Note its stock in Shopify first.
+
+1. Scan ▸ **Stock check** ▸ **Scan an item**. Scan the item. Pass: the result shows, with **Receive, adjust or count** under it.
+2. Tap it, leave **Receive** selected, key 3, tap **Apply**. Pass: it asks for the PIN, then the count goes up by 3 and the panel closes. Shopify shows the same (reason: received).
+3. Tap it again, choose **Adjust**, tap **Remove**, pick **damaged**, key 1, Apply. Pass: down by 1; Shopify's history says damaged.
+4. Choose **Count**, key the real number, Apply. Pass: stock is exactly that number.
+5. Tap one of the **other variations**. Pass: the panel opens for that variation, not the first one.
+6. Turn on airplane mode, Receive 2, Apply. Pass: "No connection" and the count does not change. Turn it off and Apply again. Pass: it goes up by 2 once, not twice.
+7. On the register's checkout grid, open **Stock check**. Pass: there is no Receive button there.
+
+Tell me pass or fail for each, and the exact text of any error.

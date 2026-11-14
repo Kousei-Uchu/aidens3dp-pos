@@ -10,6 +10,7 @@ import { useCatalogue } from '../state/selectors';
 import { bundleConfig } from '../lib/sync';
 import { priceCheck, resolveScan, scanProblem, searchVariants, stockCheck, stockText, stockToneOf } from '../lib/lookup';
 import { CameraScanner, HidScanner } from './Scanner';
+import { StockActionPanel } from './StockActionPanel';
 import type { Variant } from '../lib/types';
 import { Spot } from '../ui/Spot';
 import { SPOT } from '../lib/trainingSpots';
@@ -18,10 +19,10 @@ import { setLookupModeProbe, setLookupResultProbe } from '../lib/trainingProbe';
 export type LookupMode = 'price' | 'stock';
 const TONE_COLOR = { none: undefined, ok: '#16A34A', low: '#B45309', out: '#B45309', neg: '#B91C1C' } as const;
 
-export function LookupSheet({ mode, visible, onClose, startWithCamera = false }: { mode: LookupMode; visible: boolean; onClose: () => void; /** The companion's Scan tab opens straight onto the camera. */ startWithCamera?: boolean }) {
+export function LookupSheet({ mode, visible, onClose, startWithCamera = false, stockActions = false }: { mode: LookupMode; visible: boolean; onClose: () => void; /** The companion's Scan tab opens straight onto the camera. */ startWithCamera?: boolean; /** 0182: the Scan tab lets a stock result be received, adjusted or counted. */ stockActions?: boolean }) {
   const { c } = useTheme(); const cat = useCatalogue(); const autos = useApp(s => s.data.autos); const bundlesJson = useApp(s => s.settings.bundlesJson);
-  const [found, setFound] = useState<Variant | null>(null); const [msg, setMsg] = useState(''); const [q, setQ] = useState(''); const [cam, setCam] = useState(false);
-  useEffect(() => { if (!visible) { setFound(null); setMsg(''); setQ(''); setCam(false); setLookupModeProbe(undefined); setLookupResultProbe(undefined); } }, [visible]);
+  const [found, setFound] = useState<Variant | null>(null); const [msg, setMsg] = useState(''); const [q, setQ] = useState(''); const [cam, setCam] = useState(false); const [acting, setActing] = useState(false);
+  useEffect(() => { if (!visible) { setActing(false); setFound(null); setMsg(''); setQ(''); setCam(false); setLookupModeProbe(undefined); setLookupResultProbe(undefined); } }, [visible]);
   useEffect(() => { if (visible && startWithCamera) setCam(true); }, [visible, startWithCamera]);
   useEffect(() => { setFound(null); setMsg(''); setQ(''); setLookupModeProbe(mode); setLookupResultProbe(undefined); }, [mode]);
 
@@ -29,7 +30,7 @@ export function LookupSheet({ mode, visible, onClose, startWithCamera = false }:
   const lookup = (code: string): string | null => {
     const r = resolveScan(code, cat.all); const problem = scanProblem(r, code);
     if (r.kind !== 'variant') { setMsg(problem ?? ''); return null; }
-    setFound(r.variant); setMsg(''); setQ('');
+    setActing(false); setFound(r.variant); setMsg(''); setQ('');
     setLookupResultProbe({ variantId: r.variant.id, productTitle: r.variant.productTitle, stock: r.variant.stock, priceCents: r.variant.priceCents });
     return r.variant.productTitle;
   };
@@ -42,7 +43,8 @@ export function LookupSheet({ mode, visible, onClose, startWithCamera = false }:
       <CameraScanner visible={cam} onClose={() => setCam(false)} title={`${title}: scan an item`} onScan={code => { const t = lookup(code); if (t) setCam(false); return t ? `Showing ${t}` : null; }} />
 
       {found ? (mode === 'price' ? <PriceResult v={found} autos={autos} collectionIds={cat.collectionsOfProduct[found.productId] ?? []} bundlesJson={bundlesJson} />
-        : <StockResult v={found} siblings={cat.byProduct[found.productId] ?? []} />) : (
+        : <><StockResult v={found} siblings={cat.byProduct[found.productId] ?? []} onPick={stockActions ? x => { setFound(x); setActing(true); } : undefined} />
+          {stockActions ? (acting ? <StockActionPanel v={cat.all.find(x => x.id === found.id) ?? found} onDone={() => setActing(false)} /> : <Btn title="Receive, adjust or count" kind="secondary" icon="layers-outline" onPress={() => setActing(true)} />) : null}</>) : (
         <View style={{ alignItems: 'center', paddingVertical: 14, gap: 6 }}>
           <Ionicons name={mode === 'price' ? 'pricetag-outline' : 'layers-outline'} size={36} color={c.sub} />
           <Txt weight="600">Scan an item</Txt>
@@ -93,7 +95,7 @@ function PriceResult({ v, autos, collectionIds, bundlesJson }: { v: Variant; aut
   );
 }
 
-function StockResult({ v, siblings }: { v: Variant; siblings: Variant[] }) {
+function StockResult({ v, siblings, onPick }: { v: Variant; siblings: Variant[]; onPick?: (x: Variant) => void }) {
   const { c } = useTheme(); const r = useMemo(() => stockCheck(v, siblings), [v, siblings]);
   const me = r.rows[0]; const others = r.rows.slice(1);
   return (
@@ -109,7 +111,7 @@ function StockResult({ v, siblings }: { v: Variant; siblings: Variant[] }) {
       {r.single ? <Txt size={13} sub style={{ marginTop: 8, marginLeft: 4 }}>This product has no other variations.</Txt> : <View style={{ marginTop: 12 }}>
         <Txt size={13} sub weight="600" style={{ marginBottom: 2, marginLeft: 4 }}>Other variations ({others.length}), most stock first</Txt>
         {others.map((o, i) => <Row key={o.variant.id} image={o.variant.image ?? null} last={i === others.length - 1} title={o.variant.variantTitle || 'Default'}
-          sub={`$${(o.variant.priceCents / 100).toFixed(2)}`} right={<Txt weight="700" color={TONE_COLOR[stockToneOf(o.stock)] ?? c.sub}>{stockText(o.stock)}</Txt>} />)}
+          sub={`$${(o.variant.priceCents / 100).toFixed(2)}`} right={<Txt weight="700" color={TONE_COLOR[stockToneOf(o.stock)] ?? c.sub}>{stockText(o.stock)}</Txt>} onPress={onPick ? () => onPick(o.variant) : undefined} />)}
         {r.totalTracked !== null ? <Txt size={13} sub style={{ marginTop: 6, marginLeft: 4 }}>{`${r.totalTracked} in stock across all ${r.rows.length} variations${r.untracked ? ` (${r.untracked} not tracked)` : ''}.`}</Txt> : null}
       </View>}
     </View>

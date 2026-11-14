@@ -83,7 +83,7 @@ Built and running in Development since 2026-11-11 (patches 0231 to 0241, see `de
 
 | Id | What is left |
 | --- | --- |
-| 0182 | Stock actions from Scan: count, receive and adjust stock from the Scan tab. Not started (no row in `PROGRESS.md`). |
+| 0182 | Stock actions from Scan: built in 0243. Needs your device test, T115. |
 
 ## 4. Flagged in the repo but not on a list
 

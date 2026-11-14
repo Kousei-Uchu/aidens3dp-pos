@@ -113,7 +113,7 @@ With Selling off, the phone can still build a cart (search or scan, quantities, 
 | 0179 | Hardware and sync gating | Built, needs a device test (T82) |
 | 0180 | Quick sale, expand to full POS, send to register, payment methods by group | Built, needs a device test (T83) |
 | 0181 | Help, Training and assistant gating, docs | Built, needs a device test (T84) |
-| 0182 | Stock actions from Scan | Planned |
+| 0182 | Stock actions from Scan | Built, needs a device test (T115) |
 
 ## Progress tracker
 
@@ -143,7 +143,7 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
 - [~] C19 `needs` tag on Help pages, a device rule for Training courses, hidden ones unsearchable (0181, needs a device test)
 - [~] C20 Nav graph (Today and Scan, 0180) and assistant gating (0181, needs a device test)
 - [x] C21 Help page, `MODES.md` and `DEVICE_TESTS.md` steps (kept up to date in each patch; the separate `COMPANION.md` is not needed because the Device mode help page and this plan cover it)
-- [ ] C22 Receive, count and adjust from a Scan result (0182)
+- [~] C22 Receive, count and adjust from a Scan result (0182, needs a device test)
 - [ ] C23 Device tests on iPhone and iPad, by you (end)
 
 ## What I found in the code

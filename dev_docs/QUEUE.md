@@ -23,13 +23,8 @@ Support & diagnostics first (0239). Then group the steps that write different pa
 
 ## Stream B: Companion mode
 
-Patches 0175 to 0180 are in (plan, setup checklist, PIN lock, the gate, the card reader and drawer switches, and quick
-sale; see `PROGRESS.md`).
-
-### Companion 0182. Stock actions from Scan
-
-Count, receive and adjust stock from the Scan tab. First step: read `COMPANION_PLAN.md` for the Scan tab and the stock
-screens it should reuse.
+Patches 0175 to 0182 are in (plan, setup checklist, PIN lock, the gate, the card reader and drawer switches, quick sale,
+Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only the device tests are left (C23).
 
 ## Rules that hold for the whole queue
 

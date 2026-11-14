@@ -5,7 +5,7 @@ parent: start
 summary: What this device is, a register or a companion, and which register features a companion keeps.
 tags: [device mode, register, companion, phone, tablet, features, switch, remote, beside the till, pin, lock, auto-lock, step-up]
 related: [start/setup, settings/backup, staff]
-updated: 2026-10-20
+updated: 2026-11-15
 ---
 Open **More ▸ Device mode** to say what this device is. A **register** is a till and has every feature. A **companion** is a phone or tablet beside the till: it has the register features you switch on, and everything else the app can do. Everyone who is signed in can open this page.
 
@@ -32,7 +32,7 @@ Open **More ▸ Device mode** to say what this device is. A **register** is a ti
 ### What a companion shows
 - The tab bar is **Today**, **Scan**, **Inventory**, **Transactions** and **More**, with **Checkout** added when Selling is on. Notifications is the bell on Today, and also opens from a notice link. A register keeps the five tabs it has always had and never shows Today or Scan.
 - **Today** is a glance at the shop: today's sales and orders (managers and owners only, the same rule as Reports), items that are low, out or oversold, and any sales stuck in the upload queue. Each card opens the full screen, and pulling down refreshes it.
-- **Scan** is one big button for a price check or a stock check. It opens the camera, and a Bluetooth scanner works once the check is open. It never touches a cart.
+- **Scan** is one big button for a price check or a stock check. It opens the camera, and a Bluetooth scanner works once the check is open. It never touches a cart. On a stock check, **Receive, adjust or count** under the result changes that item's stock: **Receive** adds what arrived, **Adjust** adds or removes with a reason (correction, damaged, shrinkage, other), **Count** sets the number you counted. It asks for the PIN first, and tapping one of the other variations switches to it.
 - A tab, page or More row that belongs to a feature the device does not hold is not shown. A page that is open when its feature is switched off closes itself. **Staff** is always shown for managers and owners, so a companion can always make or reset a PIN.
 
 ### Selling from a companion
