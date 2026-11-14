@@ -14,6 +14,11 @@ export type ScannerCode = {
   isDefault?: boolean;
   /** A test code, not a setting: scan it into a text box and read what comes out. */
   test?: boolean;
+  /**
+   * Draw with an FNC3 symbol straight after the start character, like the manual's own barcode. The scanner only treats the
+   * barcode as a setting command when FNC3 is there; without it, the text is read as ordinary data and ignored.
+   */
+  setup?: boolean;
 };
 export type ScannerCodeGroup = { id: string; title: string; intro?: string; codes: ScannerCode[] };
 
@@ -36,8 +41,8 @@ export const SCANNER_CODE_GROUPS: ScannerCodeGroup[] = [
     { id: 'sleep-never', label: 'Never sleep', what: 'Stays awake until the battery runs out.', text: '%%SpecCode36' },
   ] },
   { id: 'scan-mode', title: 'Scanning mode', codes: [
-    { id: 'scan-auto', label: 'Auto scan', what: 'Scans by itself when a barcode is put in front of it.', text: 'TRIGPRE' },
-    { id: 'scan-manual', label: 'Manual scan', what: 'Scans only while the trigger button is pressed.', text: 'TRIGMAN', isDefault: true },
+    { id: 'scan-auto', label: 'Auto scan', what: 'Scans by itself when a barcode is put in front of it.', text: 'TRIGPRE', setup: true },
+    { id: 'scan-manual', label: 'Manual scan', what: 'Scans only while the trigger button is pressed.', text: 'TRIGMAN', isDefault: true, setup: true },
   ] },
   { id: 'speed', title: 'Data entry speed', intro: 'If barcodes are not entering correctly, scan one of these to set a slower speed. Scan the test code first to find which speed suits.', codes: [
     { id: 'speed-test', label: 'Speed test', what: 'Scan this into a text box and time how long it takes to type. Match the time to the speed table on this page.', text: 'HID_SCANNER_SPEED_TEST', test: true },
