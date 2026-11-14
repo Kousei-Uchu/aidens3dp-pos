@@ -5,6 +5,7 @@
 import * as Crypto from 'expo-crypto';
 import { gql, throwUserErrors } from './client';
 import { CURRENCY, toCents, toDecimal } from '../money';
+import { onceDecision } from './giftCardOnce';
 import { uid } from '../ids';
 import { normaliseCode } from '../giftCode';
 import { createCustomer, searchRemote } from './customers';
@@ -109,12 +110,14 @@ export async function allGiftCardTransactions(id: string): Promise<GiftCardTxn[]
 
 /** Retry-safe credit for a specific operation. The caller's unique note is stored in Shopify's transaction history. */
 export async function creditGiftCardOnce(id: string, cents: number, note: string) {
-  const existing = (await allGiftCardTransactions(id)).find(t => t.kind === 'credit' && t.note === note);
-  if (existing) {
-    if (existing.cents !== cents) throw new Error('A gift-card credit with this reference already exists for a different amount.');
-    return;
-  }
+  if (onceDecision(await allGiftCardTransactions(id), 'credit', cents, note) === 'done') return;
   await creditGiftCard(id, cents, note);
+}
+/** Retry-safe charge (0240): if an earlier try with this note went through but its reply was lost, the card is not charged again. */
+export async function debitGiftCardOnce(id: string, cents: number, note: string) {
+  if (isTraining()) { practiceDebitGiftCard(id, cents); return; }
+  if (onceDecision(await allGiftCardTransactions(id), 'debit', cents, note) === 'done') return;
+  await debitGiftCard(id, cents, note);
 }
 
 export async function outstandingBalance(): Promise<{ cards: number; cents: number }> {

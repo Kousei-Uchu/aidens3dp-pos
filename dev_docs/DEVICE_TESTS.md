@@ -134,7 +134,9 @@ Set up: sell yourself a $20 gift card through the POS (or issue one in Shopify a
 3. **Retry protection.** Repeat steps 1 and 2 but turn Wi-Fi off just before you cancel. Pass: the app does not pretend it worked (it should say it could not restore yet or offer a retry). Turn Wi-Fi back on and retry. Pass: the card ends at $20.00, **not** $40.00, so a retry never credits twice.
 4. **Refund to the original card.** Complete a sale paid with the gift card, then refund it from Orders with **Refund to ▸ Original**. Pass: the gift-card part goes back to the same card (check Shopify admin).
 5. **Refund to a gift card.** Refund another such sale with **Refund to ▸ Gift card**. Pass: you must choose **Reload original gift card(s)** or **Issue a new gift card** before the button works. Try both. Pass: reload credits the original card; new creates a fresh card with the right amount and shows its code.
-6. Check the Help page **Paying with a gift card**: it currently says cancelling does **not** restore value. That is out of date after 0056 and is on the Final Touches list (F6).
+6. **Charge protection (0240).** With Wi-Fi off, tap **Use as payment** on a gift card. Pass: the app says the card could not be charged and the payment is not added. In Shopify admin the card's balance has not changed. Turn Wi-Fi on and tap **Use as payment** again. Pass: the card is charged once ($20.00 taken, not $40.00). A charge Shopify took but whose reply was lost cannot be forced from the iPad; that case is covered by `tests/giftcardonce.test.ts`.
+7. **The notes.** In Shopify admin, open the card's history. Pass: the charge reads like `POS sale 1a2b3c4d tender 1` and the credit from step 2 reads like `POS cancel <sale> tender <id>`. A second gift-card payment on the same sale says `tender 2`.
+8. The Help page **Paying with a gift card** now says cancelling restores the value (fixed under F6), and says what a retry does. Read it once and tell me if it matches what you saw.
 
 Tell me: pass or fail for each step, the exact error text for any failure, and the balances you saw in Shopify admin.
 
@@ -1500,3 +1502,16 @@ Needs one iPad (A) only, on Shopify storage. It does not need CloudKit, so it ca
 9. Take the takings out now, and pass if the report afterwards shows $0 takings and no loan.
 10. In the assistant, ask what to take out. Pass: it gives the same total, and says how much of it is the loan.
 
+## T114. First run on iCloud (0234 to 0241)
+
+Two iPads on the same shop, both on iCloud. Use Development, with the schema from `npm run cloudkit:schema` already imported.
+
+1. **Back up everything** on the owner iPad (Settings, Data, Cloud sync). Pass: it ends with the share sheet and a zip, not an error about a record type or "recordName is not queryable".
+2. **The sync chip** on both iPads for five minutes. Pass: it stays on Synced. If it flips, open More, Support & diagnostics, Sync and send me the text under Status.
+3. **Last full sync.** Same screen. Pass: after the first full sync there is a row saying how long it took and which parts were slowest. Tell me the number.
+4. **Shared settings.** Change a shared setting on iPad A. Pass: it reaches iPad B within a minute, with no error about `version`.
+5. **Cash drawer.** Close the drawer on iPad A. Pass: iPad B shows it closed.
+6. **Transactions on two iPads (0238).** Make a sale on A, open Transactions on B and pull down to refresh. Pass: the sale is there with A's register name on the second line, once. Tell me if it is missing or listed twice.
+7. **Export all events.** Pass: one CSV with events from both registers.
+
+Tell me pass or fail for each, and the exact text of any error.

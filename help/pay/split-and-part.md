@@ -6,7 +6,7 @@ needs: [selling]
 summary: Paying one bill in pieces: splitting equally or by an amount, part payments in cash or by gift card, and how the next payment amount is worked out.
 tags: [split, part payment, partial, equal, share, remaining, next payment, cancel split, mix, several payments]
 related: [pay, pay/cash, pay/card, pay/gift-card]
-updated: 2026-10-12
+updated: 2026-11-14
 ---
 One sale can be paid with as many payments as you like, in any mix of card, cash and gift card. The sale finishes by itself when nothing remains.
 
@@ -20,6 +20,30 @@ On the **Payment** screen tap **Split amount** (**Split the payment** in Simple 
 After you choose, the screen shows **Next payment: $…** and, after a dot, the payments that come after it (**then $…, $…**). Now tap **Card**, **Cash** or **Gift card** and that payment aims for the next payment amount. Tap **Cancel split** to go back to paying the lot.
 
 Example: $100.00 split equally 3 ways is $33.34, then $33.33, then $33.33.
+
+```screen
+title: Split amount
+text: First payment
+text: $0.00
+tile: Split equally 2
+tile: Split equally 3
+tile: Split equally 4
+primary: !1 Continue
+note: A keypad sits above Continue. Type the first payment, or tap one of the three Split equally buttons.
+```
+
+```screen
+title: Payment
+label: Remaining
+text: $100.00
+text: of $100.00
+text: Next payment: $33.34 · then $33.33, $33.33
+button: !1 Card - $33.34
+button: Cash
+button: Gift card
+button: !2 Cancel split
+note: After you split, the next payment aims for the amount shown.
+```
 
 ### Each payment counts as one share
 With **Split equally**, every payment you take counts as one share, whatever it was and whatever its size. After each one the rest is shared between the people left. Example: $90.00 split 3 ways.

@@ -5,7 +5,7 @@ parent: settings
 summary: Set one register up to hold the shop's shared records, then join the others with its invite link.
 tags: [cloud, icloud, cloudkit, share, registers, sync, invite link, multiple ipads, join, join a shop]
 related: [settings/backup, orders/export, settings/shopify]
-updated: 2026-11-02
+updated: 2026-11-14
 roles: [manager, owner]
 ---
 Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to the records this one holds. One register sets the shop up and shows a link; every other register joins with that link. Both iPads need to be signed in to iCloud, and only managers and owners see this page.
@@ -17,10 +17,53 @@ Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to 
 - Tap **Set up this till**. The page says this register holds the shop records and shows an **Invite link**.
 - Tap **Share the invite link** to send it by Messages, email or AirDrop, or to copy it.
 
+```screen
+title: Cloud sync
+label: Set this till up
+text: Makes this till the one that holds the shop records, then shows a link for the other tills.
+primary: !1 Set up this till
+note: Do this on one iPad only. Every other iPad joins with its link.
+```
+
+```screen
+title: Cloud sync
+label: This till holds the shop records
+text: Send this link to each other till. On that till, open Cloud sync and paste it in.
+input: Invite link | https://www.icloud.com/share/...
+primary: !1 Share the invite link
+note: This is what the page shows after Set up this till.
+```
+
 ### Join from another register
 - On the other iPad, open **Settings ▸ Data ▸ Cloud sync**.
 - Paste the link into the box and tap **Join**. The page then says the register has joined.
 - If the link is tapped on the iPad itself, the app opens with the link already in the box: just tap **Join**.
+
+```screen
+title: Cloud sync
+label: Join a shop
+text: Paste the invite link from the till that set the shop up.
+input: !1 Invite link | https://www.icloud.com/share/...
+primary: !2 Join
+note: Join stays greyed out until a link is in the box.
+```
+
+### Back up everything in iCloud
+Only the owner register (the one that set the shop up) has this. On **Settings ▸ Data ▸ Cloud sync**, tap **Back up everything**. It reads every record the shop keeps in iCloud and makes one zip of JSON files, then opens the share sheet so you can save it to Files or AirDrop it. It can take a minute or two on a slow connection: leave the page open until the share sheet appears.
+
+**Export all events** (shown once sync is switched on, on every register) makes one CSV of the events from every register instead.
+
+```screen
+title: Cloud sync
+label: Back up everything in iCloud
+text: Makes one zip of JSON files with everything the shop keeps in iCloud.
+primary: !1 Back up everything
+label: Events from every register
+button: !2 Export all events
+note: Keep the zip private. It is as sensitive as the Shopify login.
+```
+
+The zip is a copy that does not depend on the owner's Apple ID. Do not email it or leave it where other people can open it.
 
 ### What you need
 - Both iPads signed in to iCloud. The top of the Cloud sync page says whether this one is.

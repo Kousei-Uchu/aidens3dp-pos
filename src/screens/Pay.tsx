@@ -15,7 +15,8 @@ import { digitsToCents, fmt } from '../lib/money';
 import { equalPlan, firstPlan, isSplit, planAfter, planTarget, type SplitPlan } from '../lib/splitPlan';
 import { uid } from '../lib/ids';
 import { emptyCart } from '../lib/cartOps';
-import { lookupGiftCard, debitGiftCard, creditGiftCardOnce, type GiftCardInfo } from '../lib/shopify/giftcards';
+import { lookupGiftCard, debitGiftCardOnce, creditGiftCardOnce, type GiftCardInfo } from '../lib/shopify/giftcards';
+import { debitNote } from '../lib/shopify/giftCardOnce';
 import { normaliseCode, isGiftQr } from '../lib/giftCode';
 import { maskedLast4 } from '../lib/cards';
 import { GiftCheckSheet } from './sheets';
@@ -162,7 +163,8 @@ export default function Pay({ onBack }: { onBack: () => void }) {
   // ── gift card ──
   const useGift = async (info: GiftCardInfo, code: string) => {
     const amt = Math.min(info.balanceCents, target); const uuid = saleUuid();
-    try { await debitGiftCard(info.id, amt, `POS sale ${uuid.slice(0, 8)}`); } catch (e: any) { return alertMsg('Gift card could not be charged', e.message, 'pay/gift-card'); }
+    // The note is the same on a retry of this payment (0240), so a charge Shopify took but whose reply was lost is not taken twice.
+    try { await debitGiftCardOnce(info.id, amt, debitNote(uuid, tenders.length)); } catch (e: any) { return alertMsg('Gift card could not be charged', e.message, 'pay/gift-card'); }
     addTender({ id: uid(), kind: 'gift_card', amountCents: amt, giftCardId: info.id, giftCardCode: normaliseCode(code), at: new Date().toISOString() }, uuid); setGift(false);
   };
 

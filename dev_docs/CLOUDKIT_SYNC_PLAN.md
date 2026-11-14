@@ -221,3 +221,30 @@ The four owner decisions left in section 7 do not block patch 3, which is a code
 They land with the patch that first needs them: `encryptedValues` with patch 4 (the CloudKit backend for sales and rollups),
 dual-write or cut over with patch 8 (retire polling and add the rollback flag), and the privacy-policy and iCloud-storage
 questions alongside patch 4, when the first customer data would actually reach iCloud.
+
+## 10. Status after the first real run (14 November 2026)
+
+Patches 4 to 8b and every leftover are built (section 9). The first run on real iPads, in the **Development** environment,
+found problems that only a real CloudKit shows, all fixed:
+
+- Build fixes on the first Mac and iPad builds (0231, 0232).
+- Import fixes: sale amounts written as numbers where the schema holds text (0233); a list of a record type nothing has
+  written yet failed instead of being empty (0234); `version` written as a number where Cart, Layout and Settings hold
+  text (0235).
+- **Indexes.** Development makes a record type the first time something writes it, with no indexes, and every list is an
+  unfiltered query that needs the record name queryable and the modification time sortable. `scripts/ckdb_add_indexes.py`
+  adds both to every type that lacks them and creates any type the app uses that the schema lacks;
+  `npm run cloudkit:schema` exports the live schema, fixes it, validates and imports it (0236, 0237). The app cannot do
+  this at startup: CloudKit changes a schema only through the Console or `cktool`. Fields are deliberately not listed for
+  the new types: Development adds each on first write with the type the app sends, and a guess could clash like
+  `version` did. `tests/ckdbtypes.test.ts` fails if the app uses a record type the list does not hold.
+- The Transactions tab lists every register's sales (0238). Polls no longer pile up, and Support & diagnostics shows how
+  long the last full sync took (0239).
+
+**Environment.** The owner chose on 2026-11-14 to stay on Development for now. Builds installed from Xcode use
+Development; TestFlight and App Store builds use Production, which starts empty (the schema must be deployed from the
+Console and the shop moved again). Development comes with no promise of durability, so the owner's **Back up
+everything** is the safety net. Moving to Production later is a deliberate step, not a setting.
+
+**Open:** retire the 25 second poll after T111; poll speed if it slows again; the other-registers "Setting up sync" state.
+See `TO_DO.md` section 3b and `QUEUE.md`.

@@ -1,55 +1,35 @@
 # Patch queue
 
-The work that is planned but not yet built, in the order it should be done. One line per patch, with the first step for
-each so a fresh session can start without reading the whole plan. The long form lives in the plan it names.
+The work that is planned but not yet built, in the order it should be done. One line per item, with the first step so a
+fresh session can start without reading the whole plan. Brought up to date on 2026-11-14, through patch 0242. What is
+built is in `PROGRESS.md`; the open items outside this queue are in `TO_DO.md`.
 
-Source of the list: the owner's answered questions of 20 October 2026, written down here so it is not only in the chat
-(REPAIRS.md item S1). The plans themselves are `CLOUDKIT_SYNC_PLAN.md` (section 9) and `COMPANION_PLAN.md`, and
-`PROGRESS.md` carries the patch-by-patch log once each one lands.
+## Stream A: CloudKit sync is built
 
-## Stream A: CloudKit sync, patches 4 to 8
+Patches 4 to 8b, the leftovers and the first-run fixes (0231 to 0241) are all in. Nothing from the old list of CloudKit 4
+to 8 is waiting to be built. What remains is in `TO_DO.md` section 3b and is not new code unless noted:
 
-Finish CloudKit first, while the Swift side is fresh. Two physical devices and two Apple IDs are needed for the end to
-end run; the steps are T74 in `DEVICE_TESTS.md`, and the customer policy below holds for every one of them.
+### Retire the 25 second poll
 
-### CloudKit 4. Finish the scaffold
+The poll stays as the fallback for change pushes (0225). Remove it only after T111 shows pushes arrive reliably on the
+owner's two iPads. First step: read T111's result, then make the tick in `App.tsx` run only when pushes are not listening.
 
-Only a scaffold exists (`abf8147`): native Sale/Rollup put/get/list in
-`modules/cloudkit-sync/ios/CloudKitSyncModule.swift`, bridge methods in `modules/cloudkit-sync/index.ts`, and
-`src/lib/cloudkit/cloudkitBackend.ts` behind the seam (`src/lib/syncBackend.ts`).
+### Run the poll's steps in parallel (only if iCloud is slow again)
 
-- Make it real: nothing calls the backend yet.
-- Honour the `after` cursor in Swift `listRecords`, which is ignored today.
-- Add a test for the customer stripping (see the policy note below).
-- Verify the native build in a throwaway prebuild copy, because `ios/` at the repo root is gitignored. `rsync` with
-  `--exclude 'ios'` also drops `modules/cloudkit-sync/ios`, so copy that folder in by hand or the module goes missing.
+`pollSharedWork` in `src/lib/sync.ts` runs about twenty steps one after another. Read the Last full sync line in
+Support & diagnostics first (0239). Then group the steps that write different parts of the state and run each group with
+`Promise.all`. Check what each step writes before grouping; the source-reading tests (`attemptpull`, `noticesync`,
+`logosync`) pin their order.
 
-### CloudKit 5. Saved carts with conflict merging
+## Stream B: Companion mode
 
-Saved carts travel through the same seam, with a merge rule for the same cart changed on two registers.
-
-### CloudKit 6. Settings, layout and Square history shards
-
-Shared settings, the grid layout and Square history move onto the seam. Shards so one slow group cannot hold up the rest.
-
-### CloudKit 7. Migration lease, checkpoints and verification
-
-A lease so two registers do not migrate at once, a checkpoint per group, and a verification pass that reports what moved.
-
-### CloudKit 8. Retire polling, add the rollback flag
-
-Stop the metaobject polling once the seam is proven, and add a flag that puts a register back on polling without a new
-build. This is where the owner decides dual-write against a clean cut-over.
-
-## Stream B: Companion mode, patch 0182
-
-Then Companion mode, against `COMPANION_PLAN.md`. Patch 0175 saved the plan, 0176 added the setup checklist that
-records whether a device is a register or a companion and which features it holds, 0177 added the PIN lock and the
-step-up PIN, 0178 wired the gate into the tabs, pages and More rows and added the Today and Scan tabs, 0179 made the card reader, drawer sync, uploads, display and notices follow the switches, 0180 added the quick sale, the expand to the full POS, sending a cart to a register and payment methods by group.
+Patches 0175 to 0180 are in (plan, setup checklist, PIN lock, the gate, the card reader and drawer switches, and quick
+sale; see `PROGRESS.md`).
 
 ### Companion 0182. Stock actions from Scan
 
-Count, receive and adjust stock from the Scan tab.
+Count, receive and adjust stock from the Scan tab. First step: read `COMPANION_PLAN.md` for the Scan tab and the stock
+screens it should reuse.
 
 ## Rules that hold for the whole queue
 

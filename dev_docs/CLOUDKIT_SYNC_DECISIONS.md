@@ -375,3 +375,7 @@ Superseded by the patch plan and status in Part 2.3, which is what is being foll
 
 - **New patch 6d:** the encrypted logins, secrets and cashier pass codes, built only after the encryption test (O4) passes.
 - **New patch 6e:** the owner-only CloudKit export (N3), or folded into patch 8.
+
+- **Environment (owner, 14 November 2026):** stay on the Development CloudKit environment for now. It works for the owner's
+  iPads while they run builds installed from Xcode. Revisit before any TestFlight or App Store build, which uses Production.
+  Back up everything is the safety net in the meantime.

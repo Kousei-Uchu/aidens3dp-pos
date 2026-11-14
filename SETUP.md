@@ -33,6 +33,18 @@ or `npm run ios` (Release build straight to a connected device). A paid develope
 ## 5. Receipts for tax (optional but recommended)
 Zeller's receipt has the card details but no items; Shopify's order has the items but no card details. `receipt-server/` publishes one merged page per sale (QR code / text / email link, with PDF and image download). Follow `receipt-server/README.md`, then fill in **Settings ▸ Receipts**. Run `npm install` after unzipping updates (adds `qrcode-generator`).
 
+## CloudKit schema (owner's Mac, only if you use iCloud sync)
+
+CloudKit's Development environment makes a record type the first time something writes it, with no indexes, and the
+app's lists then fail with "recordName is not queryable". One command fixes the schema:
+
+1. `xcrun cktool save-token` once, choosing a management token (it opens the CloudKit Console to make one).
+2. Create `.cloudkit.env` in the repo root (it is git-ignored) with your Apple team id and container:
+   `CK_TEAM_ID=...` and `CK_CONTAINER_ID=iCloud....`
+3. `npm run cloudkit:schema -- --check` shows what would change and imports nothing. `npm run cloudkit:schema` exports the
+   live schema, adds the missing indexes and record types, validates, imports, and saves a copy of what was live as
+   `schema-before-<date>.ckdb`. It is safe to repeat.
+
 ## Where things live
 Every sale/refund/declined attempt → local CSV (`sales.csv`, `sale_lines.csv`, `events.csv`; visible in Files ▸ app, export from Settings ▸ Data; never auto-cleared). Orders → Shopify orders (tag `pos`). Saved carts, grid layout, sales log, daily rollups and shared settings → Shopify metaobjects (`pos_*`), polled every ~25 s by each register.
 

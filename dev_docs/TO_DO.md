@@ -4,7 +4,7 @@ Every open item I could find across the repo's lists, with training and the in-a
 tracked in `dev_docs/TRAINING_PLAN.md`, `dev_docs/TRAINING_MODULE_CHECKLIST.md`, `dev_docs/archive/TRAINING_MODULE_BUGS.md`,
 `dev_docs/TRAINING_CORRECTIONS.md` and `dev_docs/AI_ASSISTANT_PLAN.md`).
 
-The main source was `dev_docs/PROGRESS.md`. Nothing else in the repo (code TODOs or the other docs) holds open items of
+Last brought up to date on 2026-11-14, through patch 0242. The main source was `dev_docs/PROGRESS.md`. Nothing else in the repo (code TODOs or the other docs) holds open items of
 its own that are not already listed here.
 
 Two kinds of item:
@@ -34,6 +34,9 @@ These are the tests only the owner can run. Each has exact steps in `dev_docs/DE
 | N25 | Price adjustments: the checkout review list in normal and guided checkout. |
 | N26 | Price adjustments: reasons, the transaction card, the Reports card, the Shopify `pos_adjustments` attribute. |
 | N27 | The Help screen itself: search, depth flip, links, back walk, flowcharts, Simple and Minimal modes, dark theme. |
+| T10 / B8 | Gift cards on your live Shopify store: pay, cancel, refund to the original card or a new one, and the new Wi-Fi-off charge test (0240). |
+| T114 | First run on iCloud (0234 to 0241): Back up everything, the sync chip, the Transactions tab on two iPads, the Last full sync line, cash drawer and exports across iPads. The backup, the chip, the cash drawer and the exports passed on 2026-11-14 by your report; the Transactions tab and the Last full sync line are untested. |
+| T102 to T113 | The CloudKit real-shop tests (import, count check, the switch, secrets, change pushes, a joined till, the loan flow). The import has been run for real in Development, but I do not have a record of which of these you ran. Tell me and I will tick them. |
 | N32 | **Resolved.** F4 (2026-10-18) used the `avoid-ai-writing` skill at `.opencode/skills/avoid-ai-writing/` for the AI-sounding/Australian-English sweep, so the style-skill question is answered. No action needed. |
 
 ## 2. Buildable now
@@ -58,9 +61,29 @@ No owner input needed.
 
 | Id | What is left |
 | --- | --- |
-| B7e | The Help experience: you want a more visual, interactive one. Screenshots are a proposal, not built. You do not have to take them; two ways are in `dev_docs/PROGRESS.md` (draw them from the mock screens, or capture them in Demo mode once F8 exists). Needs your yes. |
-| B8 | Live Shopify verification of the gift-card changes from 0056 (putting value back when a part-paid sale is cancelled, reload or replace on a refund). Steps in `dev_docs/DEVICE_TESTS.md` T10. **Permission already granted** (`write_gift_card_transactions`). Needs you to run the steps and report pass/fail (with balances and any error text). |
+| B7e | The Help experience: you wanted a more visual, interactive one. **Done as far as I can without a device (0241).** Pictures drawn from the real screens' labels (the `screen` block, `src/lib/helpFigures.ts`) now cover 15 of 68 pages, the flowcharts cover 63, and the numbered-step cards, step-through mode and topic cards from 0058 are in. Not done: real screenshots (they need your iPad or Demo mode captures; the drawn pictures stand in), and pictures for the other 53 pages. | Say which pages you want next. The Daily float report is the hardest to draw. |
+| B8 | Live Shopify verification of the gift-card changes from 0056. **Code reviewed against Shopify's docs (0240) and one real gap fixed:** a charge whose reply was lost could be taken twice on retry; it cannot now. The live run itself is yours, because it spends real gift-card value on your store: steps in `dev_docs/DEVICE_TESTS.md` T10 (now eight steps, with a Wi-Fi-off charge test). Permission already granted (`write_gift_card_transactions`). | Run T10 and report pass/fail with balances and any error text. |
 
+
+## 3b. CloudKit (iCloud sync): what is left
+
+Built and running in Development since 2026-11-11 (patches 0231 to 0241, see `dev_docs/CLOUDKIT_SYNC_PLAN.md` section 10).
+
+| Item | Status |
+| --- | --- |
+| Stay on the Development environment | **Your choice (2026-11-14): leave it for now.** Builds installed from Xcode use Development; TestFlight and App Store builds use Production, which is empty and would need the schema deployed and the shop moved again. Development has no durability promise, so **Back up everything** is the safety net: use it regularly. |
+| Retire the 25 second poll | Not done (0220 left it). Waits on T111 showing that change pushes arrive reliably. |
+| "Setting up sync" state on other devices during the move | Not built as the plan describes (checked in 0221). |
+| Poll speed | iCloud was slow on 2026-11-11 and sped up on its own by 2026-11-14. 0239 stops polls piling up and adds a Last full sync line. If it slows again, read that line; the next lever is running the poll's steps in parallel. |
+| Schema upkeep | `npm run cloudkit:schema` (0236, 0237) fixes indexes and adds any missing record type. Run it after adding a record type; a test fails if the app uses a type the list does not hold. Its check mode ran on your Mac on 2026-11-11 and found 16 fixes. |
+| Zone changes feed | Considered and declined (2026-11-11): it cannot read one record type at a time, so it does not suit the polls. |
+| Rows from other registers on Transactions | Built (0238). It lists the 800 newest sales from other registers; Return or exchange needs the sale in the Shopify list first. |
+
+## 3c. Companion mode
+
+| Id | What is left |
+| --- | --- |
+| 0182 | Stock actions from Scan: count, receive and adjust stock from the Scan tab. Not started (no row in `PROGRESS.md`). |
 
 ## 4. Flagged in the repo but not on a list
 

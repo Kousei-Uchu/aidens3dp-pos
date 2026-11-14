@@ -6,7 +6,7 @@ needs: [selling]
 summary: Scanning or typing a gift card code to pay, what the balance screen says, why the card is charged straight away, and what the messages mean.
 tags: [gift card, gift, code, qr, scan, balance, redeem, shopify, disabled, expired, not found]
 related: [pay, pay/card, pay/cash, gift/check-redeem]
-updated: 2026-10-18
+updated: 2026-11-14
 ---
 A gift card pays part or all of a sale. The balance lives on the card in Shopify, so a card works on any register as long as the iPad is online.
 
@@ -55,7 +55,7 @@ For a balance check, redemption history, and the difference between a card QR an
 ## Deep
 
 ### Why the card is charged first
-The balance is taken off the card the moment you tap **Use as payment**, before the sale is finished. That stops two registers spending the same balance at once. The POS charges the card, and only if Shopify agrees does it add the payment to the sale. If you cancel the sale afterwards, the POS puts the money back on the card with a "POS cancel" note.
+The balance is taken off the card the moment you tap **Use as payment**, before the sale is finished. That stops two registers spending the same balance at once. The POS charges the card, and only if Shopify agrees does it add the payment to the sale. If the connection drops and the app says the card could not be charged, tap **Use as payment** again: the POS first looks at the card's history in Shopify, and if the first try did go through it does not charge the card a second time. If you cancel the sale afterwards, the POS puts the money back on the card with a "POS cancel" note.
 
 ### How a code is found
 Shopify can only search for gift cards by their last four characters. The POS searches that way, then looks at a hidden note on each candidate that holds a fingerprint of the full code, made when the POS created the card. A match is a verified card. If none match, the POS accepts a card **only** when exactly one candidate has no POS note at all and the code has eight or more characters, and then shows **code could not be verified**. Anything else is **No gift card found**.

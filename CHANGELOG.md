@@ -22,6 +22,9 @@ There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `
 - **Grid.** Categories nested to any depth, a settings sheet for each tile, the variation picker as a page of the grid, and Lock POS, Price check and Stock check tiles (0016, 0017). Cart warnings (0142, 0145), unlisted products (0143) and scanner setup barcodes with a speed test (0144, 0147).
 - **Inventory screen** with no row cap, draft and archived products, filters and sorting (0003).
 - **Cloud sync between registers** with CloudKit, and **Companion mode** for a device that cuts the Register features until you ask for them. Both are in progress (`dev_docs/CLOUDKIT_SYNC_PLAN.md`, `dev_docs/COMPANION_PLAN.md`).
+- **Transactions on every register.** The Transactions tab now lists the other registers' sales as well as this one's, each labelled with its register (0238).
+- **iCloud schema tool.** `npm run cloudkit:schema` exports the CloudKit schema, adds the indexes and record types the lists need, and imports it (0236, 0237).
+- **Help pictures** for Cloud sync, Offline and sync errors, and Split payments, and Back up everything in iCloud is now described (0241).
 
 ### Changed
 
@@ -34,6 +37,8 @@ There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `
 
 ### Fixed
 
+- **Gift card charged twice on a retry.** If Shopify took a gift-card charge but the reply was lost, tapping Use as payment again charged the card a second time. The retry now looks at the card's history first (0240).
+- **iCloud first-run fixes.** Back up everything failed on a record type nothing had written yet (0234); saving shared settings, saved carts and the layout failed because `version` was sent as a number where the schema holds text (0235); polls could pile up on a slow connection (0239).
 - The iOS folder reset script, and the scanner taking over the keyboard (0001).
 - Device test fixes: the variation picker closing on tap, a split payment suggesting a split again, and the daily float report judging a float badly (0085 to 0090).
 - The Price check and Stock check course taught "-5 oversold", but the sheet shows "5 oversold" (0183).
