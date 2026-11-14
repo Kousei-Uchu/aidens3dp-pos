@@ -1,0 +1,697 @@
+From ea903057ae4e3258ca51add0e5ed694473c45ca8 Mon Sep 17 00:00:00 2001
+From: c <a@b>
+Date: Sat, 14 Nov 2026 16:26:53 +1100
+Subject: [PATCH] 0240 to 0242 - B8 gift-card charge retry safety, B7e Help
+ pictures, docs brought up to date
+
+0240: debitGiftCardOnce, so a charge whose reply was lost is not taken twice on retry.
+0241: Help figures for Cloud sync, Offline and sync errors, and Split payments.
+0242: TO_DO, QUEUE, CloudKit plan and decisions, SETUP, CHANGELOG, DEVICE_TESTS (T10, T114).
+---
+ CHANGELOG.md                        |  5 +++
+ SETUP.md                            | 12 ++++++
+ dev_docs/CLOUDKIT_SYNC_DECISIONS.md |  4 ++
+ dev_docs/CLOUDKIT_SYNC_PLAN.md      | 27 ++++++++++++++
+ dev_docs/DEVICE_TESTS.md            | 17 ++++++++-
+ dev_docs/PROGRESS.md                |  3 ++
+ dev_docs/QUEUE.md                   | 58 ++++++++++-------------------
+ dev_docs/TO_DO.md                   | 29 +++++++++++++--
+ help/fix/offline-sync.md            | 15 +++++++-
+ help/help.json                      | 37 ++++++++++++------
+ help/pay/gift-card.md               |  4 +-
+ help/pay/split-and-part.md          | 26 ++++++++++++-
+ help/settings/cloud-sync.md         | 45 +++++++++++++++++++++-
+ src/lib/shopify/giftCardOnce.ts     | 18 +++++++++
+ src/lib/shopify/giftcards.ts        | 13 ++++---
+ src/screens/Pay.tsx                 |  6 ++-
+ tests/giftcardonce.test.ts          | 36 ++++++++++++++++++
+ 17 files changed, 288 insertions(+), 67 deletions(-)
+ create mode 100644 src/lib/shopify/giftCardOnce.ts
+ create mode 100644 tests/giftcardonce.test.ts
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 0f23067..eba7b10 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -22,6 +22,9 @@ There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `
+ - **Grid.** Categories nested to any depth, a settings sheet for each tile, the variation picker as a page of the grid, and Lock POS, Price check and Stock check tiles (0016, 0017). Cart warnings (0142, 0145), unlisted products (0143) and scanner setup barcodes with a speed test (0144, 0147).
+ - **Inventory screen** with no row cap, draft and archived products, filters and sorting (0003).
+ - **Cloud sync between registers** with CloudKit, and **Companion mode** for a device that cuts the Register features until you ask for them. Both are in progress (`dev_docs/CLOUDKIT_SYNC_PLAN.md`, `dev_docs/COMPANION_PLAN.md`).
++- **Transactions on every register.** The Transactions tab now lists the other registers' sales as well as this one's, each labelled with its register (0238).
++- **iCloud schema tool.** `npm run cloudkit:schema` exports the CloudKit schema, adds the indexes and record types the lists need, and imports it (0236, 0237).
++- **Help pictures** for Cloud sync, Offline and sync errors, and Split payments, and Back up everything in iCloud is now described (0241).
+ 
+ ### Changed
+ 
+@@ -34,6 +37,8 @@ There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `
+ 
+ ### Fixed
+ 
++- **Gift card charged twice on a retry.** If Shopify took a gift-card charge but the reply was lost, tapping Use as payment again charged the card a second time. The retry now looks at the card's history first (0240).
++- **iCloud first-run fixes.** Back up everything failed on a record type nothing had written yet (0234); saving shared settings, saved carts and the layout failed because `version` was sent as a number where the schema holds text (0235); polls could pile up on a slow connection (0239).
+ - The iOS folder reset script, and the scanner taking over the keyboard (0001).
+ - Device test fixes: the variation picker closing on tap, a split payment suggesting a split again, and the daily float report judging a float badly (0085 to 0090).
+ - The Price check and Stock check course taught "-5 oversold", but the sheet shows "5 oversold" (0183).
+diff --git a/SETUP.md b/SETUP.md
+index f82e40f..34cca3a 100644
+--- a/SETUP.md
++++ b/SETUP.md
+@@ -33,6 +33,18 @@ or `npm run ios` (Release build straight to a connected device). A paid develope
+ ## 5. Receipts for tax (optional but recommended)
+ Zeller's receipt has the card details but no items; Shopify's order has the items but no card details. `receipt-server/` publishes one merged page per sale (QR code / text / email link, with PDF and image download). Follow `receipt-server/README.md`, then fill in **Settings ▸ Receipts**. Run `npm install` after unzipping updates (adds `qrcode-generator`).
+ 
++## CloudKit schema (owner's Mac, only if you use iCloud sync)
++
++CloudKit's Development environment makes a record type the first time something writes it, with no indexes, and the
++app's lists then fail with "recordName is not queryable". One command fixes the schema:
++
++1. `xcrun cktool save-token` once, choosing a management token (it opens the CloudKit Console to make one).
++2. Create `.cloudkit.env` in the repo root (it is git-ignored) with your Apple team id and container:
++   `CK_TEAM_ID=...` and `CK_CONTAINER_ID=iCloud....`
++3. `npm run cloudkit:schema -- --check` shows what would change and imports nothing. `npm run cloudkit:schema` exports the
++   live schema, adds the missing indexes and record types, validates, imports, and saves a copy of what was live as
++   `schema-before-<date>.ckdb`. It is safe to repeat.
++
+ ## Where things live
+ Every sale/refund/declined attempt → local CSV (`sales.csv`, `sale_lines.csv`, `events.csv`; visible in Files ▸ app, export from Settings ▸ Data; never auto-cleared). Orders → Shopify orders (tag `pos`). Saved carts, grid layout, sales log, daily rollups and shared settings → Shopify metaobjects (`pos_*`), polled every ~25 s by each register.
+ 
+diff --git a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+index a5284dd..f4aec9d 100644
+--- a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
++++ b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+@@ -375,3 +375,7 @@ Superseded by the patch plan and status in Part 2.3, which is what is being foll
+ 
+ - **New patch 6d:** the encrypted logins, secrets and cashier pass codes, built only after the encryption test (O4) passes.
+ - **New patch 6e:** the owner-only CloudKit export (N3), or folded into patch 8.
++
++- **Environment (owner, 14 November 2026):** stay on the Development CloudKit environment for now. It works for the owner's
++  iPads while they run builds installed from Xcode. Revisit before any TestFlight or App Store build, which uses Production.
++  Back up everything is the safety net in the meantime.
+diff --git a/dev_docs/CLOUDKIT_SYNC_PLAN.md b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+index a7651fc..9bb3409 100644
+--- a/dev_docs/CLOUDKIT_SYNC_PLAN.md
++++ b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+@@ -221,3 +221,30 @@ The four owner decisions left in section 7 do not block patch 3, which is a code
+ They land with the patch that first needs them: `encryptedValues` with patch 4 (the CloudKit backend for sales and rollups),
+ dual-write or cut over with patch 8 (retire polling and add the rollback flag), and the privacy-policy and iCloud-storage
+ questions alongside patch 4, when the first customer data would actually reach iCloud.
++
++## 10. Status after the first real run (14 November 2026)
++
++Patches 4 to 8b and every leftover are built (section 9). The first run on real iPads, in the **Development** environment,
++found problems that only a real CloudKit shows, all fixed:
++
++- Build fixes on the first Mac and iPad builds (0231, 0232).
++- Import fixes: sale amounts written as numbers where the schema holds text (0233); a list of a record type nothing has
++  written yet failed instead of being empty (0234); `version` written as a number where Cart, Layout and Settings hold
++  text (0235).
++- **Indexes.** Development makes a record type the first time something writes it, with no indexes, and every list is an
++  unfiltered query that needs the record name queryable and the modification time sortable. `scripts/ckdb_add_indexes.py`
++  adds both to every type that lacks them and creates any type the app uses that the schema lacks;
++  `npm run cloudkit:schema` exports the live schema, fixes it, validates and imports it (0236, 0237). The app cannot do
++  this at startup: CloudKit changes a schema only through the Console or `cktool`. Fields are deliberately not listed for
++  the new types: Development adds each on first write with the type the app sends, and a guess could clash like
++  `version` did. `tests/ckdbtypes.test.ts` fails if the app uses a record type the list does not hold.
++- The Transactions tab lists every register's sales (0238). Polls no longer pile up, and Support & diagnostics shows how
++  long the last full sync took (0239).
++
++**Environment.** The owner chose on 2026-11-14 to stay on Development for now. Builds installed from Xcode use
++Development; TestFlight and App Store builds use Production, which starts empty (the schema must be deployed from the
++Console and the shop moved again). Development comes with no promise of durability, so the owner's **Back up
++everything** is the safety net. Moving to Production later is a deliberate step, not a setting.
++
++**Open:** retire the 25 second poll after T111; poll speed if it slows again; the other-registers "Setting up sync" state.
++See `TO_DO.md` section 3b and `QUEUE.md`.
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index 83e140e..9090d07 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -134,7 +134,9 @@ Set up: sell yourself a $20 gift card through the POS (or issue one in Shopify a
+ 3. **Retry protection.** Repeat steps 1 and 2 but turn Wi-Fi off just before you cancel. Pass: the app does not pretend it worked (it should say it could not restore yet or offer a retry). Turn Wi-Fi back on and retry. Pass: the card ends at $20.00, **not** $40.00, so a retry never credits twice.
+ 4. **Refund to the original card.** Complete a sale paid with the gift card, then refund it from Orders with **Refund to ▸ Original**. Pass: the gift-card part goes back to the same card (check Shopify admin).
+ 5. **Refund to a gift card.** Refund another such sale with **Refund to ▸ Gift card**. Pass: you must choose **Reload original gift card(s)** or **Issue a new gift card** before the button works. Try both. Pass: reload credits the original card; new creates a fresh card with the right amount and shows its code.
+-6. Check the Help page **Paying with a gift card**: it currently says cancelling does **not** restore value. That is out of date after 0056 and is on the Final Touches list (F6).
++6. **Charge protection (0240).** With Wi-Fi off, tap **Use as payment** on a gift card. Pass: the app says the card could not be charged and the payment is not added. In Shopify admin the card's balance has not changed. Turn Wi-Fi on and tap **Use as payment** again. Pass: the card is charged once ($20.00 taken, not $40.00). A charge Shopify took but whose reply was lost cannot be forced from the iPad; that case is covered by `tests/giftcardonce.test.ts`.
++7. **The notes.** In Shopify admin, open the card's history. Pass: the charge reads like `POS sale 1a2b3c4d tender 1` and the credit from step 2 reads like `POS cancel <sale> tender <id>`. A second gift-card payment on the same sale says `tender 2`.
++8. The Help page **Paying with a gift card** now says cancelling restores the value (fixed under F6), and says what a retry does. Read it once and tell me if it matches what you saw.
+ 
+ Tell me: pass or fail for each step, the exact error text for any failure, and the balances you saw in Shopify admin.
+ 
+@@ -1500,3 +1502,16 @@ Needs one iPad (A) only, on Shopify storage. It does not need CloudKit, so it ca
+ 9. Take the takings out now, and pass if the report afterwards shows $0 takings and no loan.
+ 10. In the assistant, ask what to take out. Pass: it gives the same total, and says how much of it is the loan.
+ 
++## T114. First run on iCloud (0234 to 0241)
++
++Two iPads on the same shop, both on iCloud. Use Development, with the schema from `npm run cloudkit:schema` already imported.
++
++1. **Back up everything** on the owner iPad (Settings, Data, Cloud sync). Pass: it ends with the share sheet and a zip, not an error about a record type or "recordName is not queryable".
++2. **The sync chip** on both iPads for five minutes. Pass: it stays on Synced. If it flips, open More, Support & diagnostics, Sync and send me the text under Status.
++3. **Last full sync.** Same screen. Pass: after the first full sync there is a row saying how long it took and which parts were slowest. Tell me the number.
++4. **Shared settings.** Change a shared setting on iPad A. Pass: it reaches iPad B within a minute, with no error about `version`.
++5. **Cash drawer.** Close the drawer on iPad A. Pass: iPad B shows it closed.
++6. **Transactions on two iPads (0238).** Make a sale on A, open Transactions on B and pull down to refresh. Pass: the sale is there with A's register name on the second line, once. Tell me if it is missing or listed twice.
++7. **Export all events.** Pass: one CSV with events from both registers.
++
++Tell me pass or fail for each, and the exact text of any error.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index c81cb76..e34de17 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -201,6 +201,9 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0218 | 2026-11-02 | CloudKit item 8 leftover: **another register creates a missing Shopify order** (your request: do the rest of the docs). The problem found first: today the shared sale row is written after the order, so a sale left in a dead iPad's queue leaves no trace anywhere. So with CloudKit on the outbox gets an `early` step that writes the sale before the receipt and the order (CloudKit only, sales only, not in practice mode; a failure is not fatal and the final entry step writes it again with the order on it); `runItem` now returns the finished sale and the entry fields come from one helper. `orderRecovery.ts` has the rules (stranded sale, claim handle and fields, stale claims, the gift card exception, the notice); `cloudkit/orderRecoverySync.ts` is the job: at most every ten minutes, three sales per run, a write-once claim first (so two registers cannot both create it), then `runItem` on the sale, then a notice. Run from `pollShared`. New `tests/orderrecovery.test.ts` (14 tests). Guesses and known gaps under 0218. |
+ | 0219 | 2026-11-02 | CloudKit patch 6e: **the owner-only CloudKit export** (your request: do the rest of the docs), plus corrections. The export: `exportAll.ts` is the pure half (the list of every record type, `readAll` that reads a whole list and fails loudly, `collectExport` that builds the files, manifest and README, `zipExport` with fflate); `exportAllIO.ts` writes the zip to the cache folder, adds the logo picture, and refuses in a practice run; the Cloud sync page has an owner-only **Back up everything** button that confirms first and shares the zip. New `tests/exportall.test.ts` (9 tests) and `tests/lazybackend.test.ts` (3 tests). **Corrections to earlier patches, found by a real type check and by installing `fflate` so the whole suite ran:** (1) the tsc setup in this repo does not check anything here (`expo/tsconfig.base` is missing), so the "tsc clean" I reported for 0213 to 0218 meant nothing. I ran a lenient check of every file I touched and it found two real bugs in 0216: `migrationPanel.ts` read `phase` from a failure result that has none (a failed count check), and `CloudSync.tsx` used `useApp` without importing it. Both fixed here, with tests. (2) With `fflate` installed the suite showed two failures in `demoguard.test.ts` that my patches caused: 0215 put `put()` calls in `sync.ts` outside the guarded seam, and the new export wrote a file with no guard. The direct backend handles now live in `cloudkit/lazyBackend.ts` (the write stops on the same guard as the seam) and the export checks the guard. With `fflate` installed the whole suite passes (1868, 0 failing). |
+ | 0220 | 2026-11-02 | CloudKit patch 8: **the switch** (your request: do the rest of the docs). Rules in `backendChoice.ts` (flag values, start-up kind, when to move, which of a till's own sales are the gap, what the page says), job in `cloudkit/backendSwitch.ts` (`install`, `check`, `rollBack`, `allowSwitch`, `view`), flag storage in `cloudkit/backendFlagIO.ts` (guarded, local). `App.tsx` now installs the backend through the switch instead of always Shopify; `pollShared` calls `backendSwitch.check()` first. Cloud sync page: where this till keeps shared data, with the rollback and its way back. **Decisions made here, in GUESSES:** cut over in one go (no dual-write); a switched till never falls back by itself; the gap is closed by sending a till's own recent sales, not by dual-writing. **Not done:** retiring the 25 s poll, which needs CloudKit subscriptions in Swift (8b). New `tests/backendchoice.test.ts` (9 tests) and `tests/backendswitch.test.ts` (11 tests); full suite 1891, 0 failing with `fflate` installed; a lenient type check of the new files is clean. |
++| 0242 | 2026-11-14 | Docs only (your request: "make the docs up to date"). `dev_docs/TO_DO.md` and `dev_docs/QUEUE.md` were last written in October and said nothing about CloudKit, so both are rewritten against what is built: the queue now holds only what is left, and TO_DO gains a CloudKit section and the new device test T114. `CLOUDKIT_SYNC_PLAN.md` gains section 10 (status after the first real run, 0231 to 0241, and the Development environment note), `CLOUDKIT_SYNC_DECISIONS.md` records your choice to stay on Development for now, `SETUP.md` gains the schema command and `.cloudkit.env`, and `CHANGELOG.md` the CloudKit, Transactions and gift-card entries. No code. | B7e, B8, docs |
++| 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
++| 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+ | 0238 | 2026-11-11 | **Transactions tab shows every register's sales.** It listed only this register's own sales (`pos.sales`), so two iPads never matched and the tab could not show whether sync worked. It now also lists the other registers' sales that the shop-wide pull already holds (`pos.shared.sales`, filled by `pullSalesHistory`), each once, newest first, and a sale from another register is labelled with its register's name on the row (the search finds it too). Opening the tab asks for a pull (throttled); pull to refresh forces one. The pull keeps the 800 newest sales it reads (8 pages of 100) and skips this register's own, so older sales from other registers are not listed. A sale from another register still needs to be in the Shopify list (first 25 orders, `Load more` for the rest) before **Return or exchange** is available. New `src/lib/transactionsMerge.ts` and `tests/transactionsmerge.test.ts`. Not run on a device; the screen change was read-checked only. | Sync |
+ | 0237 | 2026-11-11 | The CloudKit schema script now also creates every record type the app uses that the schema lacks (`scripts/cloudkit-record-types.json`, kept in step with the Swift by `tests/ckdbtypes.test.ts`), as a type with only the system fields and the two list indexes. This closes the gap in 0236: `Audit`, `Logo`, `Notice`, `Resolution`, `Secret`, `SquareHistory` and `Training` did not exist yet, so CloudKit would have made them without indexes on first write. Their own fields are deliberately not listed: Development adds each on first write with the type the app sends, and a guessed type (whole against decimal) could clash like `version` did. The indexes cannot be set from the app at startup: CloudKit changes the schema only through the dashboard or `cktool`. `schema-now.ckdb` and `schema-fixed.ckdb` now hold every type. Not run against CloudKit here. | Import |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index 2847e3d..62e2d56 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -1,55 +1,35 @@
+ # Patch queue
+ 
+-The work that is planned but not yet built, in the order it should be done. One line per patch, with the first step for
+-each so a fresh session can start without reading the whole plan. The long form lives in the plan it names.
++The work that is planned but not yet built, in the order it should be done. One line per item, with the first step so a
++fresh session can start without reading the whole plan. Brought up to date on 2026-11-14, through patch 0242. What is
++built is in `PROGRESS.md`; the open items outside this queue are in `TO_DO.md`.
+ 
+-Source of the list: the owner's answered questions of 20 October 2026, written down here so it is not only in the chat
+-(REPAIRS.md item S1). The plans themselves are `CLOUDKIT_SYNC_PLAN.md` (section 9) and `COMPANION_PLAN.md`, and
+-`PROGRESS.md` carries the patch-by-patch log once each one lands.
++## Stream A: CloudKit sync is built
+ 
+-## Stream A: CloudKit sync, patches 4 to 8
++Patches 4 to 8b, the leftovers and the first-run fixes (0231 to 0241) are all in. Nothing from the old list of CloudKit 4
++to 8 is waiting to be built. What remains is in `TO_DO.md` section 3b and is not new code unless noted:
+ 
+-Finish CloudKit first, while the Swift side is fresh. Two physical devices and two Apple IDs are needed for the end to
+-end run; the steps are T74 in `DEVICE_TESTS.md`, and the customer policy below holds for every one of them.
++### Retire the 25 second poll
+ 
+-### CloudKit 4. Finish the scaffold
++The poll stays as the fallback for change pushes (0225). Remove it only after T111 shows pushes arrive reliably on the
++owner's two iPads. First step: read T111's result, then make the tick in `App.tsx` run only when pushes are not listening.
+ 
+-Only a scaffold exists (`abf8147`): native Sale/Rollup put/get/list in
+-`modules/cloudkit-sync/ios/CloudKitSyncModule.swift`, bridge methods in `modules/cloudkit-sync/index.ts`, and
+-`src/lib/cloudkit/cloudkitBackend.ts` behind the seam (`src/lib/syncBackend.ts`).
++### Run the poll's steps in parallel (only if iCloud is slow again)
+ 
+-- Make it real: nothing calls the backend yet.
+-- Honour the `after` cursor in Swift `listRecords`, which is ignored today.
+-- Add a test for the customer stripping (see the policy note below).
+-- Verify the native build in a throwaway prebuild copy, because `ios/` at the repo root is gitignored. `rsync` with
+-  `--exclude 'ios'` also drops `modules/cloudkit-sync/ios`, so copy that folder in by hand or the module goes missing.
++`pollSharedWork` in `src/lib/sync.ts` runs about twenty steps one after another. Read the Last full sync line in
++Support & diagnostics first (0239). Then group the steps that write different parts of the state and run each group with
++`Promise.all`. Check what each step writes before grouping; the source-reading tests (`attemptpull`, `noticesync`,
++`logosync`) pin their order.
+ 
+-### CloudKit 5. Saved carts with conflict merging
++## Stream B: Companion mode
+ 
+-Saved carts travel through the same seam, with a merge rule for the same cart changed on two registers.
+-
+-### CloudKit 6. Settings, layout and Square history shards
+-
+-Shared settings, the grid layout and Square history move onto the seam. Shards so one slow group cannot hold up the rest.
+-
+-### CloudKit 7. Migration lease, checkpoints and verification
+-
+-A lease so two registers do not migrate at once, a checkpoint per group, and a verification pass that reports what moved.
+-
+-### CloudKit 8. Retire polling, add the rollback flag
+-
+-Stop the metaobject polling once the seam is proven, and add a flag that puts a register back on polling without a new
+-build. This is where the owner decides dual-write against a clean cut-over.
+-
+-## Stream B: Companion mode, patch 0182
+-
+-Then Companion mode, against `COMPANION_PLAN.md`. Patch 0175 saved the plan, 0176 added the setup checklist that
+-records whether a device is a register or a companion and which features it holds, 0177 added the PIN lock and the
+-step-up PIN, 0178 wired the gate into the tabs, pages and More rows and added the Today and Scan tabs, 0179 made the card reader, drawer sync, uploads, display and notices follow the switches, 0180 added the quick sale, the expand to the full POS, sending a cart to a register and payment methods by group.
++Patches 0175 to 0180 are in (plan, setup checklist, PIN lock, the gate, the card reader and drawer switches, and quick
++sale; see `PROGRESS.md`).
+ 
+ ### Companion 0182. Stock actions from Scan
+ 
+-Count, receive and adjust stock from the Scan tab.
++Count, receive and adjust stock from the Scan tab. First step: read `COMPANION_PLAN.md` for the Scan tab and the stock
++screens it should reuse.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index dd1e9ab..5513b00 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -4,7 +4,7 @@ Every open item I could find across the repo's lists, with training and the in-a
+ tracked in `dev_docs/TRAINING_PLAN.md`, `dev_docs/TRAINING_MODULE_CHECKLIST.md`, `dev_docs/archive/TRAINING_MODULE_BUGS.md`,
+ `dev_docs/TRAINING_CORRECTIONS.md` and `dev_docs/AI_ASSISTANT_PLAN.md`).
+ 
+-The main source was `dev_docs/PROGRESS.md`. Nothing else in the repo (code TODOs or the other docs) holds open items of
++Last brought up to date on 2026-11-14, through patch 0242. The main source was `dev_docs/PROGRESS.md`. Nothing else in the repo (code TODOs or the other docs) holds open items of
+ its own that are not already listed here.
+ 
+ Two kinds of item:
+@@ -34,6 +34,9 @@ These are the tests only the owner can run. Each has exact steps in `dev_docs/DE
+ | N25 | Price adjustments: the checkout review list in normal and guided checkout. |
+ | N26 | Price adjustments: reasons, the transaction card, the Reports card, the Shopify `pos_adjustments` attribute. |
+ | N27 | The Help screen itself: search, depth flip, links, back walk, flowcharts, Simple and Minimal modes, dark theme. |
++| T10 / B8 | Gift cards on your live Shopify store: pay, cancel, refund to the original card or a new one, and the new Wi-Fi-off charge test (0240). |
++| T114 | First run on iCloud (0234 to 0241): Back up everything, the sync chip, the Transactions tab on two iPads, the Last full sync line, cash drawer and exports across iPads. The backup, the chip, the cash drawer and the exports passed on 2026-11-14 by your report; the Transactions tab and the Last full sync line are untested. |
++| T102 to T113 | The CloudKit real-shop tests (import, count check, the switch, secrets, change pushes, a joined till, the loan flow). The import has been run for real in Development, but I do not have a record of which of these you ran. Tell me and I will tick them. |
+ | N32 | **Resolved.** F4 (2026-10-18) used the `avoid-ai-writing` skill at `.opencode/skills/avoid-ai-writing/` for the AI-sounding/Australian-English sweep, so the style-skill question is answered. No action needed. |
+ 
+ ## 2. Buildable now
+@@ -58,10 +61,30 @@ No owner input needed.
+ 
+ | Id | What is left |
+ | --- | --- |
+-| B7e | The Help experience: you want a more visual, interactive one. Screenshots are a proposal, not built. You do not have to take them; two ways are in `dev_docs/PROGRESS.md` (draw them from the mock screens, or capture them in Demo mode once F8 exists). Needs your yes. |
+-| B8 | Live Shopify verification of the gift-card changes from 0056 (putting value back when a part-paid sale is cancelled, reload or replace on a refund). Steps in `dev_docs/DEVICE_TESTS.md` T10. **Permission already granted** (`write_gift_card_transactions`). Needs you to run the steps and report pass/fail (with balances and any error text). |
++| B7e | The Help experience: you wanted a more visual, interactive one. **Done as far as I can without a device (0241).** Pictures drawn from the real screens' labels (the `screen` block, `src/lib/helpFigures.ts`) now cover 15 of 68 pages, the flowcharts cover 63, and the numbered-step cards, step-through mode and topic cards from 0058 are in. Not done: real screenshots (they need your iPad or Demo mode captures; the drawn pictures stand in), and pictures for the other 53 pages. | Say which pages you want next. The Daily float report is the hardest to draw. |
++| B8 | Live Shopify verification of the gift-card changes from 0056. **Code reviewed against Shopify's docs (0240) and one real gap fixed:** a charge whose reply was lost could be taken twice on retry; it cannot now. The live run itself is yours, because it spends real gift-card value on your store: steps in `dev_docs/DEVICE_TESTS.md` T10 (now eight steps, with a Wi-Fi-off charge test). Permission already granted (`write_gift_card_transactions`). | Run T10 and report pass/fail with balances and any error text. |
+ 
+ 
++## 3b. CloudKit (iCloud sync): what is left
++
++Built and running in Development since 2026-11-11 (patches 0231 to 0241, see `dev_docs/CLOUDKIT_SYNC_PLAN.md` section 10).
++
++| Item | Status |
++| --- | --- |
++| Stay on the Development environment | **Your choice (2026-11-14): leave it for now.** Builds installed from Xcode use Development; TestFlight and App Store builds use Production, which is empty and would need the schema deployed and the shop moved again. Development has no durability promise, so **Back up everything** is the safety net: use it regularly. |
++| Retire the 25 second poll | Not done (0220 left it). Waits on T111 showing that change pushes arrive reliably. |
++| "Setting up sync" state on other devices during the move | Not built as the plan describes (checked in 0221). |
++| Poll speed | iCloud was slow on 2026-11-11 and sped up on its own by 2026-11-14. 0239 stops polls piling up and adds a Last full sync line. If it slows again, read that line; the next lever is running the poll's steps in parallel. |
++| Schema upkeep | `npm run cloudkit:schema` (0236, 0237) fixes indexes and adds any missing record type. Run it after adding a record type; a test fails if the app uses a type the list does not hold. Its check mode ran on your Mac on 2026-11-11 and found 16 fixes. |
++| Zone changes feed | Considered and declined (2026-11-11): it cannot read one record type at a time, so it does not suit the polls. |
++| Rows from other registers on Transactions | Built (0238). It lists the 800 newest sales from other registers; Return or exchange needs the sale in the Shopify list first. |
++
++## 3c. Companion mode
++
++| Id | What is left |
++| --- | --- |
++| 0182 | Stock actions from Scan: count, receive and adjust stock from the Scan tab. Not started (no row in `PROGRESS.md`). |
++
+ ## 4. Flagged in the repo but not on a list
+ 
+ - **Duplicate docs (stale, closed).** F3 checked the whole repo for Finder-style copies (`AI_ASSISTANT_PLAN 2.md`, and the same pattern for `PROGRESS` and `DEVICE_TESTS`): none exist. Nothing to delete.
+diff --git a/help/fix/offline-sync.md b/help/fix/offline-sync.md
+index 09c4c92..1e3b196 100644
+--- a/help/fix/offline-sync.md
++++ b/help/fix/offline-sync.md
+@@ -5,7 +5,7 @@ parent: fix
+ summary: Check connectivity, understand queued sale uploads and retry a blocked upload without duplicating the sale.
+ tags: [offline, sync, queued, upload, Shopify, retry, connection, notification, outbox]
+ related: [fix, settings/shopify]
+-updated: 2026-10-11
++updated: 2026-11-14
+ ---
+ Sales are saved on this iPad first, then uploaded to Shopify when the connection is available. If a sale is queued, leave it in place; do not ring it through again just to make it appear online.
+ 
+@@ -19,6 +19,19 @@ Open **Notifications**. A queued sale says it will upload when the connection is
+ 
+ Cash and saved carts can work offline. Card payments require an internet connection to reach Zeller. To set up Shopify again, see [[settings/shopify]].
+ 
++### Check how long a sync takes
++Open **More ▸ Support & diagnostics** and look at the **Sync** section. **Status** says whether the last sync worked and when, with the error underneath if it did not. **Last full sync** says how long the last full pass took and which parts were slowest, for example *Poll took 4.2 s. Slowest: notices 2.5 s*. A pass that keeps taking tens of seconds points at a slow connection to iCloud or Shopify, and the slowest parts say where. Tap **Sync now** to run it again.
++
++```screen
++title: Support & diagnostics
++label: Sync
++row: Status: idle | Last 4:02:11 pm
++row: !1 Last full sync | Poll took 4.2 s
++row: 0 sale(s) queued
++button: !2 Sync now
++note: The Last full sync row appears after the first full sync since the app opened.
++```
++
+ ### If the sale stays queued
+ Check the exact error on Notifications and make sure the iPad can reach Shopify. The app retries automatically when it processes the outbox; keep the app open and connected. A blocked sale needs the cause corrected and an explicit **Retry**.
+ 
+diff --git a/help/help.json b/help/help.json
+index 0f8629c..6d55cbe 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "8ced4b97",
++ "version": "995f24ab",
+  "pages": [
+   {
+    "id": "cash",
+@@ -652,13 +652,16 @@
+     "fix",
+     "settings/shopify"
+    ],
+-   "updated": "2026-10-11",
++   "updated": "2026-11-14",
+    "lead": "Sales are saved on this iPad first, then uploaded to Shopify when the connection is available. If a sale is queued, leave it in place; do not ring it through again just to make it appear online.",
+    "sections": {
+-    "basic": "### Check the sync status\nOpen **Notifications**. A queued sale says it will upload when the connection is back. A blocked sale shows an error and a **Retry** button.\n- If the iPad is offline, reconnect it to Wi-Fi or another working network and leave the POS open.\n- If Shopify credentials or permissions were rejected, fix the Shopify connection in **More ▸ Settings ▸ Shopify** before retrying.\n- After fixing the cause, tap **Retry** on the blocked sale. The POS resumes its saved upload steps.\n\nCash and saved carts can work offline. Card payments require an internet connection to reach Zeller. To set up Shopify again, see [[settings/shopify]].\n\n### If the sale stays queued\nCheck the exact error on Notifications and make sure the iPad can reach Shopify. The app retries automatically when it processes the outbox; keep the app open and connected. A blocked sale needs the cause corrected and an explicit **Retry**.",
++    "basic": "### Check the sync status\nOpen **Notifications**. A queued sale says it will upload when the connection is back. A blocked sale shows an error and a **Retry** button.\n- If the iPad is offline, reconnect it to Wi-Fi or another working network and leave the POS open.\n- If Shopify credentials or permissions were rejected, fix the Shopify connection in **More ▸ Settings ▸ Shopify** before retrying.\n- After fixing the cause, tap **Retry** on the blocked sale. The POS resumes its saved upload steps.\n\nCash and saved carts can work offline. Card payments require an internet connection to reach Zeller. To set up Shopify again, see [[settings/shopify]].\n\n### Check how long a sync takes\nOpen **More ▸ Support & diagnostics** and look at the **Sync** section. **Status** says whether the last sync worked and when, with the error underneath if it did not. **Last full sync** says how long the last full pass took and which parts were slowest, for example *Poll took 4.2 s. Slowest: notices 2.5 s*. A pass that keeps taking tens of seconds points at a slow connection to iCloud or Shopify, and the slowest parts say where. Tap **Sync now** to run it again.\n\n```screen\ntitle: Support & diagnostics\nlabel: Sync\nrow: Status: idle | Last 4:02:11 pm\nrow: !1 Last full sync | Poll took 4.2 s\nrow: 0 sale(s) queued\nbutton: !2 Sync now\nnote: The Last full sync row appears after the first full sync since the app opened.\n```\n\n### If the sale stays queued\nCheck the exact error on Notifications and make sure the iPad can reach Shopify. The app retries automatically when it processes the outbox; keep the app open and connected. A blocked sale needs the cause corrected and an explicit **Retry**.",
+     "deep": "### The sale is not lost or duplicated\nThe POS records the completed sale locally and adds it to an upload queue. Upload steps use stable identifiers so a retry can resume rather than create a second order. A network failure leaves the sale queued; a Shopify user/permission error blocks that item until corrected.\n\nThe device's local Transactions history can show the sale while Shopify is still catching up. The catalogue and stock updates may also take time to refresh on other registers.\n\n### What not to do\n- Do not make a second POS sale for the same customer purchase just because the upload has not finished.\n- Do not clear local history to fix a queue. CSV history and the sale upload queue are separate.\n- Do not repeatedly retry a blocked permission/configuration error without correcting its cause first.",
+     "advanced": "### Outbox retry path\n```mermaid\nflowchart TD\n  A[Complete sale and save locally] --> B[Add sale to outbox]\n  B --> C[Upload idempotent steps to Shopify]\n  C -->|success| D[Remove completed outbox item]\n  C -->|network error| E[Keep queued and retry later]\n  C -->|Shopify user error| F[Mark blocked and show Retry]\n  F --> G[Fix credentials or Shopify setting]\n  G --> H[Retry existing outbox item]\n  H --> C\n```\n\n| Job | Where |\n|---|---|\n| Process and retry sale uploads | `processOutbox`, `retryBlocked` in `src/lib/sync.ts` |\n| Locally stored sales and outbox | `Pos`, `OutboxItem` in `src/state/store.ts` |\n| Queue status and Retry button | `src/screens/Notifications.tsx` |\n| Network vs Shopify configuration errors | `isNetworkError`, `ShopifyUserError` in `src/lib/shopify/client.ts` |\n| Shopify credentials and import | `src/screens/Settings.tsx`, `help/settings/shopify.md` |\n\nCompleted outbox steps are marked individually. A retry skips those steps and uses the stored sale data for the work that remains."
+-   }
++   },
++   "figures": [
++    "<figure class=\"sf\"><div class=\"sf-frame\"><div class=\"sf-bar\"><span class=\"sf-title\">Support &amp; diagnostics</span></div><div class=\"sf-body\"><div class=\"sf-label-head\">Sync</div><div class=\"sf-row\"><span class=\"sf-label\">Status: idle</span><span class=\"sf-value\">Last 4:02:11 pm</span></div><div class=\"sf-row\"><span class=\"sf-badge\">1</span><span class=\"sf-label\">Last full sync</span><span class=\"sf-value\">Poll took 4.2 s</span></div><div class=\"sf-row\"><span class=\"sf-label\">0 sale(s) queued</span></div><div class=\"sf-button\"><span class=\"sf-badge\">2</span>Sync now</div></div></div><figcaption class=\"sf-note\">The Last full sync row appears after the first full sync since the app opened.</figcaption></figure>"
++   ]
+   },
+   {
+    "id": "fix/reader",
+@@ -1119,14 +1122,14 @@
+     "pay/cash",
+     "gift/check-redeem"
+    ],
+-   "updated": "2026-10-18",
++   "updated": "2026-11-14",
+    "needs": [
+     "selling"
+    ],
+    "lead": "A gift card pays part or all of a sale. The balance lives on the card in Shopify, so a card works on any register as long as the iPad is online.",
+    "sections": {
+     "basic": "### Taking a gift card payment\n1. On the **Payment** screen tap **Gift card** (**Pay with a gift card** in Simple and Minimal modes).\n2. The **Check gift card** sheet opens. Tap **Scan** and scan the QR code on the card or receipt, or type the code into **Code** and tap **Check**. **Check** stays greyed out until at least four characters are typed.\n3. The sheet shows the card (**Card ••••** and its last four characters), its balance, and whether it is **Active** or **Disabled**. It may also say **code could not be verified** or **expires** with a date.\n4. Tap **Use as payment**. This button only appears when the card is **Active** and has a balance.\n5. The amount is taken from the card straight away and the payment is added to the list as **Gift card**.\n\n```screen\ntitle: Check gift card\ntext: Scan or type the code on the card.\ninput: Code | ABD2-4EF6\nbutton: Scan\nlabel: Result\nrow: Card •••• 4EF6\nrow: Balance | $15.00\nrow: Status | Active\nprimary: !1 Use as payment\nnote: The amount is the balance or the next payment amount, whichever is less.\n```\n\nThe amount taken is the card's balance or the next payment amount, whichever is **less**. If the balance is smaller than what is owed, the rest stays under **Remaining** and you take it another way.\n\n### Typing and scanning the code\n- Letters and numbers only. Capitals, spaces and dashes do not matter.\n- A scanned gift card QR carries a prefix that starts with `shopify-giftcard`. You never have to remove it, the POS strips it for you.\n\n### Messages\n- **No gift card found for that code.** Check the code and try again. Look at the card or receipt rather than guessing.\n- **Lookup failed** with a reason: usually no internet. Gift cards need a connection, cash does not.\n- **Disabled** next to the balance: the card has been switched off in Shopify. There is no **Use as payment** button. Ask the owner.\n- **code could not be verified:** the card was not made by this POS, so the POS can only partly check it. It can still be used if **Active**.\n- **Gift card could not be charged** with a reason: Shopify refused. Nothing was taken from the card and nothing was added to the sale.\n\n### Good to know\n- A gift card is never rounded and has no card fee.\n- You cannot pay for a gift card with itself. A gift card sold in the same sale does not exist until that sale is paid.\n- If you cancel a part-paid sale, the money **is** put back on the gift card automatically. The POS credits the card once, with a \"POS cancel\" note on the transaction, so running it again does not double-credit.\n- To check a balance without paying, use the **Check gift card** option in the cart menu or More ▸ Gift cards.\nFor a balance check, redemption history, and the difference between a card QR and a claim QR, see [[gift/check-redeem]].",
+-    "deep": "### Why the card is charged first\nThe balance is taken off the card the moment you tap **Use as payment**, before the sale is finished. That stops two registers spending the same balance at once. The POS charges the card, and only if Shopify agrees does it add the payment to the sale. If you cancel the sale afterwards, the POS puts the money back on the card with a \"POS cancel\" note.\n\n### How a code is found\nShopify can only search for gift cards by their last four characters. The POS searches that way, then looks at a hidden note on each candidate that holds a fingerprint of the full code, made when the POS created the card. A match is a verified card. If none match, the POS accepts a card **only** when exactly one candidate has no POS note at all and the code has eight or more characters, and then shows **code could not be verified**. Anything else is **No gift card found**.\n\n### What the sale records\nThe payment keeps the card's Shopify id and the code. On the Shopify order it appears as a **Gift card** payment of that amount, with only the last four characters of the code stored. Refunds to the original gift card use the same id.\n\n### Expiry\nThe sheet shows an expiry date but the POS does not check it. If Shopify refuses an expired card you see **Gift card could not be charged** with Shopify's reason.",
++    "deep": "### Why the card is charged first\nThe balance is taken off the card the moment you tap **Use as payment**, before the sale is finished. That stops two registers spending the same balance at once. The POS charges the card, and only if Shopify agrees does it add the payment to the sale. If the connection drops and the app says the card could not be charged, tap **Use as payment** again: the POS first looks at the card's history in Shopify, and if the first try did go through it does not charge the card a second time. If you cancel the sale afterwards, the POS puts the money back on the card with a \"POS cancel\" note.\n\n### How a code is found\nShopify can only search for gift cards by their last four characters. The POS searches that way, then looks at a hidden note on each candidate that holds a fingerprint of the full code, made when the POS created the card. A match is a verified card. If none match, the POS accepts a card **only** when exactly one candidate has no POS note at all and the code has eight or more characters, and then shows **code could not be verified**. Anything else is **No gift card found**.\n\n### What the sale records\nThe payment keeps the card's Shopify id and the code. On the Shopify order it appears as a **Gift card** payment of that amount, with only the last four characters of the code stored. Refunds to the original gift card use the same id.\n\n### Expiry\nThe sheet shows an expiry date but the POS does not check it. If Shopify refuses an expired card you see **Gift card could not be charged** with Shopify's reason.",
+     "advanced": "### From Gift card to a payment\n```mermaid\nflowchart TD\n  A[Gift card button in Pay.tsx] --> B[GiftCheckSheet in sheets.tsx]\n  B --> C[stripGiftPrefix on typed or scanned text]\n  C --> D[lookupGiftCard in giftcards.ts]\n  D -->|none| E[No gift card found]\n  D -->|card| F{enabled and balance above 0}\n  F -->|no| G[no Use as payment button]\n  F -->|yes| H[useGift in Pay.tsx]\n  H --> I[debitGiftCard]\n  I -->|error| J[Gift card could not be charged]\n  I -->|ok| K[addTender with kind gift_card]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The sheet (also used by Check gift card) | `GiftCheckSheet` in `src/screens/sheets.tsx` |\n| Taking the payment | `useGift` in `src/screens/Pay.tsx` |\n| Code cleaning | `stripGiftPrefix`, `normaliseCode` in `src/lib/giftCode.ts` |\n| Finding and charging the card | `lookupGiftCard`, `debitGiftCard` in `src/lib/shopify/giftcards.ts` |\n| The payment record | `giftCardId`, `giftCardCode` on `Tender` in `src/lib/types.ts` |\n| Shopify order and stored code | `GATEWAY` in `src/lib/shopify/orderModel.ts`; `encodeTender` in `src/lib/saleCodec.ts` |\n| Refunds to a gift card | `src/lib/refundFlow.ts` |\n\n`useGift` takes the smaller of the card balance and the current target, charges it with a note naming the sale, then adds the payment with the cleaned code. It does not touch the cash drawer record.\n\n### Receipts\nThe receipt built straight after the sale uses the full code in the payment line, as **Gift card** followed by the code. A receipt rebuilt later from the Shopify order only knows the last four characters. Only the last four are stored on the order.\n\n### Reading the code for a fault\n- **Use as payment is missing.** The card is disabled or has a zero balance (`GiftCheckSheet` checks both).\n- **A card the customer swears is valid is not found.** More than one card ends in the same four characters and none carries this POS's fingerprint, or the code was typed wrongly.\n- **Charged but the sale shows no gift card payment.** The charge succeeded and the app stopped before `addTender`. Look at the card's history in Shopify.\n- **Tests.** `tests/giftcode.test.ts` (prefix and cleaning), `tests/lookup.test.ts` (scanning a gift QR), `tests/sale.test.ts` (the stored code and refund split)."
+    },
+    "figures": [
+@@ -1198,16 +1201,20 @@
+     "pay/card",
+     "pay/gift-card"
+    ],
+-   "updated": "2026-10-12",
++   "updated": "2026-11-14",
+    "needs": [
+     "selling"
+    ],
+    "lead": "One sale can be paid with as many payments as you like, in any mix of card, cash and gift card. The sale finishes by itself when nothing remains.",
+    "sections": {
+-    "basic": "### Splitting\nOn the **Payment** screen tap **Split amount** (**Split the payment** in Simple and Minimal modes). The **Split amount** sheet opens with **First payment** and a keypad.\n- **Split equally 2, 3 or 4:** the bill is shared into that many equal payments. Cents that do not divide evenly go to the first payments.\n- **Key in an amount and tap Continue:** that is the first payment. It must be less than what remains, otherwise you see *Amount must be less than the remaining total*. **Continue** stays greyed out until the amount is above $0.00.\n\nAfter you choose, the screen shows **Next payment: $…** and, after a dot, the payments that come after it (**then $…, $…**). Now tap **Card**, **Cash** or **Gift card** and that payment aims for the next payment amount. Tap **Cancel split** to go back to paying the lot.\n\nExample: $100.00 split equally 3 ways is $33.34, then $33.33, then $33.33.\n\n### Each payment counts as one share\nWith **Split equally**, every payment you take counts as one share, whatever it was and whatever its size. After each one the rest is shared between the people left. Example: $90.00 split 3 ways.\n1. The first person pays $30.00 by card. $60.00 remains for 2 people.\n2. The second hands over only $20.00 in cash and you take it as a part payment. That counts as their share, so $40.00 remains for 1 person.\n3. The last payment is the whole $40.00.\n\nA card that is declined or cancelled takes nothing, so it does not use up a share.\n\n### When the cash does not cover a part of a split\nIf the customer hands over less than the current payment, the cash screen says how short it is and offers, instead of leaving you to split again:\n- **Two payments left:** **Add $… to payment 2** (it shows the old and new amount), or **Go back and change the split**.\n- **More than two payments left:** **Add $… to payment 3** (one button for each later payment), or **Spread $… over the other payments** (each later payment rises by the same amount), or **Go back and change the split**.\n\nThe cash they did hand over is taken as this payment, and the shortfall moves to the payment you chose. **Spread** only shows when every later payment would go up by a whole number of dollars (for example $30.00 over 3 payments is $10.00 each). If it would not divide into whole dollars the button is left out; choose a payment to add it to instead. **Ask for more** is always an option: just tap more notes and coins.\n\n### Part payments without splitting\nYou do not have to split first. A payment can simply be less than the bill:\n- **Cash:** if the customer hands over less than is due and the bill is not split, tap **Take $… as part payment**. See [[pay/cash]].\n- **Cash and card:** if the drawer cannot make the change, the cash screen can offer **Cash $… + the rest another way**.\n- **Gift card:** a card with less balance than the bill pays what it has. See [[pay/gift-card]].\n\nIn every case the **Payment** screen then says **Remaining**, with *of $…* under it, and the payments so far are listed. Pay the rest any way you like.\n\n### While part of the sale is paid\nThe cart is locked, so you cannot change items, clear it or save it. **Back** asks **Cancel this sale?**. **Refund & cancel** refunds card payments through the terminal and credits gift-card payments back to the same cards. For cash, the app asks you to collect any exact change previously given and return the exact denominations originally received; it does not optimise this exchange. If a cancellation step fails, the sale stays locked, records electronic returns already completed and offers a safe retry. Do not take another payment for that sale. See [[pay]].\n\n### On the receipt\nThe receipt lists every payment with its amount, and the sale is sent to Shopify with one payment per entry.",
++    "basic": "### Splitting\nOn the **Payment** screen tap **Split amount** (**Split the payment** in Simple and Minimal modes). The **Split amount** sheet opens with **First payment** and a keypad.\n- **Split equally 2, 3 or 4:** the bill is shared into that many equal payments. Cents that do not divide evenly go to the first payments.\n- **Key in an amount and tap Continue:** that is the first payment. It must be less than what remains, otherwise you see *Amount must be less than the remaining total*. **Continue** stays greyed out until the amount is above $0.00.\n\nAfter you choose, the screen shows **Next payment: $…** and, after a dot, the payments that come after it (**then $…, $…**). Now tap **Card**, **Cash** or **Gift card** and that payment aims for the next payment amount. Tap **Cancel split** to go back to paying the lot.\n\nExample: $100.00 split equally 3 ways is $33.34, then $33.33, then $33.33.\n\n```screen\ntitle: Split amount\ntext: First payment\ntext: $0.00\ntile: Split equally 2\ntile: Split equally 3\ntile: Split equally 4\nprimary: !1 Continue\nnote: A keypad sits above Continue. Type the first payment, or tap one of the three Split equally buttons.\n```\n\n```screen\ntitle: Payment\nlabel: Remaining\ntext: $100.00\ntext: of $100.00\ntext: Next payment: $33.34 · then $33.33, $33.33\nbutton: !1 Card - $33.34\nbutton: Cash\nbutton: Gift card\nbutton: !2 Cancel split\nnote: After you split, the next payment aims for the amount shown.\n```\n\n### Each payment counts as one share\nWith **Split equally**, every payment you take counts as one share, whatever it was and whatever its size. After each one the rest is shared between the people left. Example: $90.00 split 3 ways.\n1. The first person pays $30.00 by card. $60.00 remains for 2 people.\n2. The second hands over only $20.00 in cash and you take it as a part payment. That counts as their share, so $40.00 remains for 1 person.\n3. The last payment is the whole $40.00.\n\nA card that is declined or cancelled takes nothing, so it does not use up a share.\n\n### When the cash does not cover a part of a split\nIf the customer hands over less than the current payment, the cash screen says how short it is and offers, instead of leaving you to split again:\n- **Two payments left:** **Add $… to payment 2** (it shows the old and new amount), or **Go back and change the split**.\n- **More than two payments left:** **Add $… to payment 3** (one button for each later payment), or **Spread $… over the other payments** (each later payment rises by the same amount), or **Go back and change the split**.\n\nThe cash they did hand over is taken as this payment, and the shortfall moves to the payment you chose. **Spread** only shows when every later payment would go up by a whole number of dollars (for example $30.00 over 3 payments is $10.00 each). If it would not divide into whole dollars the button is left out; choose a payment to add it to instead. **Ask for more** is always an option: just tap more notes and coins.\n\n### Part payments without splitting\nYou do not have to split first. A payment can simply be less than the bill:\n- **Cash:** if the customer hands over less than is due and the bill is not split, tap **Take $… as part payment**. See [[pay/cash]].\n- **Cash and card:** if the drawer cannot make the change, the cash screen can offer **Cash $… + the rest another way**.\n- **Gift card:** a card with less balance than the bill pays what it has. See [[pay/gift-card]].\n\nIn every case the **Payment** screen then says **Remaining**, with *of $…* under it, and the payments so far are listed. Pay the rest any way you like.\n\n### While part of the sale is paid\nThe cart is locked, so you cannot change items, clear it or save it. **Back** asks **Cancel this sale?**. **Refund & cancel** refunds card payments through the terminal and credits gift-card payments back to the same cards. For cash, the app asks you to collect any exact change previously given and return the exact denominations originally received; it does not optimise this exchange. If a cancellation step fails, the sale stays locked, records electronic returns already completed and offers a safe retry. Do not take another payment for that sale. See [[pay]].\n\n### On the receipt\nThe receipt lists every payment with its amount, and the sale is sent to Shopify with one payment per entry.",
+     "deep": "### How the next payment amount is chosen\nThe next payment aims for the first of these that applies, never more than what remains:\n1. The amount you keyed in on the split sheet.\n2. An equal share, when **Split equally** is active and more than one share is left.\n3. Everything that remains.\n\nA keyed amount only applies to the **next** payment. Once it is paid, the screen goes back to aiming for everything that remains, unless you split again. Example: $100.00 with $30.00 keyed. After the $30.00 is paid, $70.00 remains and the next payment aims for $70.00, not $30.00.\n\n### Equal shares and cents\nThe shares are worked out from what **remains**, so they are re-worked after every payment. Spare cents go to the earliest shares, which is why the first payer can be one cent more. The shares always add up exactly to what remains.\n\n### Rounding in a split\nCash rounding only applies to the payment that clears the whole of what remains. Earlier shares are always exact, and so are card payments. See [[pay/cash]].\n\n### Each payment is its own record\nEvery payment keeps its own method, amount, and for cards its own fee. The Shopify order gets one payment per entry, named **Zeller**, **Cash** or **Gift card**.\n\n### Cancelling\n**Refund & cancel** refunds each card payment through the terminal and credits each gift-card tender back to its original Shopify card. A unique transaction note and per-tender progress prevent a retry from crediting the same card twice. After electronic returns finish, the cashier collects any change previously given and returns the original cash tender using the exact saved denominations (or enters a manual denomination count for older tenders). If any step fails, payment methods are disabled and the cancellation can be retried.",
+     "advanced": "### Working out the next payment\n```mermaid\nflowchart TD\n  A[Pay.tsx: plan is the list of payments still to take] --> B{more than one part}\n  B -->|yes| C[target is the first part]\n  B -->|no| D[target is what remains]\n  C --> E[cap at remaining]\n  D --> E\n  E --> F[card cash or gift card aims for this amount]\n  F --> G{cash short on this part}\n  G -->|yes| H[shortChoices: add to a later part, spread, or change the split]\n  G -->|no| I[addTender uses up the first part]\n  H --> I\n  I --> J[planAfter shares what is left over the later parts]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The next payment amount (`target`) and the `plan` state | `Pay` in `src/screens/Pay.tsx` |\n| The split plan and the shortfall choices | `equalPlan`, `firstPlan`, `planTarget`, `planAfter`, `shortChoices`, `applyShortChoice` in `src/lib/splitPlan.ts` |\n| The shortfall buttons | `CashSheet` in `src/screens/CashSheet.tsx` |\n| Adding a payment | `addTender` in `src/screens/Pay.tsx` |\n| Sharing cents | `allocate` in `src/lib/money.ts` (largest remainder) |\n| What has been paid | `paidTotal` in `src/lib/saleBuilder.ts` |\n| Cancelling a part-paid sale | `abandon` in `src/screens/Pay.tsx` |\n| The keypad on the split sheet | `Keypad` in `src/ui/kit.tsx` |\n\n`plan` is a list of cents, one per payment still to take. **Split equally n** makes it from `allocate`; a keyed first amount makes `[amount, rest]`. `target` is the smaller of what remains and the first part, or what remains when the plan has one part or none. `addTender` uses up the first part on any payment of any size, then either takes the plan the cash screen chose (see `shortChoices`) or shares what is left over the later parts with `planAfter`. The plan lives only in the `Pay` screen's state, so it is not saved. The payments themselves are saved on the cart as `cart.tenders`.\n\n`Keypad` greys out **Continue** for $0.00, and the split sheet refuses an amount at or above what remains, so a split can never be zero or the whole bill.\n\n### Reading the code for a fault\n- **Next payment shows the wrong amount.** A payment was added since you split (it uses up the first part), or the later parts were re-worked from a smaller remainder or moved by a shortfall choice.\n- **Cancel split is missing.** It only shows while `plan` has more than one part. With one share left the screen is simply aiming for what remains.\n- **The split is gone after reopening the app.** Expected: it is screen state. The payments already taken are still on the cart.\n- **Tests.** The sharing maths is covered in `tests/lib.test.ts` (`allocate`). The plan rules are in `tests/splitplan.test.ts`. Cash and sale building are in `tests/cashsale.test.ts` and `tests/sale.test.ts`."
+-   }
++   },
++   "figures": [
++    "<figure class=\"sf\"><div class=\"sf-frame\"><div class=\"sf-bar\"><span class=\"sf-title\">Split amount</span></div><div class=\"sf-body\"><div class=\"sf-text\">First payment</div><div class=\"sf-text\">$0.00</div><div class=\"sf-grid sf-tiles\"><span class=\"sf-tile\"><span class=\"sf-tile-label\">Split equally 2</span></span><span class=\"sf-tile\"><span class=\"sf-tile-label\">Split equally 3</span></span><span class=\"sf-tile\"><span class=\"sf-tile-label\">Split equally 4</span></span></div><div class=\"sf-button sf-primary\"><span class=\"sf-badge\">1</span>Continue</div></div></div><figcaption class=\"sf-note\">A keypad sits above Continue. Type the first payment, or tap one of the three Split equally buttons.</figcaption></figure>",
++    "<figure class=\"sf\"><div class=\"sf-frame\"><div class=\"sf-bar\"><span class=\"sf-title\">Payment</span></div><div class=\"sf-body\"><div class=\"sf-label-head\">Remaining</div><div class=\"sf-text\">$100.00</div><div class=\"sf-text\">of $100.00</div><div class=\"sf-text\">Next payment: $33.34 · then $33.33, $33.33</div><div class=\"sf-button\"><span class=\"sf-badge\">1</span>Card - $33.34</div><div class=\"sf-button\">Cash</div><div class=\"sf-button\">Gift card</div><div class=\"sf-button\"><span class=\"sf-badge\">2</span>Cancel split</div></div></div><figcaption class=\"sf-note\">After you split, the next payment aims for the amount shown.</figcaption></figure>"
++   ]
+   },
+   {
+    "id": "sales",
+@@ -1726,17 +1733,23 @@
+     "orders/export",
+     "settings/shopify"
+    ],
+-   "updated": "2026-11-02",
++   "updated": "2026-11-14",
+    "roles": [
+     "manager",
+     "owner"
+    ],
+    "lead": "Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to the records this one holds. One register sets the shop up and shows a link; every other register joins with that link. Both iPads need to be signed in to iCloud, and only managers and owners see this page.",
+    "sections": {
+-    "basic": "### Set up the register that holds the shop\n- Open **Settings**, tap **Data**, then **Cloud sync**.\n- Tap **Set up this till**. The page says this register holds the shop records and shows an **Invite link**.\n- Tap **Share the invite link** to send it by Messages, email or AirDrop, or to copy it.\n\n### Join from another register\n- On the other iPad, open **Settings ▸ Data ▸ Cloud sync**.\n- Paste the link into the box and tap **Join**. The page then says the register has joined.\n- If the link is tapped on the iPad itself, the app opens with the link already in the box: just tap **Join**.\n\n### What you need\n- Both iPads signed in to iCloud. The top of the Cloud sync page says whether this one is.\n- One register set up first. Joining needs its link: there is no list of shops to pick from.\n- A manager or owner signed in, on both iPads.",
++    "basic": "### Set up the register that holds the shop\n- Open **Settings**, tap **Data**, then **Cloud sync**.\n- Tap **Set up this till**. The page says this register holds the shop records and shows an **Invite link**.\n- Tap **Share the invite link** to send it by Messages, email or AirDrop, or to copy it.\n\n```screen\ntitle: Cloud sync\nlabel: Set this till up\ntext: Makes this till the one that holds the shop records, then shows a link for the other tills.\nprimary: !1 Set up this till\nnote: Do this on one iPad only. Every other iPad joins with its link.\n```\n\n```screen\ntitle: Cloud sync\nlabel: This till holds the shop records\ntext: Send this link to each other till. On that till, open Cloud sync and paste it in.\ninput: Invite link | https://www.icloud.com/share/...\nprimary: !1 Share the invite link\nnote: This is what the page shows after Set up this till.\n```\n\n### Join from another register\n- On the other iPad, open **Settings ▸ Data ▸ Cloud sync**.\n- Paste the link into the box and tap **Join**. The page then says the register has joined.\n- If the link is tapped on the iPad itself, the app opens with the link already in the box: just tap **Join**.\n\n```screen\ntitle: Cloud sync\nlabel: Join a shop\ntext: Paste the invite link from the till that set the shop up.\ninput: !1 Invite link | https://www.icloud.com/share/...\nprimary: !2 Join\nnote: Join stays greyed out until a link is in the box.\n```\n\n### Back up everything in iCloud\nOnly the owner register (the one that set the shop up) has this. On **Settings ▸ Data ▸ Cloud sync**, tap **Back up everything**. It reads every record the shop keeps in iCloud and makes one zip of JSON files, then opens the share sheet so you can save it to Files or AirDrop it. It can take a minute or two on a slow connection: leave the page open until the share sheet appears.\n\n**Export all events** (shown once sync is switched on, on every register) makes one CSV of the events from every register instead.\n\n```screen\ntitle: Cloud sync\nlabel: Back up everything in iCloud\ntext: Makes one zip of JSON files with everything the shop keeps in iCloud.\nprimary: !1 Back up everything\nlabel: Events from every register\nbutton: !2 Export all events\nnote: Keep the zip private. It is as sensitive as the Shopify login.\n```\n\nThe zip is a copy that does not depend on the owner's Apple ID. Do not email it or leave it where other people can open it.\n\n### What you need\n- Both iPads signed in to iCloud. The top of the Cloud sync page says whether this one is.\n- One register set up first. Joining needs its link: there is no list of shops to pick from.\n- A manager or owner signed in, on both iPads.",
+     "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, and the AI assistant's address, model name and options. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.\n- If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.\n\n### One file of every register's events\nOnce sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.\n\n### Cash and refund notices on every register\nOnce sync is switched on, two kinds of notice reach every register: **cash** (cash taken outside the drawer, to add to the next count) and **refund** (a refund Shopify did not record, which needs a manager). A notice raised on one iPad shows up unread on the others a few seconds later, with **From** and the register's name above it. The other kinds (sync, queue, stock, reader, pass and info) describe one iPad, so they stay on it.\n\nReading or clearing a notice only affects the iPad you do it on. It is never sent, so it does not clear the notice on the other iPads, and a notice you cleared does not come back. A notice older than a week is not sent or shown, so a register that has just joined does not open on a pile of old ones. Practice mode never sends or takes in any.\n\n### The logo on every register\nOnce sync is switched on, the logo image you upload under **Settings ▸ Screensaver & display** is shared. Upload it on one iPad and the others pick it up a few seconds later, with nothing to upload on them. Replace it and they follow. Remove it and it is removed on the others too, so they fall back to the logo link. If two iPads change it at the same moment, the one that finishes last is kept. The logo link (the https address) is not shared, and neither is anything else on that page. The image must be a PNG, JPG, GIF or WebP under 700 KB; a larger one stays on the iPad you uploaded it on. Practice mode never sends or takes in a logo.\n\n### Square history on every register\nOnce sync is switched on, imported Square history is shared one month at a time. Import it on one iPad and the others take the months in a little later, with no QR code or PC. A newer import of a month replaces it everywhere, and **Delete imported Square history** removes it from iCloud and every register, which the confirmation says. If two registers changed the same month, the one with more sales is kept on both. A month is only ever deleted on a register that had not changed it since the last time it agreed with the shop. The copy in iCloud has every customer's name, email and phone taken out, so a register that took the history from iCloud shows those sales without a customer name; the register that imported keeps its full files. Practice mode never sends or takes in history.\n\n### Training progress on every register\nOnce sync is switched on, each person's training progress is shared, so a tick earned on one iPad shows on the others. Work done on two registers is joined, not replaced. Owners and managers can reset progress from **More → Training**, and a reset clears it on every register. Practice data is never shared.\n\n### The assistant's conversation log on every register\nOnce sync is on and the encrypted switch has been turned on, each conversation with the assistant is also sent to iCloud, encrypted, with the register's name. A manager opens **Settings ▸ AI assistant ▸ conversation log** and chooses **All registers** to read every register's conversations. This includes what a local model was sent, which can include a customer's name, so the copy is encrypted and only registers in your share can read it. A register's own log is sent once after it joins. Clearing or purging the log on an iPad does not remove the copy in iCloud. Conversations in a practice run are sent after the run ends. Nothing is sent until the encrypted switch is on.\n\n### What is and is not kept in iCloud\nThe Cloud sync page lists this in full under **What is kept in iCloud**. In short:\n- **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.\n- **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.\n- **Customer names:** sales hold only the Shopify customer id, and the Square history in iCloud has customer names, emails and phones removed. The assistant's log can still contain names a local model was sent, and a sale's note or a Square ticket name can contain one.\n- **The invite link is a key.** Anyone who holds it can read and write the shop records.\n\nYour shop's own privacy policy and App Store privacy details are yours to update.",
+     "advanced": "### How a register is linked\n```mermaid\nflowchart TD\n  A[Settings, Data, Cloud sync] --> B{Role}\n  B -->|First register| C[Set up this till: open the zone and make the invite link]\n  C --> D[Share the link]\n  B -->|Another register| E[Paste the link and Join]\n  D --> E\n  E --> F[Both registers read and write the shop records]\n```\n\n| Job | Where |\n|---|---|\n| The page itself, and the all-events export | `src/screens/CloudSync.tsx` |\n| The wording of the iCloud note | `src/lib/icloudNote.ts` |\n| The bridge and the no-native fallback | `modules/cloudkit-sync/index.ts` and `modules/cloudkit-sync/status.ts` |\n| The CloudKit calls (zone, share, join) | `modules/cloudkit-sync/ios/CloudKitSyncModule.swift` |\n| The iCloud container and the share link handler | `plugins/withCloudKit.js` |\n| The plan and the patch list | `dev_docs/CLOUDKIT_SYNC_PLAN.md` |\n\n### If it will not join\n- **\"This till is not signed in to iCloud.\"** Sign in to iCloud in the iPad's own Settings app on this iPad, then tap **Check again**.\n- **The link opens nothing.** The app was built without its iCloud entitlement, or the link belongs to a different iCloud container. Rebuild with `npm run ios:reset`.\n- **A link from another shop will not join.** A link only opens the shop it was made for. Ask the other shop's owner for its link, or set this register up as its own shop.\n- **CloudKit has two environments.** A build from Xcode uses the development environment; TestFlight and the App Store use production. A share made in one is not visible in the other, so link registers that were built the same way.\n\n### The parts that are easy to miss\n- The zone is called Store on both sides. The register that set up holds it in its private database; a register that joined sees it in its shared database. That is how each register knows which side it is on.\n- The invite link lets anyone who has it read and write the shop records, so treat it like a password. Turning the share off in iCloud stops it.\n- iOS gives the app the share link through the AppDelegate method added by `plugins/withCloudKit.js`, because Expo does not forward that call itself. The link is also kept, so a link tapped while the app was closed can be finished from the page."
+-   }
++   },
++   "figures": [
++    "<figure class=\"sf\"><div class=\"sf-frame\"><div class=\"sf-bar\"><span class=\"sf-title\">Cloud sync</span></div><div class=\"sf-body\"><div class=\"sf-label-head\">Set this till up</div><div class=\"sf-text\">Makes this till the one that holds the shop records, then shows a link for the other tills.</div><div class=\"sf-button sf-primary\"><span class=\"sf-badge\">1</span>Set up this till</div></div></div><figcaption class=\"sf-note\">Do this on one iPad only. Every other iPad joins with its link.</figcaption></figure>",
++    "<figure class=\"sf\"><div class=\"sf-frame\"><div class=\"sf-bar\"><span class=\"sf-title\">Cloud sync</span></div><div class=\"sf-body\"><div class=\"sf-label-head\">This till holds the shop records</div><div class=\"sf-text\">Send this link to each other till. On that till, open Cloud sync and paste it in.</div><div class=\"sf-input\"><span class=\"sf-label\">Invite link</span><span class=\"sf-value\">https://www.icloud.com/share/...</span></div><div class=\"sf-button sf-primary\"><span class=\"sf-badge\">1</span>Share the invite link</div></div></div><figcaption class=\"sf-note\">This is what the page shows after Set up this till.</figcaption></figure>",
++    "<figure class=\"sf\"><div class=\"sf-frame\"><div class=\"sf-bar\"><span class=\"sf-title\">Cloud sync</span></div><div class=\"sf-body\"><div class=\"sf-label-head\">Join a shop</div><div class=\"sf-text\">Paste the invite link from the till that set the shop up.</div><div class=\"sf-input\"><span class=\"sf-badge\">1</span><span class=\"sf-label\">Invite link</span><span class=\"sf-value\">https://www.icloud.com/share/...</span></div><div class=\"sf-button sf-primary\"><span class=\"sf-badge\">2</span>Join</div></div></div><figcaption class=\"sf-note\">Join stays greyed out until a link is in the box.</figcaption></figure>",
++    "<figure class=\"sf\"><div class=\"sf-frame\"><div class=\"sf-bar\"><span class=\"sf-title\">Cloud sync</span></div><div class=\"sf-body\"><div class=\"sf-label-head\">Back up everything in iCloud</div><div class=\"sf-text\">Makes one zip of JSON files with everything the shop keeps in iCloud.</div><div class=\"sf-button sf-primary\"><span class=\"sf-badge\">1</span>Back up everything</div><div class=\"sf-label-head\">Events from every register</div><div class=\"sf-button\"><span class=\"sf-badge\">2</span>Export all events</div></div></div><figcaption class=\"sf-note\">Keep the zip private. It is as sensitive as the Shopify login.</figcaption></figure>"
++   ]
+   },
+   {
+    "id": "settings/hardware",
+diff --git a/help/pay/gift-card.md b/help/pay/gift-card.md
+index 1c2ab88..a5add6b 100644
+--- a/help/pay/gift-card.md
++++ b/help/pay/gift-card.md
+@@ -6,7 +6,7 @@ needs: [selling]
+ summary: Scanning or typing a gift card code to pay, what the balance screen says, why the card is charged straight away, and what the messages mean.
+ tags: [gift card, gift, code, qr, scan, balance, redeem, shopify, disabled, expired, not found]
+ related: [pay, pay/card, pay/cash, gift/check-redeem]
+-updated: 2026-10-18
++updated: 2026-11-14
+ ---
+ A gift card pays part or all of a sale. The balance lives on the card in Shopify, so a card works on any register as long as the iPad is online.
+ 
+@@ -55,7 +55,7 @@ For a balance check, redemption history, and the difference between a card QR an
+ ## Deep
+ 
+ ### Why the card is charged first
+-The balance is taken off the card the moment you tap **Use as payment**, before the sale is finished. That stops two registers spending the same balance at once. The POS charges the card, and only if Shopify agrees does it add the payment to the sale. If you cancel the sale afterwards, the POS puts the money back on the card with a "POS cancel" note.
++The balance is taken off the card the moment you tap **Use as payment**, before the sale is finished. That stops two registers spending the same balance at once. The POS charges the card, and only if Shopify agrees does it add the payment to the sale. If the connection drops and the app says the card could not be charged, tap **Use as payment** again: the POS first looks at the card's history in Shopify, and if the first try did go through it does not charge the card a second time. If you cancel the sale afterwards, the POS puts the money back on the card with a "POS cancel" note.
+ 
+ ### How a code is found
+ Shopify can only search for gift cards by their last four characters. The POS searches that way, then looks at a hidden note on each candidate that holds a fingerprint of the full code, made when the POS created the card. A match is a verified card. If none match, the POS accepts a card **only** when exactly one candidate has no POS note at all and the code has eight or more characters, and then shows **code could not be verified**. Anything else is **No gift card found**.
+diff --git a/help/pay/split-and-part.md b/help/pay/split-and-part.md
+index 9561143..79ad3db 100644
+--- a/help/pay/split-and-part.md
++++ b/help/pay/split-and-part.md
+@@ -6,7 +6,7 @@ needs: [selling]
+ summary: Paying one bill in pieces: splitting equally or by an amount, part payments in cash or by gift card, and how the next payment amount is worked out.
+ tags: [split, part payment, partial, equal, share, remaining, next payment, cancel split, mix, several payments]
+ related: [pay, pay/cash, pay/card, pay/gift-card]
+-updated: 2026-10-12
++updated: 2026-11-14
+ ---
+ One sale can be paid with as many payments as you like, in any mix of card, cash and gift card. The sale finishes by itself when nothing remains.
+ 
+@@ -21,6 +21,30 @@ After you choose, the screen shows **Next payment: $…** and, after a dot, the
+ 
+ Example: $100.00 split equally 3 ways is $33.34, then $33.33, then $33.33.
+ 
++```screen
++title: Split amount
++text: First payment
++text: $0.00
++tile: Split equally 2
++tile: Split equally 3
++tile: Split equally 4
++primary: !1 Continue
++note: A keypad sits above Continue. Type the first payment, or tap one of the three Split equally buttons.
++```
++
++```screen
++title: Payment
++label: Remaining
++text: $100.00
++text: of $100.00
++text: Next payment: $33.34 · then $33.33, $33.33
++button: !1 Card - $33.34
++button: Cash
++button: Gift card
++button: !2 Cancel split
++note: After you split, the next payment aims for the amount shown.
++```
++
+ ### Each payment counts as one share
+ With **Split equally**, every payment you take counts as one share, whatever it was and whatever its size. After each one the rest is shared between the people left. Example: $90.00 split 3 ways.
+ 1. The first person pays $30.00 by card. $60.00 remains for 2 people.
+diff --git a/help/settings/cloud-sync.md b/help/settings/cloud-sync.md
+index 0f2b59d..1394173 100644
+--- a/help/settings/cloud-sync.md
++++ b/help/settings/cloud-sync.md
+@@ -5,7 +5,7 @@ parent: settings
+ summary: Set one register up to hold the shop's shared records, then join the others with its invite link.
+ tags: [cloud, icloud, cloudkit, share, registers, sync, invite link, multiple ipads, join, join a shop]
+ related: [settings/backup, orders/export, settings/shopify]
+-updated: 2026-11-02
++updated: 2026-11-14
+ roles: [manager, owner]
+ ---
+ Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to the records this one holds. One register sets the shop up and shows a link; every other register joins with that link. Both iPads need to be signed in to iCloud, and only managers and owners see this page.
+@@ -17,11 +17,54 @@ Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to
+ - Tap **Set up this till**. The page says this register holds the shop records and shows an **Invite link**.
+ - Tap **Share the invite link** to send it by Messages, email or AirDrop, or to copy it.
+ 
++```screen
++title: Cloud sync
++label: Set this till up
++text: Makes this till the one that holds the shop records, then shows a link for the other tills.
++primary: !1 Set up this till
++note: Do this on one iPad only. Every other iPad joins with its link.
++```
++
++```screen
++title: Cloud sync
++label: This till holds the shop records
++text: Send this link to each other till. On that till, open Cloud sync and paste it in.
++input: Invite link | https://www.icloud.com/share/...
++primary: !1 Share the invite link
++note: This is what the page shows after Set up this till.
++```
++
+ ### Join from another register
+ - On the other iPad, open **Settings ▸ Data ▸ Cloud sync**.
+ - Paste the link into the box and tap **Join**. The page then says the register has joined.
+ - If the link is tapped on the iPad itself, the app opens with the link already in the box: just tap **Join**.
+ 
++```screen
++title: Cloud sync
++label: Join a shop
++text: Paste the invite link from the till that set the shop up.
++input: !1 Invite link | https://www.icloud.com/share/...
++primary: !2 Join
++note: Join stays greyed out until a link is in the box.
++```
++
++### Back up everything in iCloud
++Only the owner register (the one that set the shop up) has this. On **Settings ▸ Data ▸ Cloud sync**, tap **Back up everything**. It reads every record the shop keeps in iCloud and makes one zip of JSON files, then opens the share sheet so you can save it to Files or AirDrop it. It can take a minute or two on a slow connection: leave the page open until the share sheet appears.
++
++**Export all events** (shown once sync is switched on, on every register) makes one CSV of the events from every register instead.
++
++```screen
++title: Cloud sync
++label: Back up everything in iCloud
++text: Makes one zip of JSON files with everything the shop keeps in iCloud.
++primary: !1 Back up everything
++label: Events from every register
++button: !2 Export all events
++note: Keep the zip private. It is as sensitive as the Shopify login.
++```
++
++The zip is a copy that does not depend on the owner's Apple ID. Do not email it or leave it where other people can open it.
++
+ ### What you need
+ - Both iPads signed in to iCloud. The top of the Cloud sync page says whether this one is.
+ - One register set up first. Joining needs its link: there is no list of shops to pick from.
+diff --git a/src/lib/shopify/giftCardOnce.ts b/src/lib/shopify/giftCardOnce.ts
+new file mode 100644
+index 0000000..c6f2679
+--- /dev/null
++++ b/src/lib/shopify/giftCardOnce.ts
+@@ -0,0 +1,18 @@
++// Location: src/lib/shopify/giftCardOnce.ts
++// Shopify's giftCardDebit and giftCardCredit have no idempotency key, so a call whose reply is lost (a dropped connection after Shopify
++// took it) looks like a failure, and a retry would take or give the money twice. The fix is the note: every charge and credit carries a
++// reference that is the same on every retry of the same operation, and before sending one again the gift card's history is read for it.
++// This file is only that decision, with no network, so tests/giftcardonce.test.ts covers it. Shopify returns a debit's amount as a
++// negative number, so amounts are compared by size.
++export type OnceTxn = { cents: number; note?: string; kind: 'credit' | 'debit' };
++
++/** 'done' when a transaction of this kind with this reference already exists for this amount, 'todo' when none does. Throws when the reference exists for another amount. */
++export function onceDecision(history: ReadonlyArray<OnceTxn>, kind: 'credit' | 'debit', cents: number, note: string): 'done' | 'todo' {
++  const found = history.find(t => t.kind === kind && t.note === note);
++  if (!found) return 'todo';
++  if (Math.abs(found.cents) !== Math.abs(cents)) throw new Error(`A gift-card ${kind} with this reference already exists for a different amount. Check the card's history in Shopify before trying again.`);
++  return 'done';
++}
++
++/** The reference for a gift-card payment: the Nth payment of one sale is the same on every retry, even after leaving the Payment screen. */
++export const debitNote = (saleUuid: string, tenderIndex: number): string => `POS sale ${saleUuid.slice(0, 8)} tender ${tenderIndex + 1}`;
+diff --git a/src/lib/shopify/giftcards.ts b/src/lib/shopify/giftcards.ts
+index 5695001..d6b086c 100644
+--- a/src/lib/shopify/giftcards.ts
++++ b/src/lib/shopify/giftcards.ts
+@@ -5,6 +5,7 @@
+ import * as Crypto from 'expo-crypto';
+ import { gql, throwUserErrors } from './client';
+ import { CURRENCY, toCents, toDecimal } from '../money';
++import { onceDecision } from './giftCardOnce';
+ import { uid } from '../ids';
+ import { normaliseCode } from '../giftCode';
+ import { createCustomer, searchRemote } from './customers';
+@@ -109,13 +110,15 @@ export async function allGiftCardTransactions(id: string): Promise<GiftCardTxn[]
+ 
+ /** Retry-safe credit for a specific operation. The caller's unique note is stored in Shopify's transaction history. */
+ export async function creditGiftCardOnce(id: string, cents: number, note: string) {
+-  const existing = (await allGiftCardTransactions(id)).find(t => t.kind === 'credit' && t.note === note);
+-  if (existing) {
+-    if (existing.cents !== cents) throw new Error('A gift-card credit with this reference already exists for a different amount.');
+-    return;
+-  }
++  if (onceDecision(await allGiftCardTransactions(id), 'credit', cents, note) === 'done') return;
+   await creditGiftCard(id, cents, note);
+ }
++/** Retry-safe charge (0240): if an earlier try with this note went through but its reply was lost, the card is not charged again. */
++export async function debitGiftCardOnce(id: string, cents: number, note: string) {
++  if (isTraining()) { practiceDebitGiftCard(id, cents); return; }
++  if (onceDecision(await allGiftCardTransactions(id), 'debit', cents, note) === 'done') return;
++  await debitGiftCard(id, cents, note);
++}
+ 
+ export async function outstandingBalance(): Promise<{ cards: number; cents: number }> {
+   let after: string | null = null, cards = 0, cents = 0;
+diff --git a/src/screens/Pay.tsx b/src/screens/Pay.tsx
+index c1587ec..1c19bb8 100644
+--- a/src/screens/Pay.tsx
++++ b/src/screens/Pay.tsx
+@@ -15,7 +15,8 @@ import { digitsToCents, fmt } from '../lib/money';
+ import { equalPlan, firstPlan, isSplit, planAfter, planTarget, type SplitPlan } from '../lib/splitPlan';
+ import { uid } from '../lib/ids';
+ import { emptyCart } from '../lib/cartOps';
+-import { lookupGiftCard, debitGiftCard, creditGiftCardOnce, type GiftCardInfo } from '../lib/shopify/giftcards';
++import { lookupGiftCard, debitGiftCardOnce, creditGiftCardOnce, type GiftCardInfo } from '../lib/shopify/giftcards';
++import { debitNote } from '../lib/shopify/giftCardOnce';
+ import { normaliseCode, isGiftQr } from '../lib/giftCode';
+ import { maskedLast4 } from '../lib/cards';
+ import { GiftCheckSheet } from './sheets';
+@@ -162,7 +163,8 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+   // ── gift card ──
+   const useGift = async (info: GiftCardInfo, code: string) => {
+     const amt = Math.min(info.balanceCents, target); const uuid = saleUuid();
+-    try { await debitGiftCard(info.id, amt, `POS sale ${uuid.slice(0, 8)}`); } catch (e: any) { return alertMsg('Gift card could not be charged', e.message, 'pay/gift-card'); }
++    // The note is the same on a retry of this payment (0240), so a charge Shopify took but whose reply was lost is not taken twice.
++    try { await debitGiftCardOnce(info.id, amt, debitNote(uuid, tenders.length)); } catch (e: any) { return alertMsg('Gift card could not be charged', e.message, 'pay/gift-card'); }
+     addTender({ id: uid(), kind: 'gift_card', amountCents: amt, giftCardId: info.id, giftCardCode: normaliseCode(code), at: new Date().toISOString() }, uuid); setGift(false);
+   };
+ 
+diff --git a/tests/giftcardonce.test.ts b/tests/giftcardonce.test.ts
+new file mode 100644
+index 0000000..c465901
+--- /dev/null
++++ b/tests/giftcardonce.test.ts
+@@ -0,0 +1,36 @@
++// Location: tests/giftcardonce.test.ts
++// Gift-card charges and credits are retry-safe (0240, from the B8 review): Shopify has no idempotency key, so a call whose reply was
++// lost must be recognised on the retry from its note in the card's history, and must never be sent twice.
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { onceDecision, debitNote } from '../src/lib/shopify/giftCardOnce';
++
++test('a charge that is not in the history is sent; one that is, is not sent again', () => {
++  assert.equal(onceDecision([], 'debit', 2000, 'POS sale abcd1234 tender 1'), 'todo');
++  assert.equal(onceDecision([{ kind: 'debit', cents: -2000, note: 'POS sale abcd1234 tender 1' }], 'debit', 2000, 'POS sale abcd1234 tender 1'), 'done');
++});
++test('Shopify returns a debit as a negative amount, and it still matches', () => {
++  assert.equal(onceDecision([{ kind: 'debit', cents: -2000, note: 'n' }], 'debit', 2000, 'n'), 'done');
++  assert.equal(onceDecision([{ kind: 'credit', cents: 2000, note: 'n' }], 'credit', 2000, 'n'), 'done');
++});
++test('a credit with the same note does not count as the charge, and the reverse', () => {
++  assert.equal(onceDecision([{ kind: 'credit', cents: 2000, note: 'n' }], 'debit', 2000, 'n'), 'todo');
++  assert.equal(onceDecision([{ kind: 'debit', cents: -2000, note: 'n' }], 'credit', 2000, 'n'), 'todo');
++});
++test('the same note for another amount stops with a message, rather than guessing', () => {
++  assert.throws(() => onceDecision([{ kind: 'debit', cents: -1500, note: 'n' }], 'debit', 2000, 'n'), /different amount/);
++});
++test('the Nth payment of a sale has the same reference on every retry, and the next payment has another', () => {
++  assert.equal(debitNote('abcd1234-ffff', 0), 'POS sale abcd1234 tender 1');
++  assert.equal(debitNote('abcd1234-ffff', 0), debitNote('abcd1234-ffff', 0));
++  assert.notEqual(debitNote('abcd1234-ffff', 0), debitNote('abcd1234-ffff', 1));
++});
++test('the Payment screen charges through the retry-safe call, with that reference', () => {
++  const pay = readFileSync('src/screens/Pay.tsx', 'utf8');
++  assert.match(pay, /await debitGiftCardOnce\(info\.id, amt, debitNote\(uuid, tenders\.length\)\)/);
++  assert.doesNotMatch(pay, /await debitGiftCard\(/);
++  const g = readFileSync('src/lib/shopify/giftcards.ts', 'utf8');
++  assert.match(g, /export async function debitGiftCardOnce[\s\S]*?onceDecision\([\s\S]*?'debit'/);
++  assert.match(g, /export async function creditGiftCardOnce[\s\S]*?onceDecision\([\s\S]*?'credit'/);
++});
+-- 
+2.43.0
+

@@ -1,0 +1,399 @@
+From 01e31a304a9064fc75da49e5210234559910164e Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Sun, 15 Nov 2026 07:24:56 +1100
+Subject: [PATCH] 0243 - Companion 0182: receive, adjust and count stock from
+ Scan
+
+---
+ CHANGELOG.md                     |  1 +
+ dev_docs/COMPANION_PLAN.md       |  4 +--
+ dev_docs/DEVICE_TESTS.md         | 14 +++++++++
+ dev_docs/PROGRESS.md             |  1 +
+ dev_docs/QUEUE.md                |  9 ++----
+ dev_docs/TO_DO.md                |  2 +-
+ help/device-mode.md              |  4 +--
+ help/help.json                   |  6 ++--
+ src/lib/stockAction.ts           | 38 +++++++++++++++++++++++
+ src/screens/Lookup.tsx           | 16 +++++-----
+ src/screens/ScanTab.tsx          |  2 +-
+ src/screens/StockActionPanel.tsx | 53 ++++++++++++++++++++++++++++++++
+ tests/stockaction.test.ts        | 39 +++++++++++++++++++++++
+ 13 files changed, 166 insertions(+), 23 deletions(-)
+ create mode 100644 src/lib/stockAction.ts
+ create mode 100644 src/screens/StockActionPanel.tsx
+ create mode 100644 tests/stockaction.test.ts
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index eba7b10..8848e34 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -8,6 +8,7 @@ There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `
+ 
+ ### Added
+ 
++- **Stock actions from Scan.** On the companion's Scan tab, a stock check has a Receive, adjust or count button. Same reasons, keypad and PIN rule as Inventory (0243).
+ - **Loans to the drawer.** Paid in has a switch to mark the money as a loan, the drawer shows what is owed back, and Take loan back pays it out again. Closing with a loan still owed asks first (0188).
+ - **AI assistant** (Help ▸ sparkles button, and More ▸ Settings ▸ AI assistant). It talks to a model you run yourself, reads the help pages and the till's own data, and never changes anything. The connection settings (0148, 0149), the chat screen (0151), the conversation log and its viewer (0152, 0156), the help, screen, link and guide tools (0157 to 0159, 0162), an offline mode (0160), the privacy gate every result passes through (0161), the product, stock and sales tools (0163, 0164), the date and screen tools (0166, 0167), the settings and status tools (0169), the cash drawer, change calculator and cart tools (0172), and the coach that helps in training Checks (0173). It only sends the tools a question is likely to need (0185). It reads sales from every register in the shop, not only the one in your hand.
+ - **Training mode.** Show, Info, Guide and Check for 28 task courses, from signing in to refunds, with a virtual Zeller terminal (0065 to 0140, 0183). Going off course is caught and says which course teaches the fix.
+diff --git a/dev_docs/COMPANION_PLAN.md b/dev_docs/COMPANION_PLAN.md
+index 239563e..6ff31bd 100644
+--- a/dev_docs/COMPANION_PLAN.md
++++ b/dev_docs/COMPANION_PLAN.md
+@@ -113,7 +113,7 @@ With Selling off, the phone can still build a cart (search or scan, quantities,
+ | 0179 | Hardware and sync gating | Built, needs a device test (T82) |
+ | 0180 | Quick sale, expand to full POS, send to register, payment methods by group | Built, needs a device test (T83) |
+ | 0181 | Help, Training and assistant gating, docs | Built, needs a device test (T84) |
+-| 0182 | Stock actions from Scan | Planned |
++| 0182 | Stock actions from Scan | Built, needs a device test (T115) |
+ 
+ ## Progress tracker
+ 
+@@ -143,7 +143,7 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
+ - [~] C19 `needs` tag on Help pages, a device rule for Training courses, hidden ones unsearchable (0181, needs a device test)
+ - [~] C20 Nav graph (Today and Scan, 0180) and assistant gating (0181, needs a device test)
+ - [x] C21 Help page, `MODES.md` and `DEVICE_TESTS.md` steps (kept up to date in each patch; the separate `COMPANION.md` is not needed because the Device mode help page and this plan cover it)
+-- [ ] C22 Receive, count and adjust from a Scan result (0182)
++- [~] C22 Receive, count and adjust from a Scan result (0182, needs a device test)
+ - [ ] C23 Device tests on iPhone and iPad, by you (end)
+ 
+ ## What I found in the code
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index 9090d07..0f7ee59 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1515,3 +1515,17 @@ Two iPads on the same shop, both on iCloud. Use Development, with the schema fro
+ 7. **Export all events.** Pass: one CSV with events from both registers.
+ 
+ Tell me pass or fail for each, and the exact text of any error.
++
++## T115. Stock actions from Scan (0243)
++
++Setup: a companion device (or any device in companion mode) with a tracked item that has a barcode. Note its stock in Shopify first.
++
++1. Scan ▸ **Stock check** ▸ **Scan an item**. Scan the item. Pass: the result shows, with **Receive, adjust or count** under it.
++2. Tap it, leave **Receive** selected, key 3, tap **Apply**. Pass: it asks for the PIN, then the count goes up by 3 and the panel closes. Shopify shows the same (reason: received).
++3. Tap it again, choose **Adjust**, tap **Remove**, pick **damaged**, key 1, Apply. Pass: down by 1; Shopify's history says damaged.
++4. Choose **Count**, key the real number, Apply. Pass: stock is exactly that number.
++5. Tap one of the **other variations**. Pass: the panel opens for that variation, not the first one.
++6. Turn on airplane mode, Receive 2, Apply. Pass: "No connection" and the count does not change. Turn it off and Apply again. Pass: it goes up by 2 once, not twice.
++7. On the register's checkout grid, open **Stock check**. Pass: there is no Receive button there.
++
++Tell me pass or fail for each, and the exact text of any error.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index e34de17..17e092f 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -202,6 +202,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0219 | 2026-11-02 | CloudKit patch 6e: **the owner-only CloudKit export** (your request: do the rest of the docs), plus corrections. The export: `exportAll.ts` is the pure half (the list of every record type, `readAll` that reads a whole list and fails loudly, `collectExport` that builds the files, manifest and README, `zipExport` with fflate); `exportAllIO.ts` writes the zip to the cache folder, adds the logo picture, and refuses in a practice run; the Cloud sync page has an owner-only **Back up everything** button that confirms first and shares the zip. New `tests/exportall.test.ts` (9 tests) and `tests/lazybackend.test.ts` (3 tests). **Corrections to earlier patches, found by a real type check and by installing `fflate` so the whole suite ran:** (1) the tsc setup in this repo does not check anything here (`expo/tsconfig.base` is missing), so the "tsc clean" I reported for 0213 to 0218 meant nothing. I ran a lenient check of every file I touched and it found two real bugs in 0216: `migrationPanel.ts` read `phase` from a failure result that has none (a failed count check), and `CloudSync.tsx` used `useApp` without importing it. Both fixed here, with tests. (2) With `fflate` installed the suite showed two failures in `demoguard.test.ts` that my patches caused: 0215 put `put()` calls in `sync.ts` outside the guarded seam, and the new export wrote a file with no guard. The direct backend handles now live in `cloudkit/lazyBackend.ts` (the write stops on the same guard as the seam) and the export checks the guard. With `fflate` installed the whole suite passes (1868, 0 failing). |
+ | 0220 | 2026-11-02 | CloudKit patch 8: **the switch** (your request: do the rest of the docs). Rules in `backendChoice.ts` (flag values, start-up kind, when to move, which of a till's own sales are the gap, what the page says), job in `cloudkit/backendSwitch.ts` (`install`, `check`, `rollBack`, `allowSwitch`, `view`), flag storage in `cloudkit/backendFlagIO.ts` (guarded, local). `App.tsx` now installs the backend through the switch instead of always Shopify; `pollShared` calls `backendSwitch.check()` first. Cloud sync page: where this till keeps shared data, with the rollback and its way back. **Decisions made here, in GUESSES:** cut over in one go (no dual-write); a switched till never falls back by itself; the gap is closed by sending a till's own recent sales, not by dual-writing. **Not done:** retiring the 25 s poll, which needs CloudKit subscriptions in Swift (8b). New `tests/backendchoice.test.ts` (9 tests) and `tests/backendswitch.test.ts` (11 tests); full suite 1891, 0 failing with `fflate` installed; a lenient type check of the new files is clean. |
+ | 0242 | 2026-11-14 | Docs only (your request: "make the docs up to date"). `dev_docs/TO_DO.md` and `dev_docs/QUEUE.md` were last written in October and said nothing about CloudKit, so both are rewritten against what is built: the queue now holds only what is left, and TO_DO gains a CloudKit section and the new device test T114. `CLOUDKIT_SYNC_PLAN.md` gains section 10 (status after the first real run, 0231 to 0241, and the Development environment note), `CLOUDKIT_SYNC_DECISIONS.md` records your choice to stay on Development for now, `SETUP.md` gains the schema command and `.cloudkit.env`, and `CHANGELOG.md` the CloudKit, Transactions and gift-card entries. No code. | B7e, B8, docs |
++| 0243 | 2026-11-15 | Companion mode, patch 8 (your request: "go for Companion 0182"). **Stock actions from Scan.** On a Stock check opened from the companion's Scan tab, a **Receive, adjust or count** button under the result opens a panel with the same three modes, reasons and keypad as Inventory. It asks for the PIN (`requireStepUp('shopify')`), writes through `adjustStock`/`setStock`, and updates the local count. Tapping one of the other variations switches to it. A retry after a dropped connection reuses the same idempotency key, so Shopify applies it once. Training changes this device only. The checkout grid's Stock check is unchanged (the panel is off there). New `src/lib/stockAction.ts` (pure plan, summary and retry key), `src/screens/StockActionPanel.tsx`, `tests/stockaction.test.ts` (7 tests), a line in the Device mode Help page, `COMPANION_PLAN.md` C22, `QUEUE.md`, `TO_DO.md`, `DEVICE_TESTS.md` T115. Not compiled here (no `tsc`); needs a device test. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index 62e2d56..8dcf88b 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -23,13 +23,8 @@ Support & diagnostics first (0239). Then group the steps that write different pa
+ 
+ ## Stream B: Companion mode
+ 
+-Patches 0175 to 0180 are in (plan, setup checklist, PIN lock, the gate, the card reader and drawer switches, and quick
+-sale; see `PROGRESS.md`).
+-
+-### Companion 0182. Stock actions from Scan
+-
+-Count, receive and adjust stock from the Scan tab. First step: read `COMPANION_PLAN.md` for the Scan tab and the stock
+-screens it should reuse.
++Patches 0175 to 0182 are in (plan, setup checklist, PIN lock, the gate, the card reader and drawer switches, quick sale,
++Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only the device tests are left (C23).
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index 5513b00..56a34ec 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -83,7 +83,7 @@ Built and running in Development since 2026-11-11 (patches 0231 to 0241, see `de
+ 
+ | Id | What is left |
+ | --- | --- |
+-| 0182 | Stock actions from Scan: count, receive and adjust stock from the Scan tab. Not started (no row in `PROGRESS.md`). |
++| 0182 | Stock actions from Scan: built in 0243. Needs your device test, T115. |
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/help/device-mode.md b/help/device-mode.md
+index 1aee2e0..6640e98 100644
+--- a/help/device-mode.md
++++ b/help/device-mode.md
+@@ -5,7 +5,7 @@ parent: start
+ summary: What this device is, a register or a companion, and which register features a companion keeps.
+ tags: [device mode, register, companion, phone, tablet, features, switch, remote, beside the till, pin, lock, auto-lock, step-up]
+ related: [start/setup, settings/backup, staff]
+-updated: 2026-10-20
++updated: 2026-11-15
+ ---
+ Open **More ▸ Device mode** to say what this device is. A **register** is a till and has every feature. A **companion** is a phone or tablet beside the till: it has the register features you switch on, and everything else the app can do. Everyone who is signed in can open this page.
+ 
+@@ -32,7 +32,7 @@ Open **More ▸ Device mode** to say what this device is. A **register** is a ti
+ ### What a companion shows
+ - The tab bar is **Today**, **Scan**, **Inventory**, **Transactions** and **More**, with **Checkout** added when Selling is on. Notifications is the bell on Today, and also opens from a notice link. A register keeps the five tabs it has always had and never shows Today or Scan.
+ - **Today** is a glance at the shop: today's sales and orders (managers and owners only, the same rule as Reports), items that are low, out or oversold, and any sales stuck in the upload queue. Each card opens the full screen, and pulling down refreshes it.
+-- **Scan** is one big button for a price check or a stock check. It opens the camera, and a Bluetooth scanner works once the check is open. It never touches a cart.
++- **Scan** is one big button for a price check or a stock check. It opens the camera, and a Bluetooth scanner works once the check is open. It never touches a cart. On a stock check, **Receive, adjust or count** under the result changes that item's stock: **Receive** adds what arrived, **Adjust** adds or removes with a reason (correction, damaged, shrinkage, other), **Count** sets the number you counted. It asks for the PIN first, and tapping one of the other variations switches to it.
+ - A tab, page or More row that belongs to a feature the device does not hold is not shown. A page that is open when its feature is switched off closes itself. **Staff** is always shown for managers and owners, so a companion can always make or reset a PIN.
+ 
+ ### Selling from a companion
+diff --git a/help/help.json b/help/help.json
+index 6d55cbe..316f124 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "995f24ab",
++ "version": "e40e4756",
+  "pages": [
+   {
+    "id": "cash",
+@@ -467,10 +467,10 @@
+     "settings/backup",
+     "staff"
+    ],
+-   "updated": "2026-10-20",
++   "updated": "2026-11-15",
+    "lead": "Open **More ▸ Device mode** to say what this device is. A **register** is a till and has every feature. A **companion** is a phone or tablet beside the till: it has the register features you switch on, and everything else the app can do. Everyone who is signed in can open this page.",
+    "sections": {
+-    "basic": "### See what this device is\n- The top of the page says **This device is a register** or **This device is a companion**, with a line under it saying what that means.\n- The list of features below shows a switch for each group. On a register every switch is on and cannot be changed.\n\n### Switch a feature on or off\n- **Selling.** The checkout, cart and payments.\n- **Card reader.** The Zeller reader and terminal practice.\n- **Cash drawer.** The drawer, its ledger and the change tools.\n- **Till staff tools.** Lock register, staff pass scanning and switching staff.\n- **Till display.** Screensaver, keep awake, item spotlight and the grid editor.\n- **Till training.** The register courses.\n- Under each switch is a line listing what the group holds. Switch a group off to take those things off this device, and on to bring them back.\n\n### Change the mode\n- Tap **Switch this device to Companion mode** or **Switch this device to Register mode** and confirm.\n- Switching to a companion keeps the feature switches as they are: whatever was on stays on, and anything you switch on as a companion is still there if you switch back to a register.\n- Nothing is deleted by a mode change. A hidden feature is hidden, not removed, so a cart, a saved sale or a cash count is still there when it comes back.\n\n### What a companion shows\n- The tab bar is **Today**, **Scan**, **Inventory**, **Transactions** and **More**, with **Checkout** added when Selling is on. Notifications is the bell on Today, and also opens from a notice link. A register keeps the five tabs it has always had and never shows Today or Scan.\n- **Today** is a glance at the shop: today's sales and orders (managers and owners only, the same rule as Reports), items that are low, out or oversold, and any sales stuck in the upload queue. Each card opens the full screen, and pulling down refreshes it.\n- **Scan** is one big button for a price check or a stock check. It opens the camera, and a Bluetooth scanner works once the check is open. It never touches a cart.\n- A tab, page or More row that belongs to a feature the device does not hold is not shown. A page that is open when its feature is switched off closes itself. **Staff** is always shown for managers and owners, so a companion can always make or reset a PIN.\n\n### Selling from a companion\n- With **Selling** on, the **Checkout** tab opens a **Quick sale**: find an item by name, SKU or barcode (or scan it with the camera or a Bluetooth scanner), type an amount, check the cart and tap **Pay**. **Full checkout** swaps in the whole checkout on the same cart, and **Quick sale** swaps back, so nothing is lost either way.\n- With **Selling** off, there is no Checkout tab, but **Today** has **Build a cart for a register**. It is the same screen without Pay: build the cart and tap **Send to register**. It becomes a saved cart that every register sees in Saved carts, ready to open and take payment.\n- **Card** is offered at Pay only when **Card reader** is on. **Cash** and **gift card** are always offered.\n- Cash with **Cash drawer** off is allowed. The sale takes the cash as normal but nothing is posted to a drawer, and a **Cash outside the drawer** notice is raised for each one. Today shows how many are waiting, and they are for adding to the next drawer count.\n\n### Help, the assistant and Training on a companion\n- **Help** leaves out the pages for a feature the device does not hold. With **Cash drawer** off there is no Cash drawer section, the card pages need **Card reader** and **Selling**, and the cart, saved cart and Pay pages need **Selling**. Search never finds them.\n- The **assistant** is in step with the device the same way it is with your role: it does not know about screens or pages for a feature the device does not hold, so it never points at them, and a search for them comes back empty. Its directions start from **Today** on a companion.\n- **Training** lists a course when the device holds **Till training**, or when the course needs nothing the device does not have. With everything off, the register courses (they start at Checkout) are hidden, and the count of finished courses covers only the ones listed. Practice itself still runs with every feature on.\n- A **register** sees every page, screen and course, exactly as before. Today and Scan are not on a register's map.\n\n### What a feature that is off stops doing\n- **Card reader** off: the app never talks to the terminal, so there are no reader checks and no reader notices, and **Support & diagnostics** leaves out the reader tools. Switch it on and the checks start straight away.\n- **Cash drawer** off: the device neither reads nor writes the shop's shared drawer, so a phone can never overwrite a till's drawer. The one exception is an unsent drawer change the device made earlier as a register, which finishes uploading.\n- **Selling** off: sale uploads and saved-cart uploads only run while there is something left to send, so switching Selling off never strands a queued sale or a saved cart.\n- **Till display** off: no screensaver and no keep awake.\n- **Till staff tools** off: no pass notices.\n- Notices for a feature the device does not hold are not raised, and old ones are hidden from the list and the count. A notice that links to a page the device does not hold stays put when you tap it.\n- Always running whatever the device holds: the shared poll (staff, settings and the shop's shared records), Shopify and sync checks, stock and sync notices.\n\n### PIN and locking on a companion\n- A companion asks for a PIN when it opens, and locks itself again when nobody has touched it for a while or after it has been away in the background. **Locking** on this page sets how long: 1, 2, 5 or 10 minutes, or never. It never locks in the middle of a card payment.\n- Anything that changes something that matters asks for your PIN again if you have not typed it recently: taking a payment, refunds, changing items, stock, customers or orders, the cash drawer, Settings, Staff and backups, and changing the mode, a feature or the locking choices on this page. Signing in counts as typing it. **Ask for my PIN again after** can be every time, 1, 5 or 15 minutes. Five wrong PINs lock the app.\n- A register is not changed by any of this. It locks only if **Require PIN** is switched on in Staff, as before. Making a phone a companion never switches that shared setting on, so your tills are not affected.\n- A companion needs an owner with a PIN to lock. Create one in Staff first; the setup checklist step ticks once there is an owner with a PIN.\n- Practice and Demo mode show every feature and never lock.\n\n### Open the checklist again\n- Tap **Open the setup checklist** to see the first-run steps for this device and which are done. See [[start/setup]].",
++    "basic": "### See what this device is\n- The top of the page says **This device is a register** or **This device is a companion**, with a line under it saying what that means.\n- The list of features below shows a switch for each group. On a register every switch is on and cannot be changed.\n\n### Switch a feature on or off\n- **Selling.** The checkout, cart and payments.\n- **Card reader.** The Zeller reader and terminal practice.\n- **Cash drawer.** The drawer, its ledger and the change tools.\n- **Till staff tools.** Lock register, staff pass scanning and switching staff.\n- **Till display.** Screensaver, keep awake, item spotlight and the grid editor.\n- **Till training.** The register courses.\n- Under each switch is a line listing what the group holds. Switch a group off to take those things off this device, and on to bring them back.\n\n### Change the mode\n- Tap **Switch this device to Companion mode** or **Switch this device to Register mode** and confirm.\n- Switching to a companion keeps the feature switches as they are: whatever was on stays on, and anything you switch on as a companion is still there if you switch back to a register.\n- Nothing is deleted by a mode change. A hidden feature is hidden, not removed, so a cart, a saved sale or a cash count is still there when it comes back.\n\n### What a companion shows\n- The tab bar is **Today**, **Scan**, **Inventory**, **Transactions** and **More**, with **Checkout** added when Selling is on. Notifications is the bell on Today, and also opens from a notice link. A register keeps the five tabs it has always had and never shows Today or Scan.\n- **Today** is a glance at the shop: today's sales and orders (managers and owners only, the same rule as Reports), items that are low, out or oversold, and any sales stuck in the upload queue. Each card opens the full screen, and pulling down refreshes it.\n- **Scan** is one big button for a price check or a stock check. It opens the camera, and a Bluetooth scanner works once the check is open. It never touches a cart. On a stock check, **Receive, adjust or count** under the result changes that item's stock: **Receive** adds what arrived, **Adjust** adds or removes with a reason (correction, damaged, shrinkage, other), **Count** sets the number you counted. It asks for the PIN first, and tapping one of the other variations switches to it.\n- A tab, page or More row that belongs to a feature the device does not hold is not shown. A page that is open when its feature is switched off closes itself. **Staff** is always shown for managers and owners, so a companion can always make or reset a PIN.\n\n### Selling from a companion\n- With **Selling** on, the **Checkout** tab opens a **Quick sale**: find an item by name, SKU or barcode (or scan it with the camera or a Bluetooth scanner), type an amount, check the cart and tap **Pay**. **Full checkout** swaps in the whole checkout on the same cart, and **Quick sale** swaps back, so nothing is lost either way.\n- With **Selling** off, there is no Checkout tab, but **Today** has **Build a cart for a register**. It is the same screen without Pay: build the cart and tap **Send to register**. It becomes a saved cart that every register sees in Saved carts, ready to open and take payment.\n- **Card** is offered at Pay only when **Card reader** is on. **Cash** and **gift card** are always offered.\n- Cash with **Cash drawer** off is allowed. The sale takes the cash as normal but nothing is posted to a drawer, and a **Cash outside the drawer** notice is raised for each one. Today shows how many are waiting, and they are for adding to the next drawer count.\n\n### Help, the assistant and Training on a companion\n- **Help** leaves out the pages for a feature the device does not hold. With **Cash drawer** off there is no Cash drawer section, the card pages need **Card reader** and **Selling**, and the cart, saved cart and Pay pages need **Selling**. Search never finds them.\n- The **assistant** is in step with the device the same way it is with your role: it does not know about screens or pages for a feature the device does not hold, so it never points at them, and a search for them comes back empty. Its directions start from **Today** on a companion.\n- **Training** lists a course when the device holds **Till training**, or when the course needs nothing the device does not have. With everything off, the register courses (they start at Checkout) are hidden, and the count of finished courses covers only the ones listed. Practice itself still runs with every feature on.\n- A **register** sees every page, screen and course, exactly as before. Today and Scan are not on a register's map.\n\n### What a feature that is off stops doing\n- **Card reader** off: the app never talks to the terminal, so there are no reader checks and no reader notices, and **Support & diagnostics** leaves out the reader tools. Switch it on and the checks start straight away.\n- **Cash drawer** off: the device neither reads nor writes the shop's shared drawer, so a phone can never overwrite a till's drawer. The one exception is an unsent drawer change the device made earlier as a register, which finishes uploading.\n- **Selling** off: sale uploads and saved-cart uploads only run while there is something left to send, so switching Selling off never strands a queued sale or a saved cart.\n- **Till display** off: no screensaver and no keep awake.\n- **Till staff tools** off: no pass notices.\n- Notices for a feature the device does not hold are not raised, and old ones are hidden from the list and the count. A notice that links to a page the device does not hold stays put when you tap it.\n- Always running whatever the device holds: the shared poll (staff, settings and the shop's shared records), Shopify and sync checks, stock and sync notices.\n\n### PIN and locking on a companion\n- A companion asks for a PIN when it opens, and locks itself again when nobody has touched it for a while or after it has been away in the background. **Locking** on this page sets how long: 1, 2, 5 or 10 minutes, or never. It never locks in the middle of a card payment.\n- Anything that changes something that matters asks for your PIN again if you have not typed it recently: taking a payment, refunds, changing items, stock, customers or orders, the cash drawer, Settings, Staff and backups, and changing the mode, a feature or the locking choices on this page. Signing in counts as typing it. **Ask for my PIN again after** can be every time, 1, 5 or 15 minutes. Five wrong PINs lock the app.\n- A register is not changed by any of this. It locks only if **Require PIN** is switched on in Staff, as before. Making a phone a companion never switches that shared setting on, so your tills are not affected.\n- A companion needs an owner with a PIN to lock. Create one in Staff first; the setup checklist step ticks once there is an owner with a PIN.\n- Practice and Demo mode show every feature and never lock.\n\n### Open the checklist again\n- Tap **Open the setup checklist** to see the first-run steps for this device and which are done. See [[start/setup]].",
+     "deep": "### Two ways of narrowing, and neither one widens\nA device's mode decides what exists here. A person's display mode (Standard, Simple, Minimal, Custom) decides how much of that they see. Neither can bring back something the other has taken away: a companion with Selling off stays without the checkout however the person's display mode is set, and a companion cannot grant a cashier a page their role does not allow.\n\nSome things are on a companion whatever it has switched off, because they are not register features: Help, Demo mode, Notifications, the assistant, Settings for managers and owners, and the sync and Shopify diagnostics.\n\n### The mode belongs to the device\nThe mode and the feature switches are stored on this device only. They do not sync to the other registers, and a [[settings/backup]] file does not carry them, so a device restored onto new hardware keeps its own answer. The mode is never taken from another register either: a device always reads its own.\n\n### Which is which in the shop\nA register is usually the iPad at the counter with the reader and the drawer. A companion is a phone in someone's pocket, or a tablet used for looking things up, taking a cart to the counter, or asking the assistant. Turning Selling on a companion is what makes it a second till.",
+     "advanced": "### The rules\n`src/lib/appMode.ts` holds the six group ids, the defaults (a register has all six, a companion has none until they are switched on), and the gate: `tabAllowed`, `routeAllowed` and `rowAllowed`. A stored mode that is not `register` or `companion` reads as a register, so an older app version or a hand-edited setting can never invent a companion.\n\n```mermaid\nflowchart TD\n  A[Device mode screen] --> B{A register or a companion}\n  B -->|Register| C[Every feature on, nothing to switch]\n  B -->|Companion| D[Six switches, all off to start]\n  D --> E[tabAllowed, routeAllowed, rowAllowed]\n  E --> F[The screens a companion can reach]\n```\n\n| Job | Where |\n|---|---|\n| The groups, the defaults and the gate | `src/lib/appMode.ts` |\n| The page and its six switches | `src/screens/DeviceMode.tsx` |\n| The stored keys `appMode` and `registerFeatures` | `src/state/store.ts` |\n| Keeping them out of a backup | `DEVICE_KEYS` in `src/lib/backupFile.ts` |\n| The row in More | `src/screens/More.tsx` and `src/lib/uiMode.ts` |\n\n### What the gate answers\n- `tabAllowed`: a companion keeps Inventory, Transactions, Notifications and More, and needs **Selling** for Checkout.\n- `routeAllowed`: `cart`, `pay` and `saved` need **Selling**; `drawer` needs **Cash drawer**; `terminalPlay` needs **Card reader**; `training` and `trainingRun` need **Till training**. Every other page is allowed.\n- `rowAllowed`: the **Cash drawer** and **Training** rows follow their group (Staff does not, see above). The row is still subject to the display mode and the person's role.\n\n### How the lock and the step-up decide\n- `lockRequired` in `src/lib/appMode.ts` says whether the app is locked: a register follows Require PIN, a companion always locks.\n- `stepUpNeeded` and `lockDue` in `src/lib/stepUp.ts` say whether a PIN is due, from the time of the last PIN entry, and whether to lock after being idle. Pages in `STEP_UP_ROUTES` ask before they open (`pay`, `createItem`, `editItem`, `drawer`, `settings`, `staff`, `deviceMode`), and the handlers for stock, customers, fulfilling orders, refunds and backups call `requireStepUp` from `src/lib/stepUpGate.ts` themselves. The prompt is `src/ui/StepUpHost.tsx`.\n- `autoLockMinutes` and `stepUpMinutes` are per device and listed in `DEVICE_KEYS`, so a backup never copies them.\n\n### Tabs, pages and rows\n`deviceTabs` in `src/lib/appMode.ts` gives the tab bar, `homeTab` says where the app opens and where a hidden tab sends you, and `tabAllowed`, `routeAllowed` and `rowAllowed` answer for each tab, page and More row. `App.tsx` asks them for the bar and the panes, the `Routes` guard closes a page the device does not hold, and the More screen filters its rows. `src/screens/Today.tsx` draws the Today cards from `todayCards` in `src/lib/todayCards.ts`, and `src/screens/ScanTab.tsx` reuses `LookupSheet`.\n\n### Selling\n`QuickSale` in `src/screens/QuickSale.tsx` is the quick sale and the hand-off (the `kind` says which). It uses the same cart as the checkout, the same cart operations, pricing and scanners, and the same save-cart sheet. `salesPane`, `canHandOff` and `payMethods` in `src/lib/appMode.ts` make the choices: which pane the Checkout tab shows, whether the phone can hand a cart over, and which payment methods Pay offers. With no drawer, `takeCash` in `src/screens/Pay.tsx` skips the ledger and raises a `cash` notice, and `drawerChanged` in `src/lib/sync.ts` does nothing.\n\n### Help, the assistant and Training\n- A help page lists the features it needs in its header (`needs: [cashDrawer]`). `pageAvailable` and `pagesForDevice` in `src/lib/helpDocs.ts` hide a page whose features are not all held, and every page under a hidden page. `helpSetForDevice` in `src/lib/helpBuiltin.ts` rebuilds the index for the Help screen. The page builder rejects a `needs:` value that is not a feature.\n- `screensFor` in `src/lib/assistantScreens.ts` walks the app graph for the device: a tab or page the device does not hold is not on the map, so neither is a window reachable only through it, and a companion's walks start from `tab_today`. `builtinScreens` is the register's list. `Assistant.tsx` passes the device's pages and screens to the tools, so nothing else changes.\n- `moduleAvailable` in `src/lib/appMode.ts` decides which courses the hub lists, from each course's `tabs` and `routes`.\n- Tests: `tests/devicegating.test.ts`.\n\n### Background work and hardware\n`backgroundJobs` in `src/lib/appMode.ts` says which jobs run: the reader, the sale upload, the saved-cart push, the drawer and the display layers. `runBackground` and `DisplayLayers` in `App.tsx`, `readerOn` in `src/zellerBridge.tsx` and `drawerOn` in `src/lib/sync.ts` ask it. `noticeAllowed` and `visibleNotices` decide which notices are raised (in `notify`, in the store) and shown.\n\n### What is not wired yet\nThe wording of the screens that stay and the phone layout for existing screens are not done yet (see `dev_docs/COMPANION_PLAN.md`)."
+    }
+diff --git a/src/lib/stockAction.ts b/src/lib/stockAction.ts
+new file mode 100644
+index 0000000..8e0e695
+--- /dev/null
++++ b/src/lib/stockAction.ts
+@@ -0,0 +1,38 @@
++// Location: src/lib/stockAction.ts
++// 0182: the maths and rules behind "Receive, adjust or count" on a Scan result. Pure, so it can be tested without the screen.
++// The Inventory screen has the same three modes; this is the same behaviour for the companion's Scan tab.
++import type { AdjustReason } from './shopify/inventory';
++
++export type StockMode = 'receive' | 'adjust' | 'count';
++export const ADJUST_REASONS: AdjustReason[] = ['correction', 'damaged', 'shrinkage', 'other'];
++
++export type StockInput = { mode: StockMode; digits: string; remove: boolean; reason: AdjustReason; current: number | null };
++export type StockPlan =
++  | { kind: 'adjust'; delta: number; reason: AdjustReason; next: number }
++  | { kind: 'count'; quantity: number; reason: AdjustReason; next: number };
++
++const qty = (digits: string): number => Math.min(99999, Math.max(0, Math.floor(Number(digits) || 0)));
++
++/** What pressing Apply would do, or null when there is nothing to apply yet. */
++export function planStockAction(i: StockInput): StockPlan | null {
++  const cur = i.current ?? 0; const n = qty(i.digits);
++  if (i.mode === 'count') return i.digits === '' ? null : { kind: 'count', quantity: n, reason: 'cycle_count_available', next: n };
++  if (n === 0) return null;
++  if (i.mode === 'receive') return { kind: 'adjust', delta: n, reason: 'received', next: cur + n };
++  const delta = i.remove ? -n : n;
++  return { kind: 'adjust', delta, reason: i.reason, next: cur + delta };
++}
++
++/** One line telling the person what will happen, shown above Apply. */
++export function planSummary(p: StockPlan | null, current: number | null): string {
++  if (!p) return '';
++  const was = current ?? 0;
++  if (p.kind === 'count') return `Count: set stock to ${p.quantity} (was ${was}).`;
++  return `${p.delta > 0 ? 'Add' : 'Remove'} ${Math.abs(p.delta)}: ${was} becomes ${p.next}.`;
++}
++
++/** A retry after a dropped connection must reuse the same key so Shopify applies it only once; any change of input gets a new one. */
++export function attemptKey(sig: string, last: { sig: string; key: string } | null, make: () => string): { sig: string; key: string } {
++  return last && last.sig === sig ? last : { sig, key: make() };
++}
++export const planSignature = (variantId: string, p: StockPlan): string => `${variantId}|${p.kind}|${p.kind === 'count' ? p.quantity : p.delta}|${p.reason}`;
+diff --git a/src/screens/Lookup.tsx b/src/screens/Lookup.tsx
+index 04e4c0a..12919af 100644
+--- a/src/screens/Lookup.tsx
++++ b/src/screens/Lookup.tsx
+@@ -10,6 +10,7 @@ import { useCatalogue } from '../state/selectors';
+ import { bundleConfig } from '../lib/sync';
+ import { priceCheck, resolveScan, scanProblem, searchVariants, stockCheck, stockText, stockToneOf } from '../lib/lookup';
+ import { CameraScanner, HidScanner } from './Scanner';
++import { StockActionPanel } from './StockActionPanel';
+ import type { Variant } from '../lib/types';
+ import { Spot } from '../ui/Spot';
+ import { SPOT } from '../lib/trainingSpots';
+@@ -18,10 +19,10 @@ import { setLookupModeProbe, setLookupResultProbe } from '../lib/trainingProbe';
+ export type LookupMode = 'price' | 'stock';
+ const TONE_COLOR = { none: undefined, ok: '#16A34A', low: '#B45309', out: '#B45309', neg: '#B91C1C' } as const;
+ 
+-export function LookupSheet({ mode, visible, onClose, startWithCamera = false }: { mode: LookupMode; visible: boolean; onClose: () => void; /** The companion's Scan tab opens straight onto the camera. */ startWithCamera?: boolean }) {
++export function LookupSheet({ mode, visible, onClose, startWithCamera = false, stockActions = false }: { mode: LookupMode; visible: boolean; onClose: () => void; /** The companion's Scan tab opens straight onto the camera. */ startWithCamera?: boolean; /** 0182: the Scan tab lets a stock result be received, adjusted or counted. */ stockActions?: boolean }) {
+   const { c } = useTheme(); const cat = useCatalogue(); const autos = useApp(s => s.data.autos); const bundlesJson = useApp(s => s.settings.bundlesJson);
+-  const [found, setFound] = useState<Variant | null>(null); const [msg, setMsg] = useState(''); const [q, setQ] = useState(''); const [cam, setCam] = useState(false);
+-  useEffect(() => { if (!visible) { setFound(null); setMsg(''); setQ(''); setCam(false); setLookupModeProbe(undefined); setLookupResultProbe(undefined); } }, [visible]);
++  const [found, setFound] = useState<Variant | null>(null); const [msg, setMsg] = useState(''); const [q, setQ] = useState(''); const [cam, setCam] = useState(false); const [acting, setActing] = useState(false);
++  useEffect(() => { if (!visible) { setActing(false); setFound(null); setMsg(''); setQ(''); setCam(false); setLookupModeProbe(undefined); setLookupResultProbe(undefined); } }, [visible]);
+   useEffect(() => { if (visible && startWithCamera) setCam(true); }, [visible, startWithCamera]);
+   useEffect(() => { setFound(null); setMsg(''); setQ(''); setLookupModeProbe(mode); setLookupResultProbe(undefined); }, [mode]);
+ 
+@@ -29,7 +30,7 @@ export function LookupSheet({ mode, visible, onClose, startWithCamera = false }:
+   const lookup = (code: string): string | null => {
+     const r = resolveScan(code, cat.all); const problem = scanProblem(r, code);
+     if (r.kind !== 'variant') { setMsg(problem ?? ''); return null; }
+-    setFound(r.variant); setMsg(''); setQ('');
++    setActing(false); setFound(r.variant); setMsg(''); setQ('');
+     setLookupResultProbe({ variantId: r.variant.id, productTitle: r.variant.productTitle, stock: r.variant.stock, priceCents: r.variant.priceCents });
+     return r.variant.productTitle;
+   };
+@@ -42,7 +43,8 @@ export function LookupSheet({ mode, visible, onClose, startWithCamera = false }:
+       <CameraScanner visible={cam} onClose={() => setCam(false)} title={`${title}: scan an item`} onScan={code => { const t = lookup(code); if (t) setCam(false); return t ? `Showing ${t}` : null; }} />
+ 
+       {found ? (mode === 'price' ? <PriceResult v={found} autos={autos} collectionIds={cat.collectionsOfProduct[found.productId] ?? []} bundlesJson={bundlesJson} />
+-        : <StockResult v={found} siblings={cat.byProduct[found.productId] ?? []} />) : (
++        : <><StockResult v={found} siblings={cat.byProduct[found.productId] ?? []} onPick={stockActions ? x => { setFound(x); setActing(true); } : undefined} />
++          {stockActions ? (acting ? <StockActionPanel v={cat.all.find(x => x.id === found.id) ?? found} onDone={() => setActing(false)} /> : <Btn title="Receive, adjust or count" kind="secondary" icon="layers-outline" onPress={() => setActing(true)} />) : null}</>) : (
+         <View style={{ alignItems: 'center', paddingVertical: 14, gap: 6 }}>
+           <Ionicons name={mode === 'price' ? 'pricetag-outline' : 'layers-outline'} size={36} color={c.sub} />
+           <Txt weight="600">Scan an item</Txt>
+@@ -93,7 +95,7 @@ function PriceResult({ v, autos, collectionIds, bundlesJson }: { v: Variant; aut
+   );
+ }
+ 
+-function StockResult({ v, siblings }: { v: Variant; siblings: Variant[] }) {
++function StockResult({ v, siblings, onPick }: { v: Variant; siblings: Variant[]; onPick?: (x: Variant) => void }) {
+   const { c } = useTheme(); const r = useMemo(() => stockCheck(v, siblings), [v, siblings]);
+   const me = r.rows[0]; const others = r.rows.slice(1);
+   return (
+@@ -109,7 +111,7 @@ function StockResult({ v, siblings }: { v: Variant; siblings: Variant[] }) {
+       {r.single ? <Txt size={13} sub style={{ marginTop: 8, marginLeft: 4 }}>This product has no other variations.</Txt> : <View style={{ marginTop: 12 }}>
+         <Txt size={13} sub weight="600" style={{ marginBottom: 2, marginLeft: 4 }}>Other variations ({others.length}), most stock first</Txt>
+         {others.map((o, i) => <Row key={o.variant.id} image={o.variant.image ?? null} last={i === others.length - 1} title={o.variant.variantTitle || 'Default'}
+-          sub={`$${(o.variant.priceCents / 100).toFixed(2)}`} right={<Txt weight="700" color={TONE_COLOR[stockToneOf(o.stock)] ?? c.sub}>{stockText(o.stock)}</Txt>} />)}
++          sub={`$${(o.variant.priceCents / 100).toFixed(2)}`} right={<Txt weight="700" color={TONE_COLOR[stockToneOf(o.stock)] ?? c.sub}>{stockText(o.stock)}</Txt>} onPress={onPick ? () => onPick(o.variant) : undefined} />)}
+         {r.totalTracked !== null ? <Txt size={13} sub style={{ marginTop: 6, marginLeft: 4 }}>{`${r.totalTracked} in stock across all ${r.rows.length} variations${r.untracked ? ` (${r.untracked} not tracked)` : ''}.`}</Txt> : null}
+       </View>}
+     </View>
+diff --git a/src/screens/ScanTab.tsx b/src/screens/ScanTab.tsx
+index e484d01..8f8eca9 100644
+--- a/src/screens/ScanTab.tsx
++++ b/src/screens/ScanTab.tsx
+@@ -25,7 +25,7 @@ export default function ScanTab() {
+         <Btn title="Scan an item" icon="barcode-outline" onPress={() => setOpen(true)} />
+         <Txt size={12} sub style={{ textAlign: 'center' }}>A Bluetooth scanner works once the check is open. You can also search by name, SKU or barcode there.</Txt>
+       </View>
+-      <LookupSheet mode={mode} visible={open} onClose={() => setOpen(false)} startWithCamera />
++      <LookupSheet mode={mode} visible={open} onClose={() => setOpen(false)} startWithCamera stockActions />
+     </View>
+   );
+ }
+diff --git a/src/screens/StockActionPanel.tsx b/src/screens/StockActionPanel.tsx
+new file mode 100644
+index 0000000..e704d24
+--- /dev/null
++++ b/src/screens/StockActionPanel.tsx
+@@ -0,0 +1,53 @@
++// Location: src/screens/StockActionPanel.tsx
++// 0182: Receive, adjust or count the item just scanned, without leaving the Scan result. Same calls, reasons and PIN rule as the
++// Inventory screen, so the Shopify side cannot tell the difference. Shown only where the screen turns it on (the companion's Scan tab).
++import React, { useRef, useState } from 'react';
++import { View } from 'react-native';
++import { Btn, Chip, Keypad, Segmented, Txt, alertMsg } from '../ui/kit';
++import { useTheme } from '../ui/theme';
++import { useApp } from '../state/store';
++import { adjustStock, setStock } from '../lib/shopify/inventory';
++import { isNetworkError } from '../lib/shopify/client';
++import { requireStepUp } from '../lib/stepUpGate';
++import { isTraining } from '../lib/trainingGuard';
++import { uid } from '../lib/ids';
++import { ADJUST_REASONS, attemptKey, planSignature, planStockAction, planSummary, type StockMode } from '../lib/stockAction';
++import type { AdjustReason } from '../lib/shopify/inventory';
++import type { Variant } from '../lib/types';
++
++export function StockActionPanel({ v, onDone }: { v: Variant; onDone: () => void }) {
++  const { c } = useTheme(); const loc = useApp(s => s.settings.locationId);
++  const [mode, setMode] = useState<StockMode>('receive'); const [digits, setDigits] = useState(''); const [remove, setRemove] = useState(false);
++  const [reason, setReason] = useState<AdjustReason>('correction'); const [busy, setBusy] = useState(false);
++  const last = useRef<{ sig: string; key: string } | null>(null);
++  const plan = planStockAction({ mode, digits, remove, reason, current: v.stock });
++
++  const apply = async () => {
++    if (!plan) return;
++    if (!v.inventoryItemId || !loc) return alertMsg('Not linked', 'This item has no inventory item or no location is set.');
++    if (!(await requireStepUp('shopify'))) return;
++    setBusy(true);
++    const att = attemptKey(planSignature(v.id, plan), last.current, uid); last.current = att;
++    try {
++      if (isTraining()) { /* practice: this device only, nothing goes to Shopify */ }
++      else if (plan.kind === 'count') await setStock(v.inventoryItemId, loc, plan.quantity, plan.reason, att.key);
++      else await adjustStock(v.inventoryItemId, loc, plan.delta, plan.reason, att.key);
++      useApp.getState().patchData({ variants: { ...useApp.getState().data.variants, [v.id]: { ...v, stock: plan.next } } });
++      last.current = null; setDigits(''); setRemove(false); onDone();
++    } catch (e: any) { alertMsg(isNetworkError(e) ? 'No connection' : 'Stock update failed', e.message); }
++    setBusy(false);
++  };
++
++  return (
++    <View style={{ marginTop: 12, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: c.line, backgroundColor: c.card }}>
++      <Segmented value={mode} onChange={m => { setMode(m); setDigits(''); setRemove(false); }} options={[{ v: 'receive', label: 'Receive' }, { v: 'adjust', label: 'Adjust' }, { v: 'count', label: 'Count' }]} />
++      <Txt size={40} weight="700" style={{ textAlign: 'center', marginVertical: 8 }} color={plan && plan.kind === 'adjust' && plan.delta < 0 ? c.bad : undefined}>{mode === 'adjust' ? (remove ? '−' : '+') : mode === 'receive' ? '+' : ''}{digits || 0}</Txt>
++      {mode === 'adjust' ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
++        <Chip label={remove ? 'Remove' : 'Add'} icon="swap-vertical" onPress={() => setRemove(x => !x)} />
++        {ADJUST_REASONS.map(r => <Chip key={r} label={r} active={reason === r} onPress={() => setReason(r)} />)}</View> : null}
++      <Keypad value={digits} onChange={d => setDigits(d.slice(0, 5))} decimal={false} />
++      {plan ? <Txt size={13} sub style={{ textAlign: 'center', marginTop: 8 }}>{planSummary(plan, v.stock)}</Txt> : null}
++      <Btn title={mode === 'count' ? `Set stock to ${digits || 0}` : 'Apply'} onPress={() => void apply()} busy={busy} disabled={!plan} style={{ marginTop: 10 }} />
++    </View>
++  );
++}
+diff --git a/tests/stockaction.test.ts b/tests/stockaction.test.ts
+new file mode 100644
+index 0000000..2755ec2
+--- /dev/null
++++ b/tests/stockaction.test.ts
+@@ -0,0 +1,39 @@
++// Location: tests/stockaction.test.ts
++// 0182: stock actions from the Scan tab.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { attemptKey, planStockAction, planSignature, planSummary } from '../src/lib/stockAction';
++
++const base = { mode: 'receive' as const, digits: '', remove: false, reason: 'correction' as const, current: 4 };
++
++test('nothing to apply until a number is keyed', () => {
++  assert.equal(planStockAction(base), null);
++  assert.equal(planStockAction({ ...base, mode: 'adjust', digits: '0' }), null);
++  assert.equal(planStockAction({ ...base, mode: 'count', digits: '' }), null);
++});
++test('receive always adds, with the received reason', () => {
++  assert.deepEqual(planStockAction({ ...base, digits: '6', remove: true }), { kind: 'adjust', delta: 6, reason: 'received', next: 10 });
++});
++test('adjust adds or removes with the chosen reason and may go negative', () => {
++  assert.deepEqual(planStockAction({ ...base, mode: 'adjust', digits: '2', reason: 'damaged', remove: true }), { kind: 'adjust', delta: -2, reason: 'damaged', next: 2 });
++  assert.equal((planStockAction({ ...base, mode: 'adjust', digits: '9', remove: true }) as any).next, -5);
++});
++test('count sets the quantity, and 0 is a valid count', () => {
++  assert.deepEqual(planStockAction({ ...base, mode: 'count', digits: '0' }), { kind: 'count', quantity: 0, reason: 'cycle_count_available', next: 0 });
++});
++test('an untracked item counts from 0', () => {
++  assert.equal((planStockAction({ ...base, current: null, digits: '3' }) as any).next, 3);
++});
++test('summary reads plainly', () => {
++  assert.equal(planSummary(planStockAction({ ...base, digits: '6' }), 4), 'Add 6: 4 becomes 10.');
++  assert.equal(planSummary(planStockAction({ ...base, mode: 'count', digits: '7' }), 4), 'Count: set stock to 7 (was 4).');
++  assert.equal(planSummary(null, 4), '');
++});
++test('a retry of the same action reuses its key, a changed one does not', () => {
++  const p = planStockAction({ ...base, digits: '6' })!; const q = planStockAction({ ...base, digits: '7' })!;
++  let k = 0; const make = () => `k${++k}`;
++  const a = attemptKey(planSignature('v1', p), null, make);
++  assert.equal(attemptKey(planSignature('v1', p), a, make).key, a.key);
++  assert.notEqual(attemptKey(planSignature('v1', q), a, make).key, a.key);
++  assert.notEqual(attemptKey(planSignature('v2', p), a, make).key, a.key);
++});
+-- 
+2.43.0
+
