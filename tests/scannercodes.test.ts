@@ -20,6 +20,19 @@ test('the codes are the ones from the manual', () => {
     'speed-test': 'HID_SCANNER_SPEED_TEST', 'speed-fast': '%%SpecCodeB0', 'speed-medium': '%%SpecCodeB1', 'speed-slow': '%%SpecCodeB2', 'speed-super-slow': '%%SpecCodeB3',
   });
 });
+test('the scanning-mode codes are drawn with FNC3 and match the manual\'s barcodes', () => {
+  const START_B = '11010010000'; const FNC3 = '10111100010'; const STOP = '1100011101011'; // spec patterns for values 104 and 96, and the stop
+  const setup = ALL_SCANNER_CODES.filter(c => c.setup).map(c => c.id);
+  assert.deepEqual(setup, ['scan-auto', 'scan-manual']);
+  for (const c of ALL_SCANNER_CODES.filter(k => k.setup)) {
+    const m = code128Modules(c.text, { setup: true });
+    assert.ok(m.startsWith(START_B + FNC3), c.id);
+    assert.equal(m.length, code128Modules(c.text).length + 11, c.id); // one extra symbol
+  }
+  // Check symbols read from the manual's own barcodes: 99 for TRIGPRE, 34 for TRIGMAN.
+  assert.ok(code128Modules('TRIGPRE', { setup: true }).endsWith('10111011110' + STOP));
+  assert.ok(code128Modules('TRIGMAN', { setup: true }).endsWith('10001011000' + STOP));
+});
 test('each group has at most one default and the speed table points at real codes', () => {
   for (const g of SCANNER_CODE_GROUPS) assert.ok(g.codes.filter(c => c.isDefault).length <= 1, g.id);
   for (const s of SPEED_TABLE) assert.ok(ALL_SCANNER_CODES.some(c => c.id === s.codeId), s.codeId);
