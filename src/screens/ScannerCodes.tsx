@@ -20,7 +20,7 @@ export function BarcodeFullScreen({ code, onClose, scanner, note }: { code: Scan
         {scanner && code ? <HidScanner enabled onScan={scanner.onScan} onText={scanner.onText} /> : null}
         {code ? (
           <View style={{ alignItems: 'center', gap: 22, maxWidth: 900 }}>
-            <Barcode128 value={code.text} width={Math.min(win.width - 64, 900)} height={Math.min(win.height * 0.3, 260)} label={`Barcode: ${code.label}`} />
+            <Barcode128 value={code.text} setup={code.setup} width={Math.min(win.width - 64, 900)} height={Math.min(win.height * 0.3, 260)} label={`Barcode: ${code.label}`} />
             <View style={{ alignItems: 'center', gap: 6 }}>
               <Txt size={26} weight="700" color="#000" style={{ textAlign: 'center' }}>{code.label}</Txt>
               <Txt size={18} color="#333" style={{ textAlign: 'center' }}>{code.what}</Txt>
@@ -48,7 +48,7 @@ export default function ScannerCodes() {
             {g.codes.map(k => (
               <Card key={k.id} style={{ flexGrow: 1, flexBasis: 220 }}>
                 <Pressable onPress={() => setOpen(k)} accessibilityRole="button" accessibilityLabel={`Show barcode: ${k.label}`} style={({ pressed }) => ({ padding: 12, gap: 8, alignItems: 'center', backgroundColor: pressed ? c.fill : 'transparent' })}>
-                  <Barcode128 value={k.text} width={preview} height={54} label={`Barcode: ${k.label}`} />
+                  <Barcode128 value={k.text} setup={k.setup} width={preview} height={54} label={`Barcode: ${k.label}`} />
                   <Txt weight="700" style={{ textAlign: 'center' }}>{k.label}{k.isDefault ? ' (default)' : ''}</Txt>
                   <Txt size={12} sub style={{ textAlign: 'center' }}>{k.what}</Txt>
                   <Txt size={11} sub style={{ fontVariant: ['tabular-nums'] }}>{k.text}</Txt>
