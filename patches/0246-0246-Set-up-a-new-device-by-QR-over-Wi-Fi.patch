@@ -1,0 +1,556 @@
+From 55ce0f61a4665cc11b8b8189d6d674a1fbcc0424 Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Sun, 15 Nov 2026 13:35:13 +1100
+Subject: [PATCH] 0246 - Set up a new device by QR over Wi-Fi
+
+---
+ CHANGELOG.md                  |  1 +
+ dev_docs/DEVICE_TESTS.md      | 16 +++++++
+ dev_docs/PROGRESS.md          |  1 +
+ dev_docs/TO_DO.md             |  1 +
+ help/help.json                | 10 ++--
+ help/settings/backup.md       | 12 ++++-
+ help/start/setup.md           |  3 ++
+ src/lib/setupTransfer.ts      | 63 +++++++++++++++++++++++++
+ src/lib/setupTransferIO.ts    | 88 +++++++++++++++++++++++++++++++++++
+ src/lib/squareShareIO.ts      |  4 +-
+ src/screens/Settings.tsx      |  3 ++
+ src/screens/Setup.tsx         |  5 ++
+ src/screens/SetupTransfer.tsx | 80 +++++++++++++++++++++++++++++++
+ tests/setuptransfer.test.ts   | 55 ++++++++++++++++++++++
+ 14 files changed, 334 insertions(+), 8 deletions(-)
+ create mode 100644 src/lib/setupTransfer.ts
+ create mode 100644 src/lib/setupTransferIO.ts
+ create mode 100644 src/screens/SetupTransfer.tsx
+ create mode 100644 tests/setuptransfer.test.ts
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 1330ad8..90e35f7 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -8,6 +8,7 @@ There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `
+ 
+ ### Added
+ 
++- **Set up a new device by QR.** Show a setup QR on a set up device and scan it on a new register or companion to copy settings, staff, grid and logins over the shop Wi-Fi, no iCloud needed (0246).
+ - **Stock running out warning.** An optional extra page at Charge listing items the sale would leave at 0 or below (0245).
+ - **Shared Shopify location and a half-hourly refresh.** With iCloud sync on, every iPad uses the same location, and each re-reads products, stock, collections and discounts every 30 minutes (0244).
+ - **Stock actions from Scan.** On the companion's Scan tab, a stock check has a Receive, adjust or count button. Same reasons, keypad and PIN rule as Inventory (0243).
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index f7c6cfe..d159c82 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1557,3 +1557,19 @@ Setup: a tracked item with 3 in stock, and one with plenty.
+ 10. On a second iPad with iCloud sync, check the setting followed.
+ 
+ Tell me pass or fail for each, and the exact text of any error.
++
++## T118. Set up a new device by QR (0246)
++
++Setup: one register that is fully set up, and a second device with a fresh install (or one you are happy to overwrite) on the same Wi-Fi. Local Network allowed for the app on both.
++
++1. On the set up device: More ▸ Settings ▸ Backup & transfer ▸ **Show setup QR**. Pass: it asks for the PIN if one is set, takes a few seconds to seal, then shows a QR and "Waiting for the new device to scan this code…".
++2. On the new device's first run Set up this device page, tap **Set up from another device** and scan it. Pass: it asks to confirm, naming the other device's address.
++3. Confirm. Pass: it shows Fetching, Applying, Loading the catalogue, then "Set up. Loaded N items from Shopify". The checklist shows Connect Shopify done.
++4. Pass: the set up device shows "Sent. Setup sharing has stopped" and the QR disappears.
++5. On the new device check the staff and PINs, the grid layout, shop name and receipt settings match, and that it kept its own register name and mode. Make a test sale.
++6. Show a fresh QR and scan it with a phone's ordinary camera app. Pass: it shows only text starting POSSETUP1, nothing opens.
++7. Scan the same QR twice (use a second try after step 4's code is spent). Pass: "That code has already been used or has expired".
++8. Show a QR and wait 5 minutes. Pass: it stops by itself and says so. Also check that leaving the page, or turning Wi-Fi off on the new device, ends cleanly with a plain message.
++9. Repeat on a companion (set to Companion first). Pass: it stays a companion and keeps its features.
++
++Tell me pass or fail for each, and the exact text of any error.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index e48a29e..d0487a2 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -205,6 +205,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0243 | 2026-11-15 | Companion mode, patch 8 (your request: "go for Companion 0182"). **Stock actions from Scan.** On a Stock check opened from the companion's Scan tab, a **Receive, adjust or count** button under the result opens a panel with the same three modes, reasons and keypad as Inventory. It asks for the PIN (`requireStepUp('shopify')`), writes through `adjustStock`/`setStock`, and updates the local count. Tapping one of the other variations switches to it. A retry after a dropped connection reuses the same idempotency key, so Shopify applies it once. Training changes this device only. The checkout grid's Stock check is unchanged (the panel is off there). New `src/lib/stockAction.ts` (pure plan, summary and retry key), `src/screens/StockActionPanel.tsx`, `tests/stockaction.test.ts` (7 tests), a line in the Device mode Help page, `COMPANION_PLAN.md` C22, `QUEUE.md`, `TO_DO.md`, `DEVICE_TESTS.md` T115. Not compiled here (no `tsc`); needs a device test. |
+ | 0244 | 2026-11-15 | Stock stays in step (your request: share one Shopify stock count between the devices, and refresh the catalogue and stock half-hourly). First your question about whether each iPad pushed an absolute stock number after a sale: **it does not**. A sale creates a Shopify order with `DECREMENT_IGNORING_POLICY` at the register's location, so Shopify subtracts and two iPads selling together both count; the poll only reads stock. Only Count and starting stock send an absolute number. **Shared location (iCloud only):** `locationId` and `locationName` join the CloudKit shared settings (`sharedSettings.ts`), so changing the location on one iPad moves them all; the Shopify-metaobject path still keeps it per device. **Half-hourly refresh:** `refreshCatalogue` in `sync.ts` re-reads products, stock, collections and discounts (not customers) when the last read is 30 minutes old, the location differs from the one last read, and no sales are queued (`src/lib/catalogueRefresh.ts`). New `tests/cataloguerefresh.test.ts`, a shared-location test, `T116`, Help edits. Also type-checked the whole project for the first time here (the missing packages installed): no errors in `src/`, and all 1985 tests pass, including 0243's. |
+ | 0245 | 2026-11-15 | Stock running out warning (your request: a feature like the cart warnings, for an item the current order would leave at 0 or below). **A built-in extra page on the Charge warnings.** `src/lib/stockWarning.ts`: `stockShortfalls` adds up the lines of each tracked variation and keeps those whose stock minus the quantity is 0 or lower (untracked, custom, gift card and unknown items never count); `stockWarningPage` shapes it as a normal cart warning page, so `CartWarningsSheet` and both checkouts show it with the same Next/Back, tick-to-continue and "not asked again unless it changes" behaviour (the page text carries the numbers, so a changed cart brings it back). It is appended after the shop's own warnings in `useCartWarningGate`. Setting `stockWarning { enabled, requireAcknowledgement }`, **off by default**, in Settings ▸ Cart warnings, shared on iCloud (a new CloudKit shared key; the Shopify-metaobject set is unchanged). Not a queue-mode warning: it only appears at Charge. `tests/stockwarning.test.ts` (7), shared-settings tests, Help page `sales/cart-warnings`, `T117`. `tsc` clean in `src/`. |
++| 0246 | 2026-11-15 | Set up a new device by QR, no iCloud (your request: QR-transferable settings and data for setting up new terminals and companions; you chose the one-QR setup, offered on first run). **The set up device** (Settings ▸ Backup & transfer ▸ **Show setup QR**, admin PIN first) seals its ordinary backup (`collectBackup`, the same settings, staff, grid and logins as a backup file) with `encryptBackup` using a fresh 16-symbol one-time code (80 bits), serves it on the shop Wi-Fi from the same small server as the Square history share (`answerRequest`, now with `lanIp` and `askForIp` exported), and stops after the first successful transfer, 5 minutes, leaving the page or the app going to the background. The QR is `POSSETUP1|ip|port|key|code`: the address, a random path key and the code, so Wi-Fi only ever carries ciphertext. **The new device** (a row on Settings ▸ Backup & transfer and at the top of the first-run Set up this device page) scans it, confirms (naming the address), asks the admin PIN if one exists, fetches (`assistantFetch`, falling back to a raw socket), decrypts with the code, `validateBackup`, `applyBackup`, then loads the catalogue with `importFromShopify`. It only follows private Wi-Fi addresses (10., 172.16 to 31., 192.168.), and device-only settings (name, mode, features, register id) are never overwritten (`DEVICE_KEYS`). New `src/lib/setupTransfer.ts`, `setupTransferIO.ts`, `src/screens/SetupTransfer.tsx`, `tests/setuptransfer.test.ts` (7), Help pages `settings/backup` and `start/setup`, `T118`. Not included: Square history (still its own QR, 0150) and the Zeller pairing. `tsc` clean in `src/`. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index 50d4848..5bad9f4 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -84,6 +84,7 @@ Built and running in Development since 2026-11-11 (patches 0231 to 0241, see `de
+ | Id | What is left |
+ | --- | --- |
+ | 0182 | Stock actions from Scan: built in 0243. Needs your device test, T115. |
++| 0246 | Set up a new device by QR (no iCloud): built. Needs your device test, T118. Square history and the reader pairing are not part of it. |
+ | 0245 | Stock running out warning at Charge: built, off by default. Needs your device test, T117. |
+ | 0244 | Shared Shopify location and the half-hourly catalogue and stock refresh: built. Needs your device test, T116. |
+ 
+diff --git a/help/help.json b/help/help.json
+index d1ac4d3..0f19b8d 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "d8d82a2d",
++ "version": "2f946f19",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1684,6 +1684,8 @@
+    "tags": [
+     "backup",
+     "transfer",
++    "qr",
++    "set up another device",
+     "restore",
+     "export",
+     "import",
+@@ -1700,14 +1702,14 @@
+     "settings/assistant",
+     "staff/screensaver"
+    ],
+-   "updated": "2026-10-11",
++   "updated": "2026-11-15",
+    "roles": [
+     "manager",
+     "owner"
+    ],
+    "lead": "Use **More ▸ Settings ▸ Backup & transfer** to move settings and logins to another iPad. Use **More ▸ Settings ▸ Data** to export or delete this iPad's local CSV history; these are separate tools.",
+    "sections": {
+-    "basic": "### Create a backup\n1. In **Backup & transfer**, enter a passphrase of at least **8 characters** in **Passphrase** and **Repeat passphrase**.\n2. Tap **Export encrypted backup**, then save or share the file somewhere safe.\n3. Keep the passphrase separate and safe. It is needed to open the encrypted backup.\n\nThe encrypted backup includes settings, staff, the grid layout and logins, including the AI assistant's address, model and API key (see [[settings/assistant]]). It does not include sales history or the product catalogue. Zeller reader pairing stays on the original iPad.\n\n**Export plain JSON (not encrypted)** is available only after a warning and confirmation. The file contains Shopify and other login secrets in readable text. Prefer the encrypted backup; if you export plain JSON, protect it and delete it after importing.\n\n### Restore on another iPad\nTap **Choose backup file…** and select the backup. For an encrypted file, enter its passphrase and tap **Decrypt & restore**. Confirm the restore. It replaces the receiving iPad's settings, grid and logins, but keeps that iPad's own register name and ID.\n\nAfter restoring, open **Settings ▸ Shopify** and tap **Import from Shopify** to reload the catalogue. Pair the Zeller reader again on the receiving device.\n\n### Export or delete CSV history\nOpen **Settings ▸ Data**. **Export data** asks what you want and saves it as CSV files or a spreadsheet; see [[orders/export]]. **Export raw CSV files** shares the local history files exactly as written. Every sale, refund and declined card attempt is kept on this device and the files are not auto-cleared.\n\n**Delete local history** asks twice before erasing the CSV files from this iPad. Export first if you need them. Deleting these local files does not delete the orders in Shopify.",
++    "basic": "### Create a backup\n1. In **Backup & transfer**, enter a passphrase of at least **8 characters** in **Passphrase** and **Repeat passphrase**.\n2. Tap **Export encrypted backup**, then save or share the file somewhere safe.\n3. Keep the passphrase separate and safe. It is needed to open the encrypted backup.\n\nThe encrypted backup includes settings, staff, the grid layout and logins, including the AI assistant's address, model and API key (see [[settings/assistant]]). It does not include sales history or the product catalogue. Zeller reader pairing stays on the original iPad.\n\n**Export plain JSON (not encrypted)** is available only after a warning and confirmation. The file contains Shopify and other login secrets in readable text. Prefer the encrypted backup; if you export plain JSON, protect it and delete it after importing.\n\n### Set up a new device by QR\nNo file and no iCloud: both devices just need the same Wi-Fi.\n1. On the device that is already set up, open **More ▸ Settings ▸ Backup & transfer** and tap **Show setup QR**. Enter the PIN if it asks. A QR code appears.\n2. On the new device, tap **Set up from another device** (here, or on the **Set up this device** page the first time it opens) and scan the code.\n3. Confirm. The new device fetches the setup, applies it, and loads the catalogue from Shopify.\n\nThe code works once, and stops after 5 minutes or when you leave the page. The setup travels sealed with a one-time code that only appears in the QR, so other people on the Wi-Fi only see scrambled data. Even so, show the code only to the new device: anyone who scans it in time gets your logins. It copies the same things as a backup file (settings, staff, grid layout, Shopify and other logins). The new device keeps its own name, mode and features, and the Zeller reader still has to be paired again. If it cannot connect, check both devices are on the same Wi-Fi and that Local Network is allowed for the app in iOS Settings.\n\n### Restore on another iPad\nTap **Choose backup file…** and select the backup. For an encrypted file, enter its passphrase and tap **Decrypt & restore**. Confirm the restore. It replaces the receiving iPad's settings, grid and logins, but keeps that iPad's own register name and ID.\n\nAfter restoring, open **Settings ▸ Shopify** and tap **Import from Shopify** to reload the catalogue. Pair the Zeller reader again on the receiving device.\n\n### Export or delete CSV history\nOpen **Settings ▸ Data**. **Export data** asks what you want and saves it as CSV files or a spreadsheet; see [[orders/export]]. **Export raw CSV files** shares the local history files exactly as written. Every sale, refund and declined card attempt is kept on this device and the files are not auto-cleared.\n\n**Delete local history** asks twice before erasing the CSV files from this iPad. Export first if you need them. Deleting these local files does not delete the orders in Shopify.",
+     "deep": "### What is and is not transferred\nThe backup carries settings, staff, the Checkout grid and configured logins such as Shopify, receipt and pass-server credentials. Sales history and the imported catalogue are not in the backup; Shopify remains the source to import them again. The Zeller reader pairing, register name and register ID belong to the receiving device and are not overwritten.\n\nAn encrypted file cannot be opened without its passphrase. A plain JSON backup includes secrets and should be treated like a password file. Uploaded screensaver logos can be included in the backup; the device-specific local file path is not copied.\n\n### Local CSV history\nThe CSV files are separate from Shopify orders and the backup. They stay in the app's files on this iPad until you share or delete them. Deleting the local files cannot be undone from this screen.",
+     "advanced": "### Backup and restore path\n```mermaid\nflowchart TD\n  A[Collect settings grid and credentials] --> B[Encrypt with passphrase or export plain JSON]\n  B --> C[Share backup file]\n  C --> D[Choose file on receiving iPad]\n  D --> E[Decrypt when needed and confirm restore]\n  E --> F[Keep destination register identity]\n  E --> G[Import catalogue from Shopify]\n```\n\n| Job | Where |\n|---|---|\n| Backup and Data screens | `BackupSettings`, `DataSettings` in `src/screens/Settings.tsx` |\n| Collect and apply settings, logins and grid | `collectBackup`, `applyBackup` in `src/lib/backupIO.ts` |\n| Validate, encrypt and decrypt backup files | `validateBackup`, `encryptBackup`, `decryptBackup` in `src/lib/backupFile.ts` |\n| CSV export and deletion | `src/lib/csvStore.ts` |\n| Test backup and restore rules | `tests/backup.test.ts` |\n\nEncrypted backups use a passphrase-derived key and authenticated encryption. Plain JSON explicitly confirms before exporting because it contains credentials. Restoring merges nested settings with the receiving app's defaults and preserves its register identity."
+    }
+@@ -2175,7 +2177,7 @@
+    "updated": "2026-10-20",
+    "lead": "A device that has never been set up opens **Set up this device** once, on the first launch. It asks how the device will be used, then shows a short checklist of what that choice needs. Each step opens the screen that does the work.",
+    "sections": {
+-    "basic": "### Choose how the device will be used\n- **A register** is a till: everything is on, exactly as the app has always been.\n- **A companion** is a phone or tablet beside the till. It keeps browsing, the assistant, notifications and Settings, and has the register features you switch on. See [[device-mode]].\n- Tap a choice to select it. Tick appears against the one you picked. Changing it later asks for the owner PIN.\n\n### Work through the checklist\n- **Connect Shopify.** Tap the row, fill in the shop domain and the app's credentials, and pick a location. See [[settings/shopify]].\n- **Create the owner PIN.** Tap the row, add the owner to the staff list and give them a PIN, then turn **Require sign-in** on. See [[staff]].\n- **Name this register** (a register). Tap the row and give this till a name you would recognise, such as \"Counter\".\n- **Choose its features** (a companion). Tap the row and switch on the register features this device needs.\n- Each row shows **Done**, **Next** or **Not yet**, and the line above the list counts them.\n- Tap **Finish setup** when you are done. The checklist closes and the app opens on the tabs.\n\n### Steps you can leave for later\n- A step that is not done stays on the list. Nothing is blocked: a shop can look around first, then finish.\n- To come back to the list, open **More ▸ Device mode** and tap **Open the setup checklist**.\n- Steps you have not done are listed there too, with the same **Done** and **Not yet** marks.",
++    "basic": "### Copy a set up register instead\nIf you already have a register set up, tap **Set up from another device** at the top and scan the code it shows (**More ▸ Settings ▸ Backup & transfer ▸ Show setup QR**). It brings the settings, staff, grid layout and Shopify login across and loads the catalogue, so most of the checklist below is already done. Details in [[settings/backup]].\n\n### Choose how the device will be used\n- **A register** is a till: everything is on, exactly as the app has always been.\n- **A companion** is a phone or tablet beside the till. It keeps browsing, the assistant, notifications and Settings, and has the register features you switch on. See [[device-mode]].\n- Tap a choice to select it. Tick appears against the one you picked. Changing it later asks for the owner PIN.\n\n### Work through the checklist\n- **Connect Shopify.** Tap the row, fill in the shop domain and the app's credentials, and pick a location. See [[settings/shopify]].\n- **Create the owner PIN.** Tap the row, add the owner to the staff list and give them a PIN, then turn **Require sign-in** on. See [[staff]].\n- **Name this register** (a register). Tap the row and give this till a name you would recognise, such as \"Counter\".\n- **Choose its features** (a companion). Tap the row and switch on the register features this device needs.\n- Each row shows **Done**, **Next** or **Not yet**, and the line above the list counts them.\n- Tap **Finish setup** when you are done. The checklist closes and the app opens on the tabs.\n\n### Steps you can leave for later\n- A step that is not done stays on the list. Nothing is blocked: a shop can look around first, then finish.\n- To come back to the list, open **More ▸ Device mode** and tap **Open the setup checklist**.\n- Steps you have not done are listed there too, with the same **Done** and **Not yet** marks.",
+     "deep": "### Why setup does not lock anybody out\nThe checklist is a list of jobs, not a gate. Each step records what is true of the device, so the list always says what is done and what is not, and **Finish setup** works at any point. A device that has never been set up sees the checklist once; after that it is open only from **Device mode**.\n\n### Devices that were already in use\nAn app that was already installed when this was added was marked as set up, as a register, the first time it opened. Nobody who had a working till was sent through setup.\n\n### What is stored, and where it goes\n- The mode and the feature switches belong to this device. They are not shared to the other registers, and a [[settings/backup]] file does not carry them: a restored device keeps its own.\n- The mode is not trusted from another register either. An older app version never sends one, and a device always reads its own.",
+     "advanced": "### How the checklist is put together\nThe steps are data, in `src/lib/setupFlow.ts`: each one names the profiles it belongs to (`register`, `companion`), the sentence shown under it, and a `done` test that reads the device's own settings. The screen is `src/screens/Setup.tsx`, which maps each step to the screen that does the job and shows the row in the right state.\n\n| Job | Where |\n|---|---|\n| The steps and their done tests | `src/lib/setupFlow.ts` |\n| The screen, and the route for each step | `src/screens/Setup.tsx` |\n| The mode and the feature switches | `src/lib/appMode.ts` |\n| Opening the checklist once, and the upgrade case | `Shell` in `App.tsx`, and `hydrate` in `src/state/store.ts` |\n\n### If the checklist does not appear\n- **A device that has already been used.** `hydrate` marks any install that has settings but no `setupDone` as set up, so it is not sent through the checklist. Open it from **More ▸ Device mode** instead.\n- **School or training.** Practice runs do not open the checklist.\n- **A step never ticks.** The done tests read the settings, not the row: a PIN that is set but not required does not tick **Create the owner PIN**, and a register still called \"Register 1\" does not tick **Name this register**.\n\n### What is not here yet\nThe step-up PIN that should guard changing the mode gets added with the app-wide lock (patch 0177). Until then the mode can be changed by anyone signed in."
+    }
+diff --git a/help/settings/backup.md b/help/settings/backup.md
+index c0583b2..d0d4af2 100644
+--- a/help/settings/backup.md
++++ b/help/settings/backup.md
+@@ -3,9 +3,9 @@ id: settings/backup
+ title: Backup, transfer and local data
+ parent: settings
+ summary: Export and restore settings securely, move them to another iPad, or export and delete local CSV history.
+-tags: [backup, transfer, restore, export, import, CSV, history, passphrase, secrets, data]
++tags: [backup, transfer, qr, set up another device, restore, export, import, CSV, history, passphrase, secrets, data]
+ related: [settings, settings/shopify, settings/receipts, settings/assistant, staff/screensaver]
+-updated: 2026-10-11
++updated: 2026-11-15
+ roles: [manager, owner]
+ ---
+ Use **More ▸ Settings ▸ Backup & transfer** to move settings and logins to another iPad. Use **More ▸ Settings ▸ Data** to export or delete this iPad's local CSV history; these are separate tools.
+@@ -21,6 +21,14 @@ The encrypted backup includes settings, staff, the grid layout and logins, inclu
+ 
+ **Export plain JSON (not encrypted)** is available only after a warning and confirmation. The file contains Shopify and other login secrets in readable text. Prefer the encrypted backup; if you export plain JSON, protect it and delete it after importing.
+ 
++### Set up a new device by QR
++No file and no iCloud: both devices just need the same Wi-Fi.
++1. On the device that is already set up, open **More ▸ Settings ▸ Backup & transfer** and tap **Show setup QR**. Enter the PIN if it asks. A QR code appears.
++2. On the new device, tap **Set up from another device** (here, or on the **Set up this device** page the first time it opens) and scan the code.
++3. Confirm. The new device fetches the setup, applies it, and loads the catalogue from Shopify.
++
++The code works once, and stops after 5 minutes or when you leave the page. The setup travels sealed with a one-time code that only appears in the QR, so other people on the Wi-Fi only see scrambled data. Even so, show the code only to the new device: anyone who scans it in time gets your logins. It copies the same things as a backup file (settings, staff, grid layout, Shopify and other logins). The new device keeps its own name, mode and features, and the Zeller reader still has to be paired again. If it cannot connect, check both devices are on the same Wi-Fi and that Local Network is allowed for the app in iOS Settings.
++
+ ### Restore on another iPad
+ Tap **Choose backup file…** and select the backup. For an encrypted file, enter its passphrase and tap **Decrypt & restore**. Confirm the restore. It replaces the receiving iPad's settings, grid and logins, but keeps that iPad's own register name and ID.
+ 
+diff --git a/help/start/setup.md b/help/start/setup.md
+index b08dc5c..5f22dc6 100644
+--- a/help/start/setup.md
++++ b/help/start/setup.md
+@@ -11,6 +11,9 @@ A device that has never been set up opens **Set up this device** once, on the fi
+ 
+ ## Basic
+ 
++### Copy a set up register instead
++If you already have a register set up, tap **Set up from another device** at the top and scan the code it shows (**More ▸ Settings ▸ Backup & transfer ▸ Show setup QR**). It brings the settings, staff, grid layout and Shopify login across and loads the catalogue, so most of the checklist below is already done. Details in [[settings/backup]].
++
+ ### Choose how the device will be used
+ - **A register** is a till: everything is on, exactly as the app has always been.
+ - **A companion** is a phone or tablet beside the till. It keeps browsing, the assistant, notifications and Settings, and has the register features you switch on. See [[device-mode]].
+diff --git a/src/lib/setupTransfer.ts b/src/lib/setupTransfer.ts
+new file mode 100644
+index 0000000..fddc4cb
+--- /dev/null
++++ b/src/lib/setupTransfer.ts
+@@ -0,0 +1,63 @@
++// Location: src/lib/setupTransfer.ts
++// 0246: set up a new register or companion from one that is already set up, by QR, without iCloud.
++// The set up device shows a QR code and serves its ordinary encrypted backup (the same file as Settings ▸ Backup, see
++// backupFile.ts) for a few minutes on the shop Wi-Fi, once. The QR holds the address, a random path and a one-time code, and the
++// code is the backup's passphrase, so the Wi-Fi only ever carries ciphertext and the code never leaves the screen.
++// Pure: no sockets, no storage, no React (see setupTransferIO.ts), so every rule here is tested in Node.
++import { usableLanIp } from './squareShare';
++
++export const SETUP_FILE = 'setup.posbackup';
++/** The code and the address stop working after this long, or after the first successful transfer. */
++export const SETUP_TTL_MS = 5 * 60 * 1000;
++const PREFIX = 'POSSETUP1';
++/** No 0, O, 1 or I, so a code read aloud or typed is hard to get wrong. 32 symbols, so 5 bits each. */
++const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
++export const CODE_LENGTH = 16; // 80 bits
++
++/** The one-time code. The caller supplies the random bytes so the tests do not depend on a random source. */
++export function newSetupCode(random: Uint8Array): string {
++  if (random.length < CODE_LENGTH) throw new Error(`Need ${CODE_LENGTH} random bytes for the setup code.`);
++  let s = ''; for (let i = 0; i < CODE_LENGTH; i++) s += ALPHABET[random[i] & 31]; return s;
++}
++export const isSetupCode = (s: string): boolean => s.length === CODE_LENGTH && [...s].every(ch => ALPHABET.includes(ch));
++
++/** Home and office Wi-Fi addresses only. A code scanned from anywhere else is never followed to a public address. */
++export function privateLanIp(ip: string): boolean {
++  if (!usableLanIp(ip)) return false;
++  const [a, b] = ip.split('.').map(Number);
++  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
++}
++
++export type SetupTarget = { ip: string; port: number; key: string; code: string; url: string };
++
++export function setupQr(ip: string, port: number, key: string, code: string): string {
++  if (!privateLanIp(ip)) throw new Error('This device is not on a home or shop Wi-Fi network, so it cannot share its setup.');
++  if (!/^[a-f0-9]{16}$/.test(key) || !isSetupCode(code) || !Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Could not build a valid setup code.');
++  return [PREFIX, ip, port, key, code].join('|');
++}
++
++/** Null unless the text is a setup QR this app made, with a Wi-Fi address on a private network. */
++export function parseSetupQr(text: string): SetupTarget | null {
++  const p = text.trim().split('|'); if (p.length !== 5 || p[0] !== PREFIX) return null;
++  const [, ip, portText, key, code] = p; const port = Number(portText);
++  if (!privateLanIp(ip) || !/^\d{4,5}$/.test(portText) || port < 1024 || port > 65535 || !/^[a-f0-9]{16}$/.test(key) || !isSetupCode(code)) return null;
++  return { ip, port, key, code, url: `http://${ip}:${port}/${key}/${SETUP_FILE}` };
++}
++export const looksLikeSetupQr = (text: string): boolean => text.trim().startsWith(`${PREFIX}|`);
++
++export type SetupEnd = 'done' | 'manual' | 'ttl' | 'background' | 'error';
++export const SETUP_END_TEXT: Record<SetupEnd, string> = {
++  done: 'Sent. Setup sharing has stopped and the code no longer works.',
++  manual: 'Sharing stopped.',
++  ttl: 'Sharing stopped after 5 minutes. Start it again for another device.',
++  background: 'Sharing stopped because the app was left. Start it again for another device.',
++  error: 'Sharing stopped because of a problem.',
++};
++export const setupStatusLine = (served: boolean): string => (served ? 'Sent. Finishing on the other device…' : 'Waiting for the new device to scan this code…');
++
++/** What the new device does with what came back, in plain words. */
++export function describeFetchFailure(status: number | null, message: string): string {
++  if (status === 404) return 'That code has already been used or has expired. Show a fresh one on the set up device.';
++  if (status !== null) return `The other device answered ${status}. Show a fresh code and try again.`;
++  return `Could not reach the other device (${message}). Both devices need to be on the same Wi-Fi, with Local Network allowed for this app in iOS Settings.`;
++}
+diff --git a/src/lib/setupTransferIO.ts b/src/lib/setupTransferIO.ts
+new file mode 100644
+index 0000000..3ca3439
+--- /dev/null
++++ b/src/lib/setupTransferIO.ts
+@@ -0,0 +1,88 @@
++// Location: src/lib/setupTransferIO.ts
++// Device side of the QR setup transfer (rules in setupTransfer.ts). The set up device seals its backup with a one-time code and
++// serves it once on the shop Wi-Fi, the same small server the Square history share uses. The new device scans the QR, fetches,
++// opens it with the code and applies it like a restored backup.
++import TcpSocket from 'react-native-tcp-socket';
++import * as Crypto from 'expo-crypto';
++import { AppState } from 'react-native';
++import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
++import { noteActivity } from './idle';
++import { collectBackup } from './backupIO';
++import { decryptBackup, encryptBackup, validateBackup, type BackupV1 } from './backupFile';
++import { askForIp, lanIp } from './squareShareIO';
++import { SHARE_PORT, SHARE_PORT_TRIES, answerRequest, chunkBytes, newShareKey, responseHead, usableLanIp } from './squareShare';
++import { SETUP_FILE, SETUP_TTL_MS, describeFetchFailure, newSetupCode, setupQr, setupStatusLine, type SetupEnd, type SetupTarget } from './setupTransfer';
++import { assistantFetch } from './tcpFetchIO';
++
++const KEEP_TAG = 'pos-setup-share';
++const WRITE_TIMEOUT_MS = 20000;
++type Sock = InstanceType<typeof TcpSocket.Socket>;
++const latin1 = (d: unknown): string => { if (typeof d === 'string') return d; const u = d as Uint8Array; let s = ''; for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]); return s; };
++const write = (s: Sock, data: string | Uint8Array): Promise<void> => new Promise((ok, no) => {
++  const t = setTimeout(() => no(new Error('write timed out')), WRITE_TIMEOUT_MS);
++  try { s.write(data, typeof data === 'string' ? 'utf8' : undefined, (err?: Error) => { clearTimeout(t); err ? no(err) : ok(); }); } catch (e) { clearTimeout(t); no(e); }
++});
++const utf8 = (s: string): Uint8Array => { const TE = (globalThis as any).TextEncoder; if (TE) return new TE().encode(s); const e = unescape(encodeURIComponent(s)); return Uint8Array.from(e, c => c.charCodeAt(0)); };
++
++export type SetupShareHandle = { qr: string; stop: () => void };
++
++/**
++ * Seals this device's settings, grid and logins with a fresh one-time code and serves them once. The caller has already asked for the
++ * admin PIN. Throws a plain-words Error when this device cannot share (not on Wi-Fi, no free port).
++ */
++export async function startSetupShare(onUpdate: (line: string) => void, onEnd: (why: SetupEnd, message?: string) => void): Promise<SetupShareHandle> {
++  let { ip, seen } = await lanIp();
++  if (!usableLanIp(ip)) ip = await askForIp(seen);
++  if (!usableLanIp(ip)) throw new Error(`Could not find this device's Wi-Fi address (got ${seen.map(x => x || 'nothing').join(', ')}). Check it is on Wi-Fi and try again.`);
++  const code = newSetupCode(Crypto.getRandomBytes(16)); const key = newShareKey(Crypto.getRandomBytes(8));
++  const body = utf8(await encryptBackup(JSON.stringify(await collectBackup()), code)); // a few seconds: the key is stretched
++  const allowed = new Set([SETUP_FILE]); const sockets = new Set<Sock>(); let stopped = false;
++
++  const server = TcpSocket.createServer((socket: Sock) => {
++    sockets.add(socket); let head = ''; let handled = false;
++    socket.on('error', () => { sockets.delete(socket); }); socket.on('close', () => { sockets.delete(socket); });
++    socket.on('data', async (d: unknown) => {
++      if (handled || stopped) return; head += latin1(d); const a = answerRequest(head, key, allowed); if (a.kind === 'more') return; handled = true;
++      try {
++        if (a.kind === 'error') { await write(socket, responseHead(a.status, 0)); socket.end(); return; }
++        await write(socket, responseHead(200, body.length, 'application/octet-stream'));
++        for (const c of chunkBytes(body)) await write(socket, c);
++        socket.end(); noteActivity(); onUpdate(setupStatusLine(true));
++        setTimeout(() => stop('done'), 800); // one transfer only: let the last bytes leave, then close the door
++      } catch { try { socket.destroy(); } catch { /* already closed */ } }
++    });
++  });
++
++  let port = SHARE_PORT;
++  for (let i = 0; ; i++) {
++    port = SHARE_PORT + i;
++    try { await new Promise<void>((ok, no) => { server.once('error', no); server.listen({ port, host: '0.0.0.0', reuseAddress: true }, () => { server.removeListener('error', no); ok(); }); }); break; }
++    catch (e: any) { if (i + 1 >= SHARE_PORT_TRIES) throw new Error(`Could not start sharing (${e?.message ?? 'no free port'}). Check Local Network is allowed for this app in iOS Settings.`); }
++  }
++  void activateKeepAwakeAsync(KEEP_TAG).catch(() => {});
++  const stop = (why: SetupEnd = 'manual', message?: string) => {
++    if (stopped) return; stopped = true; clearTimeout(timer); sub.remove();
++    for (const s of sockets) { try { s.destroy(); } catch { /* already closed */ } } sockets.clear();
++    try { server.close(); } catch { /* already closed */ }
++    void Promise.resolve(deactivateKeepAwake(KEEP_TAG)).catch(() => {});
++    onEnd(why, message);
++  };
++  const timer = setTimeout(() => stop('ttl'), SETUP_TTL_MS);
++  const sub = AppState.addEventListener('change', st => { if (st !== 'active') stop('background'); });
++  server.on('error', (e: Error) => stop('error', e.message));
++  onUpdate(setupStatusLine(false));
++  return { qr: setupQr(ip, port, key, code), stop: () => stop('manual') };
++}
++
++/** New device: fetch the sealed backup from the set up device, open it with the code from the QR, and check it is one of ours. */
++export async function fetchSetupBackup(t: SetupTarget): Promise<BackupV1> {
++  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 20000);
++  let text: string;
++  try {
++    const res = await assistantFetch(t.url, { method: 'GET', headers: {}, signal: ctl.signal });
++    if (!res.ok) throw Object.assign(new Error(describeFetchFailure(res.status, '')), { handled: true });
++    text = await res.text();
++  } catch (e: any) { throw e?.handled ? e : new Error(describeFetchFailure(null, e?.name === 'AbortError' ? 'no answer in 20 seconds' : String(e?.message ?? e))); }
++  finally { clearTimeout(timer); }
++  return validateBackup(JSON.parse(await decryptBackup(text, t.code)));
++}
+diff --git a/src/lib/squareShareIO.ts b/src/lib/squareShareIO.ts
+index 9b92e95..de858ff 100644
+--- a/src/lib/squareShareIO.ts
++++ b/src/lib/squareShareIO.ts
+@@ -38,7 +38,7 @@ const write = (s: Sock, data: string | Uint8Array): Promise<void> => new Promise
+  * the LAST one, reading an IPv6 entry as if it were IPv4, so on most iPads it returns garbage and sharing always said "not on
+  * Wi-Fi". expo-network asks for IPv4 only, so it goes first; device-info stays as a fallback. Returns the first usable address.
+  */
+-async function lanIp(): Promise<{ ip: string; seen: string[] }> {
++export async function lanIp(): Promise<{ ip: string; seen: string[] }> {
+   const seen: string[] = [];
+   const sources: (() => Promise<string>)[] = [() => Network.getIpAddressAsync(), () => DeviceInfo.getIpAddress()];
+   for (const get of sources) {
+@@ -48,7 +48,7 @@ async function lanIp(): Promise<{ ip: string; seen: string[] }> {
+ }
+ 
+ /** Asks the cashier to type the address when neither lookup found one (iOS can list several interfaces and the lookups may pick a self-assigned 169.254 one). */
+-const askForIp = (seen: string[]): Promise<string> => new Promise(done => {
++export const askForIp = (seen: string[]): Promise<string> => new Promise(done => {
+   Alert.prompt('Wi-Fi address needed',
+     `The app could not work out this iPad's Wi-Fi address (it saw ${seen.map(x => x || 'nothing').join(', ')}).\n\nOpen Settings ▸ Wi-Fi, tap the (i) next to the network, and type the IP Address shown there (like 172.20.10.5).`,
+     [{ text: 'Cancel', style: 'cancel', onPress: () => done('') }, { text: 'Share', onPress: (v?: string) => done((v ?? '').trim()) }], 'plain-text', '', 'numbers-and-punctuation');
+diff --git a/src/screens/Settings.tsx b/src/screens/Settings.tsx
+index 3ceedb8..bdda466 100644
+--- a/src/screens/Settings.tsx
++++ b/src/screens/Settings.tsx
+@@ -15,6 +15,7 @@ import { uploadSampleReceipt } from '../lib/receiptSync';
+ import { csv } from '../lib/csvStore';
+ import { backupFileName, decryptBackup, detectBackup, encryptBackup, MIN_PASSPHRASE, validateBackup } from '../lib/backupFile';
+ import { applyBackup, collectBackup } from '../lib/backupIO';
++import { SetupFromQrRow, ShareSetupSection } from './SetupTransfer';
+ import { IDLE_CHOICES, LOCKED_CHOICES, SWATCHES, contrastOn, logoSource, normaliseHex, type ScreensaverSettings } from '../lib/screensaver';
+ import { parseGrid, serialiseGrid } from '../lib/grid';
+ import { SPOT } from '../lib/trainingSpots';
+@@ -237,6 +238,8 @@ function BackupSettings() {
+   });
+   return (
+     <View>
++      <ShareSetupSection />
++      <Section title="Set up this device" footer="On a new register or companion: scan the code another device shows under Set up another device. No iCloud needed; both must be on the same Wi-Fi."><SetupFromQrRow last /></Section>
+       <Section title="Export" footer="Includes your settings, staff, grid layout and logins (Shopify, receipt server, pass server). It does not include sales history or the catalogue, which come back from Shopify. The Zeller reader pairing is stored on the device and has to be set up again.">
+         <View style={{ padding: 16 }}>
+           <Field kind="secret" label="Passphrase" value={pass} onChangeText={setPass} placeholder={`At least ${MIN_PASSPHRASE} characters`} />
+diff --git a/src/screens/Setup.tsx b/src/screens/Setup.tsx
+index 86523aa..e5a7211 100644
+--- a/src/screens/Setup.tsx
++++ b/src/screens/Setup.tsx
+@@ -9,6 +9,7 @@ import React from 'react';
+ import { View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import { Btn, Page, Row, Section, Txt, alertMsg } from '../ui/kit';
++import { SetupFromQrRow } from './SetupTransfer';
+ import { useNav } from '../ui/nav';
+ import { useTheme } from '../ui/theme';
+ import { useApp, currentStaff } from '../state/store';
+@@ -61,6 +62,10 @@ export default function Setup() {
+         <Txt size={13} sub>Two choices to make, then a short checklist. Nothing is locked in: both live in More, Device mode.</Txt>
+       </View>
+ 
++      <Section title="Already have a set up register?" footer="Copies its settings, staff, grid layout and logins over the shop Wi-Fi, then loads the catalogue. On the other device: More ▸ Settings ▸ Backup & transfer ▸ Show setup QR.">
++        <SetupFromQrRow last />
++      </Section>
++
+       <Section title="How will this device be used?" footer="A register is the default, and a device that was already in use stays one. It can be changed later under More, Device mode.">
+         {DEVICE_MODES.map((m, i) => (
+           <Row key={m} title={MODE_BLURB[m].title} sub={MODE_BLURB[m].sub} last={i === DEVICE_MODES.length - 1} spot={MODE_BLURB[m].spot}
+diff --git a/src/screens/SetupTransfer.tsx b/src/screens/SetupTransfer.tsx
+new file mode 100644
+index 0000000..4f8380e
+--- /dev/null
++++ b/src/screens/SetupTransfer.tsx
+@@ -0,0 +1,80 @@
++// Location: src/screens/SetupTransfer.tsx
++// 0246: set up a new register or companion from one that is already set up, by QR over the shop Wi-Fi (no iCloud needed).
++// `ShareSetupSection` is the set up device (Settings ▸ Backup & transfer); `SetupFromQrRow` is the new one (the same page, and the
++// top of the first-run Set up this device page). The rules are in lib/setupTransfer.ts and the sockets in lib/setupTransferIO.ts.
++import React, { useEffect, useRef, useState } from 'react';
++import { View } from 'react-native';
++import { Row, Section, Txt, alertMsg, confirm } from '../ui/kit';
++import { QR } from '../ui/QR';
++import { CameraScanner } from './Scanner';
++import { requireStepUp } from '../lib/stepUpGate';
++import { isTraining } from '../lib/trainingGuard';
++import { applyBackup } from '../lib/backupIO';
++import { importFromShopify } from '../lib/sync';
++import { hasCreds } from '../lib/shopify/client';
++import { useApp } from '../state/store';
++import { fetchSetupBackup, startSetupShare, type SetupShareHandle } from '../lib/setupTransferIO';
++import { SETUP_END_TEXT, looksLikeSetupQr, parseSetupQr, type SetupEnd } from '../lib/setupTransfer';
++
++/** The set up device: shows the QR and serves the sealed setup once. */
++export function ShareSetupSection() {
++  const [live, setLive] = useState<SetupShareHandle | null>(null); const [line, setLine] = useState(''); const [busy, setBusy] = useState(false); const [note, setNote] = useState('');
++  const handle = useRef<SetupShareHandle | null>(null); const mounted = useRef(true);
++  useEffect(() => () => { mounted.current = false; handle.current?.stop(); }, []);
++  const start = async () => {
++    if (isTraining()) { alertMsg('Practice mode', 'Sharing setup is switched off in practice mode.'); return; }
++    if (!(await requireStepUp('admin'))) return;
++    setBusy(true); setNote('');
++    try {
++      const h = await startSetupShare(l => { if (mounted.current) setLine(l); }, (why: SetupEnd, msg) => { handle.current = null; if (!mounted.current) return; setLive(null); setNote(why === 'error' && msg ? `${SETUP_END_TEXT.error} ${msg}` : SETUP_END_TEXT[why]); });
++      if (!mounted.current) { h.stop(); return; }
++      handle.current = h; setLive(h);
++    } catch (e: any) { alertMsg('Could not share setup', e?.message ?? String(e)); }
++    if (mounted.current) setBusy(false);
++  };
++  return (
++    <>
++      <Section title="Set up another device" footer={live ? 'Keep this page open until the new device says it is done. The code works once, and stops after 5 minutes or when you leave this page.' : note || 'Copies this device’s settings, staff, grid layout and Shopify and other logins to a new register or companion on the same Wi-Fi. It does not copy sales, the catalogue (that comes from Shopify) or the new device’s own name and mode.'}>
++        {live ? <Row icon="stop-circle-outline" title="Stop sharing" danger onPress={() => handle.current?.stop()} last />
++          : <Row icon="qr-code-outline" title="Show setup QR" sub={busy ? 'Sealing the setup…' : 'The new device scans it'} onPress={() => !busy && void start()} last />}
++      </Section>
++      {live ? (
++        <View style={{ paddingHorizontal: 16, gap: 10, alignItems: 'center' }}>
++          <QR value={live.qr} size={260} label="QR code that sets up another device" />
++          <Txt sub>{line}</Txt>
++          <Txt size={12} sub style={{ textAlign: 'center' }}>Anyone who scans this code in the next few minutes can copy your logins. Show it only to the new device.</Txt>
++        </View>
++      ) : null}
++    </>
++  );
++}
++
++/** The new device: one row that opens the camera, then fetches, opens and applies the setup. */
++export function SetupFromQrRow({ last }: { last?: boolean }) {
++  const [scan, setScan] = useState(false); const [busy, setBusy] = useState('');
++  const go = async (code: string) => {
++    const t = parseSetupQr(code); if (!t) { alertMsg('Not a setup code', 'Show the code under Settings ▸ Backup & transfer ▸ Show setup QR on the set up device.'); return; }
++    if (!(await confirm('Set up this device from the one at ' + t.ip + '?', 'This replaces the settings, staff, grid layout and Shopify login on this device with that device’s. This device keeps its own name and mode.', 'Set up', true))) return;
++    if (!(await requireStepUp('admin'))) return;
++    try {
++      setBusy('Fetching the setup…'); const b = await fetchSetupBackup(t);
++      setBusy('Applying…'); let msg = await applyBackup(b);
++      useApp.getState().patchSettings({}); // the logins went to the Keychain, which the setup checklist reads on its next draw
++      const s = useApp.getState().settings;
++      if (hasCreds() && s.locationId) {
++        try { setBusy('Loading the catalogue…'); const r = await importFromShopify(m => setBusy(m)); msg = `Set up. Loaded ${r.variants} items from Shopify.`; }
++        catch (e: any) { msg += ` The catalogue could not load yet (${e?.message ?? e}). Tap Import from Shopify under Settings ▸ Shopify.`; }
++      }
++      alertMsg('Set up from the other device', msg);
++    } catch (e: any) { alertMsg('Could not set up', e?.message ?? String(e)); }
++    setBusy('');
++  };
++  return (
++    <>
++      <Row icon="qr-code-outline" title="Set up from another device" sub={busy || 'Scan the code another register shows'} last={last}
++        onPress={() => { if (busy) return; if (isTraining()) { alertMsg('Practice mode', 'Setting up from another device is switched off in practice mode.'); return; } setScan(true); }} />
++      <CameraScanner visible={scan} title="Scan the setup code on the other device" onClose={() => setScan(false)}
++        onScan={code => { if (!looksLikeSetupQr(code)) return null; setScan(false); void go(code); return 'Found it'; }} />
++    </>
++  );
++}
+diff --git a/tests/setuptransfer.test.ts b/tests/setuptransfer.test.ts
+new file mode 100644
+index 0000000..6abaaa9
+--- /dev/null
++++ b/tests/setuptransfer.test.ts
+@@ -0,0 +1,55 @@
++// Location: tests/setuptransfer.test.ts
++// 0246: the QR setup transfer's pure rules, and the way it reuses the encrypted backup and the Square share server.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { CODE_LENGTH, SETUP_FILE, describeFetchFailure, isSetupCode, looksLikeSetupQr, newSetupCode, parseSetupQr, privateLanIp, setupQr } from '../src/lib/setupTransfer';
++import { answerRequest, newShareKey } from '../src/lib/squareShare';
++import { buildBackup, decryptBackup, encryptBackup, validateBackup } from '../src/lib/backupFile';
++
++const bytes = (n: number, f = (i: number) => i * 7 + 3) => Uint8Array.from({ length: n }, (_, i) => f(i) & 255);
++const KEY = 'a1b2c3d4e5f60718';
++
++test('the code is 16 unambiguous symbols and is made from the supplied bytes', () => {
++  const c = newSetupCode(bytes(16)); assert.equal(c.length, CODE_LENGTH); assert.ok(isSetupCode(c)); assert.equal(c, newSetupCode(bytes(16)));
++  assert.ok(!/[01OI]/.test(newSetupCode(bytes(16, i => i * 13 + 1))));
++  assert.throws(() => newSetupCode(bytes(8)));
++  assert.ok(!isSetupCode('short')); assert.ok(!isSetupCode('0'.repeat(16)));
++});
++test('only home and shop Wi-Fi addresses are followed', () => {
++  for (const ip of ['192.168.1.20', '10.0.0.5', '172.20.10.5', '172.16.0.1', '172.31.255.1']) assert.ok(privateLanIp(ip), ip);
++  for (const ip of ['8.8.8.8', '172.32.0.1', '172.15.0.1', '127.0.0.1', '169.254.1.1', '0.0.0.0', '192.169.1.1', 'localhost', '']) assert.ok(!privateLanIp(ip), ip);
++});
++test('the QR round-trips, and builds the address the server will answer', () => {
++  const code = newSetupCode(bytes(16)); const qr = setupQr('192.168.1.20', 8787, KEY, code);
++  assert.ok(looksLikeSetupQr(qr));
++  assert.deepEqual(parseSetupQr(qr), { ip: '192.168.1.20', port: 8787, key: KEY, code, url: `http://192.168.1.20:8787/${KEY}/${SETUP_FILE}` });
++  assert.deepEqual(parseSetupQr(`  ${qr}\n`)?.key, KEY);
++});
++test('anything else is refused', () => {
++  const code = newSetupCode(bytes(16)); const good = setupQr('10.0.0.5', 8787, KEY, code);
++  const bad = [good.replace('POSSETUP1', 'POSSETUP2'), good.replace('10.0.0.5', '8.8.8.8'), good.replace('8787', '80'), good.replace('8787', '99999'), good.replace(KEY, 'zz'), good + '|x', 'http://10.0.0.5:8787/x/manifest.json', '', good.replace(code, 'abc')];
++  for (const b of bad) assert.equal(parseSetupQr(b), null, b);
++  assert.throws(() => setupQr('8.8.8.8', 8787, KEY, code)); assert.throws(() => setupQr('10.0.0.5', 80, KEY, code)); assert.throws(() => setupQr('10.0.0.5', 8787, 'nope', code));
++});
++test('the existing share server answers only the setup file behind the right key', () => {
++  const allowed = new Set([SETUP_FILE]); const get = (p: string) => answerRequest(`GET ${p} HTTP/1.1\r\nHost: x\r\n\r\n`, KEY, allowed);
++  assert.deepEqual(get(`/${KEY}/${SETUP_FILE}`), { kind: 'file', name: SETUP_FILE });
++  assert.deepEqual(get(`/${KEY}/manifest.json`), { kind: 'error', status: 404 });
++  assert.deepEqual(get(`/0000000000000000/${SETUP_FILE}`), { kind: 'error', status: 404 });
++  assert.deepEqual(answerRequest(`POST /${KEY}/${SETUP_FILE} HTTP/1.1\r\n\r\n`, KEY, allowed), { kind: 'error', status: 405 });
++  assert.equal(newShareKey(bytes(8)).length, 16);
++});
++test('the code is the backup passphrase: right code opens it, a wrong one does not, and it validates', async () => {
++  const code = newSetupCode(bytes(16)); const other = newSetupCode(bytes(16, i => i * 5 + 9));
++  const b = buildBackup({ settings: { shopName: 'Aiden', registerId: 'device-specific', staff: [] }, credentials: { shopifyDomain: 'x.myshopify.com', shopifyClientId: 'id', shopifyClientSecret: 's', passSecret: 'p', receiptSecret: 'r' } });
++  const sealed = await encryptBackup(JSON.stringify(b), code);
++  assert.ok(!sealed.includes('x.myshopify.com') && !sealed.includes('"s"'));
++  const back = validateBackup(JSON.parse(await decryptBackup(sealed, code)));
++  assert.equal(back.settings.shopName, 'Aiden'); assert.ok(!('registerId' in back.settings)); assert.equal(back.credentials.shopifyDomain, 'x.myshopify.com');
++  await assert.rejects(decryptBackup(sealed, other), /Wrong passphrase/);
++});
++test('failures are explained in plain words', () => {
++  assert.match(describeFetchFailure(404, ''), /already been used or has expired/);
++  assert.match(describeFetchFailure(null, 'timeout'), /same Wi-Fi/);
++  assert.match(describeFetchFailure(500, ''), /500/);
++});
+-- 
+2.43.0
+
