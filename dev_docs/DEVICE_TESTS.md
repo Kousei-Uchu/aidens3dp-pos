@@ -1540,3 +1540,20 @@ Setup: two iPads on iCloud sync, a shop with two Shopify locations.
 4. Make a sale on A and turn off its Wi-Fi before it uploads. Pass: A keeps showing the lowered count (it does not jump back up) until the sale uploads.
 
 Tell me pass or fail for each, and the exact text of any error.
+
+## T117. Stock running out warning (0245)
+
+Setup: a tracked item with 3 in stock, and one with plenty.
+
+1. More ▸ Settings ▸ Cart warnings: turn on **Warn when a sale leaves an item at 0 or below**. Pass: a **Cashier must tick it** switch appears under it.
+2. Sell 2 of the 3-in-stock item and tap Charge. Pass: no stock warning (it leaves 1).
+3. Make it 3 and tap Charge. Pass: a **Stock running out** page says 3 in stock, this sale uses them all, with Back to cart.
+4. Make it 4. Pass: the page comes up again and says it leaves the item at -1.
+5. Add 2 separate lines of that item. Pass: they are added together in one sentence.
+6. Add the plenty-of-stock item too. Pass: only the short item is listed.
+7. Turn on **Cashier must tick it**. Pass: Continue to payment stays off until you tick.
+8. Also add a normal cart warning for the same item. Pass: yours shows first, the stock page last.
+9. Turn the stock warning off. Pass: nothing appears at Charge. Check it behaves the same in Guided checkout.
+10. On a second iPad with iCloud sync, check the setting followed.
+
+Tell me pass or fail for each, and the exact text of any error.

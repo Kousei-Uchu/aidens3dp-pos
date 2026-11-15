@@ -18,6 +18,7 @@ import { defaultInvPrefs, type InvPrefs } from '../lib/inventoryView';
 import { emptyLedger, readLedger, type CashLedger } from '../lib/cashLedger';
 import type { AdjustPerms } from '../lib/adjustPerms';
 import type { CartWarnings, WarningList } from '../lib/types';
+import type { StockWarningSettings } from '../lib/stockWarning';
 import type { ScannerCalibration } from '../lib/scanSpeed';
 import { isTraining } from '../lib/trainingGuard';
 import { DEFAULT_FEATURES, noticeAllowed, readFeatures, readMode, type DeviceMode, type RegisterFeatures } from '../lib/appMode';
@@ -54,6 +55,7 @@ export type Settings = {
   // these are its sync bookkeeping: `drawerVersion` is the shared record's version we last saw, `drawerPending` an unsent change,
   // `drawerShiftPending` says that change included the shift (open/paid in/out/close), so a push must not be beaten by an older one.
   drawerVersion?: number; drawerPending?: boolean; drawerShiftPending?: boolean;
+  stockWarning?: StockWarningSettings; // 0245: Settings ▸ Cart warnings ▸ Stock running out (shared to every register on iCloud)
   cartWarnings?: CartWarnings; // Settings ▸ Cart warnings: prompts on Charge for chosen items or categories (shared to every register)
   // The warning list (a warning set to "Add to the list"): shared between registers, so the list carries the same lines
   // everywhere. `warningListVersion` is the shared record's version we last saw; `warningListPending` an unsent change.

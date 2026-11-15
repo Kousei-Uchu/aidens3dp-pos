@@ -5,7 +5,7 @@
 // Two key sets exist because the shop is moving from Shopify to CloudKit (decisions items 1 to 3, 5, 19 to 21, 23 and O2):
 //   - `metaobject` is the original seven keys and nothing else. The Shopify path behaves exactly as it did before.
 //   - `cloudkit` is those seven plus the shop name, the receipt details, the two server addresses, auto-receipt, smart change,
-//     consolidate, the assistant's connection settings and the Shopify location (0244).
+//     consolidate, the assistant's connection settings and the Shopify location (0244) and the stock warning (0245).
 // Not in either set, on purpose: secrets and cashier pass codes (patch 6d, after the encryption test), the logo (its own patch),
 // notices, and everything per device (decisions items 4, 16, 22, 24 to 26).
 import { normaliseAssistant, type AssistantSettings } from './assistantConfig';
@@ -18,7 +18,7 @@ export type SharedKind = 'metaobject' | 'cloudkit';
 export type SharedPayload = Record<string, unknown>;
 
 export const SHOPIFY_KEYS = ['staff', 'bundlesJson', 'fees', 'cashRounding', 'requirePin', 'adjustPerms', 'cartWarnings'] as const;
-export const CLOUD_EXTRA_KEYS = ['shopName', 'receipt', 'passServerUrl', 'giftClaimUrl', 'autoReceipt', 'smartChange', 'consolidate', 'assistant', 'locationId', 'locationName'] as const;
+export const CLOUD_EXTRA_KEYS = ['shopName', 'receipt', 'passServerUrl', 'giftClaimUrl', 'autoReceipt', 'smartChange', 'consolidate', 'assistant', 'locationId', 'locationName', 'stockWarning'] as const;
 export const CLOUD_KEYS = [...SHOPIFY_KEYS, ...CLOUD_EXTRA_KEYS] as const;
 export const sharedKeys = (kind: SharedKind): readonly string[] => (kind === 'cloudkit' ? CLOUD_KEYS : SHOPIFY_KEYS);
 
@@ -89,6 +89,7 @@ export function parseShared(json: string | undefined | null, kind: SharedKind): 
       case 'fees': { const f = readFees(v); if (f) out[k] = f; break; }
       case 'adjustPerms': if (isObj(v)) out[k] = v; break;
       case 'cartWarnings': if (Array.isArray(v)) out[k] = v; break;
+      case 'stockWarning': if (isObj(v) && bool(v.enabled)) out[k] = { enabled: v.enabled, requireAcknowledgement: bool(v.requireAcknowledgement) ? v.requireAcknowledgement : false }; break;
       case 'receipt': { const r = readReceipt(v); if (r) out[k] = r; break; }
       case 'assistant': if (isObj(v)) out[k] = assistantShared(normaliseAssistant(v)); break;
     }

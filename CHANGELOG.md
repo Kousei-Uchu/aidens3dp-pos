@@ -8,6 +8,7 @@ There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `
 
 ### Added
 
+- **Stock running out warning.** An optional extra page at Charge listing items the sale would leave at 0 or below (0245).
 - **Shared Shopify location and a half-hourly refresh.** With iCloud sync on, every iPad uses the same location, and each re-reads products, stock, collections and discounts every 30 minutes (0244).
 - **Stock actions from Scan.** On the companion's Scan tab, a stock check has a Receive, adjust or count button. Same reasons, keypad and PIN rule as Inventory (0243).
 - **Loans to the drawer.** Paid in has a switch to mark the money as a loan, the drawer shows what is owed back, and Take loan back pays it out again. Closing with a loan still owed asks first (0188).

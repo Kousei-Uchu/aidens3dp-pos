@@ -3,6 +3,7 @@
 // that has a warning set in Settings ▸ Cart warnings, or when a warning is set to always show.
 // The popup IS the warning: its header is the warning's header and its message is the popup's main text. With several warnings it is one popup
 // paged like the Show stage (dots at the bottom, Back and Next, Next becomes Continue to payment on the last one).
+import { stockWarningPage } from '../lib/stockWarning';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,7 +26,12 @@ import { usePriced } from '../state/selectors';
 export function useCartWarningGate() {
   const cart = useApp(s => s.pos.cart); const warnings = useApp(s => s.settings.cartWarnings); const cat = useCatalogue();
   const [open, setOpen] = useState(false); const [seen, setSeen] = useState<string[]>([]);
-  const pages = useMemo(() => pendingCartWarnings(matchCartWarnings(cart, warnings, cat).filter(m => (m.warning.mode ?? 'charge') !== 'queue'), seen), [cart, warnings, cat, seen]);
+  const stockCfg = useApp(s => s.settings.stockWarning);
+  const pages = useMemo(() => {
+    const matched = matchCartWarnings(cart, warnings, cat).filter(m => (m.warning.mode ?? 'charge') !== 'queue');
+    const stock = stockWarningPage(cart, cat.variants, stockCfg); // 0245: last, after the shop's own warnings
+    return pendingCartWarnings(stock ? [...matched, stock] : matched, seen);
+  }, [cart, warnings, cat, seen, stockCfg]);
   const markSeen = () => setSeen(s => Array.from(new Set([...s, ...pages.map(warningKey)])));
   const reset = () => { setOpen(false); setSeen([]); };
   // A new sale starts with nothing seen.

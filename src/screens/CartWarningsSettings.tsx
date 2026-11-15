@@ -11,6 +11,7 @@ import { uid } from '../lib/ids';
 import { DEFAULT_WARNING_TITLE, normaliseScope, warningTitle } from '../lib/cartWarnings';
 import { TEMPLATE_HINTS } from '../lib/textTemplates';
 import type { CartWarning, CartWarningMode } from '../lib/types';
+import { DEFAULT_STOCK_WARNING } from '../lib/stockWarning';
 
 type Scope = 'variant' | 'product' | 'collection';
 const SCOPES: { v: Scope; label: string }[] = [{ v: 'variant', label: 'Variation' }, { v: 'product', label: 'Product' }, { v: 'collection', label: 'Category' }];
@@ -33,12 +34,19 @@ function useTargetName() {
 export function CartWarningsSettings() {
   const warnings = useApp(s => s.settings.cartWarnings) ?? []; const patch = useApp(s => s.patchSettings);
   const [editing, setEditing] = useState<CartWarning | 'new' | null>(null); const nameOf = useTargetName();
+  const stock = { ...DEFAULT_STOCK_WARNING, ...useApp(s => s.settings.stockWarning) };
+  const saveStock = (next: typeof stock) => { patch({ stockWarning: next }); void pushSharedSettings().catch(() => {}); };
   const save = (next: CartWarning[]) => { patch({ cartWarnings: next }); void pushSharedSettings().catch(() => {}); };
   const put = (w: CartWarning) => { save(warnings.some(x => x.id === w.id) ? warnings.map(x => (x.id === w.id ? w : x)) : [...warnings, w]); setEditing(null); };
   const remove = async (w: CartWarning) => { if (await confirm('Delete this warning?', `“${warningTitle(w)}” stops appearing at Charge.`, 'Delete', true)) save(warnings.filter(x => x.id !== w.id)); };
   return (
     <View style={{ padding: 16, gap: 10 }}>
       <Txt size={13} sub>When Charge is pressed, the cashier sees a warning for each of these that applies to the sale, one page each with Next and Back, before payment starts. It can need ticking off, and it is the same on every register.</Txt>
+      <Card style={{ padding: 12, gap: 4 }}>
+        <Txt weight="700">Stock running out</Txt>
+        <Toggle label="Warn when a sale leaves an item at 0 or below" sub="At Charge, lists each tracked item this sale would leave out of stock (or further oversold), with how many are in stock now. Items that are not tracked are ignored." value={stock.enabled} onChange={v => saveStock({ ...stock, enabled: v })} />
+        {stock.enabled ? <Toggle label="Cashier must tick it" sub="Payment cannot start until they tick that they have read it." value={stock.requireAcknowledgement} onChange={v => saveStock({ ...stock, requireAcknowledgement: v })} /> : null}
+      </Card>
       {warnings.length === 0 ? <Empty title="No warnings yet" sub="Add one for a fragile item, or one that shows on every sale." /> : warnings.map(w => (
         <Card key={w.id} style={{ padding: 12, gap: 6, opacity: w.enabled ? 1 : 0.6 }}>
           <Row title={warningTitle(w)} sub={nameOf(w)} last right={<Chip label={w.enabled ? 'On' : 'Off'} active={w.enabled} onPress={() => save(warnings.map(x => (x.id === w.id ? { ...x, enabled: !w.enabled } : x)))} />} />

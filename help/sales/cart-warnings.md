@@ -5,8 +5,8 @@ parent: sales
 needs: [selling]
 summary: Prompts that appear before payment when the cart holds a chosen item or category, such as "joints are fragile", and how to set them up.
 tags: [warning, customer warning, prompt, fragile, acknowledge, charge, category, always show, next, back]
-related: [sales, sales/cart-and-prices, sales/bundles, pay, settings]
-updated: 2026-10-18
+related: [sales, sales/cart-and-prices, sales/bundles, pay, settings, fix/stock-mismatch]
+updated: 2026-11-15
 ---
 A customer warning is a message the till shows the cashier when they press **Charge**, before payment starts. Use it for things the customer should be told, for example *Joints are fragile, do not bend or apply pressure as it will snap* on a mini dragon.
 
@@ -41,6 +41,11 @@ Open **More ▸ Settings ▸ Cart warnings** (managers and owners). Tap **Add wa
 6. Tap **Save**. **Save** stays off until there is a message and something to attach it to (or Show on every sale is on).
 
 In the list, **On** and **Off** switch a warning without deleting it. **Edit** and **Delete** are on each card. Delete asks first.
+
+### Stock running out
+At the top of **More ▸ Settings ▸ Cart warnings**, **Warn when a sale leaves an item at 0 or below** adds one more page at Charge, after your own warnings. It lists each tracked item this sale would leave out of stock, for example *Mini dragon: 3 in stock, this sale uses them all* or *Keyring: already out of stock, this sale leaves it at -1*. Several lines of the same variation are added together. Items that are not tracked, custom amounts and gift cards are ignored. It is off until you turn it on, **Cashier must tick it** works the same way, and with iCloud sync on it is the same on every iPad.
+
+It goes by this iPad's last stock count, which refreshes every half hour (see [[fix/stock-mismatch]]), so it can be a little behind another register's sales.
 
 ### Good to know
 - Gift cards and custom amounts never set a warning off.
