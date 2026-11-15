@@ -1,0 +1,324 @@
+From b0e4379808bc93e18d078dfc47cf97fbf36bb8f9 Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Sun, 15 Nov 2026 11:09:01 +1100
+Subject: [PATCH] 0244 - Share the Shopify location between registers and
+ refresh catalogue and stock every 30 minutes
+
+---
+ CHANGELOG.md                   |  1 +
+ dev_docs/DEVICE_TESTS.md       | 11 +++++++++++
+ dev_docs/PROGRESS.md           |  1 +
+ dev_docs/TO_DO.md              |  1 +
+ help/fix/stock-mismatch.md     |  4 +++-
+ help/help.json                 |  8 ++++----
+ help/settings/cloud-sync.md    |  2 +-
+ src/lib/catalogueRefresh.ts    |  9 +++++++++
+ src/lib/sharedSettings.ts      |  5 +++--
+ src/lib/sync.ts                | 20 +++++++++++++++++++-
+ src/state/store.ts             |  2 ++
+ tests/cataloguerefresh.test.ts | 22 ++++++++++++++++++++++
+ tests/sharedsettings.test.ts   | 19 ++++++++++++++-----
+ 13 files changed, 91 insertions(+), 14 deletions(-)
+ create mode 100644 src/lib/catalogueRefresh.ts
+ create mode 100644 tests/cataloguerefresh.test.ts
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 8848e34..d1bd952 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -8,6 +8,7 @@ There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `
+ 
+ ### Added
+ 
++- **Shared Shopify location and a half-hourly refresh.** With iCloud sync on, every iPad uses the same location, and each re-reads products, stock, collections and discounts every 30 minutes (0244).
+ - **Stock actions from Scan.** On the companion's Scan tab, a stock check has a Receive, adjust or count button. Same reasons, keypad and PIN rule as Inventory (0243).
+ - **Loans to the drawer.** Paid in has a switch to mark the money as a loan, the drawer shows what is owed back, and Take loan back pays it out again. Closing with a loan still owed asks first (0188).
+ - **AI assistant** (Help ▸ sparkles button, and More ▸ Settings ▸ AI assistant). It talks to a model you run yourself, reads the help pages and the till's own data, and never changes anything. The connection settings (0148, 0149), the chat screen (0151), the conversation log and its viewer (0152, 0156), the help, screen, link and guide tools (0157 to 0159, 0162), an offline mode (0160), the privacy gate every result passes through (0161), the product, stock and sales tools (0163, 0164), the date and screen tools (0166, 0167), the settings and status tools (0169), the cash drawer, change calculator and cart tools (0172), and the coach that helps in training Checks (0173). It only sends the tools a question is likely to need (0185). It reads sales from every register in the shop, not only the one in your hand.
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index 0f7ee59..2bdfda9 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1529,3 +1529,14 @@ Setup: a companion device (or any device in companion mode) with a tracked item
+ 7. On the register's checkout grid, open **Stock check**. Pass: there is no Receive button there.
+ 
+ Tell me pass or fail for each, and the exact text of any error.
++
++## T116. Shared location and the half-hourly refresh (0244)
++
++Setup: two iPads on iCloud sync, a shop with two Shopify locations.
++
++1. On iPad A, change the location in More ▸ Settings ▸ Shopify. Pass: within a minute iPad B shows the same location selected there.
++2. On iPad B, open Inventory. Pass: within a minute or two the stock numbers match the new location (no manual refresh).
++3. In Shopify, change one item's stock by hand. Leave both iPads open for 30 minutes. Pass: both show the new number without you pressing Refresh.
++4. Make a sale on A and turn off its Wi-Fi before it uploads. Pass: A keeps showing the lowered count (it does not jump back up) until the sale uploads.
++
++Tell me pass or fail for each, and the exact text of any error.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 17e092f..46eff64 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -203,6 +203,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0220 | 2026-11-02 | CloudKit patch 8: **the switch** (your request: do the rest of the docs). Rules in `backendChoice.ts` (flag values, start-up kind, when to move, which of a till's own sales are the gap, what the page says), job in `cloudkit/backendSwitch.ts` (`install`, `check`, `rollBack`, `allowSwitch`, `view`), flag storage in `cloudkit/backendFlagIO.ts` (guarded, local). `App.tsx` now installs the backend through the switch instead of always Shopify; `pollShared` calls `backendSwitch.check()` first. Cloud sync page: where this till keeps shared data, with the rollback and its way back. **Decisions made here, in GUESSES:** cut over in one go (no dual-write); a switched till never falls back by itself; the gap is closed by sending a till's own recent sales, not by dual-writing. **Not done:** retiring the 25 s poll, which needs CloudKit subscriptions in Swift (8b). New `tests/backendchoice.test.ts` (9 tests) and `tests/backendswitch.test.ts` (11 tests); full suite 1891, 0 failing with `fflate` installed; a lenient type check of the new files is clean. |
+ | 0242 | 2026-11-14 | Docs only (your request: "make the docs up to date"). `dev_docs/TO_DO.md` and `dev_docs/QUEUE.md` were last written in October and said nothing about CloudKit, so both are rewritten against what is built: the queue now holds only what is left, and TO_DO gains a CloudKit section and the new device test T114. `CLOUDKIT_SYNC_PLAN.md` gains section 10 (status after the first real run, 0231 to 0241, and the Development environment note), `CLOUDKIT_SYNC_DECISIONS.md` records your choice to stay on Development for now, `SETUP.md` gains the schema command and `.cloudkit.env`, and `CHANGELOG.md` the CloudKit, Transactions and gift-card entries. No code. | B7e, B8, docs |
+ | 0243 | 2026-11-15 | Companion mode, patch 8 (your request: "go for Companion 0182"). **Stock actions from Scan.** On a Stock check opened from the companion's Scan tab, a **Receive, adjust or count** button under the result opens a panel with the same three modes, reasons and keypad as Inventory. It asks for the PIN (`requireStepUp('shopify')`), writes through `adjustStock`/`setStock`, and updates the local count. Tapping one of the other variations switches to it. A retry after a dropped connection reuses the same idempotency key, so Shopify applies it once. Training changes this device only. The checkout grid's Stock check is unchanged (the panel is off there). New `src/lib/stockAction.ts` (pure plan, summary and retry key), `src/screens/StockActionPanel.tsx`, `tests/stockaction.test.ts` (7 tests), a line in the Device mode Help page, `COMPANION_PLAN.md` C22, `QUEUE.md`, `TO_DO.md`, `DEVICE_TESTS.md` T115. Not compiled here (no `tsc`); needs a device test. |
++| 0244 | 2026-11-15 | Stock stays in step (your request: share one Shopify stock count between the devices, and refresh the catalogue and stock half-hourly). First your question about whether each iPad pushed an absolute stock number after a sale: **it does not**. A sale creates a Shopify order with `DECREMENT_IGNORING_POLICY` at the register's location, so Shopify subtracts and two iPads selling together both count; the poll only reads stock. Only Count and starting stock send an absolute number. **Shared location (iCloud only):** `locationId` and `locationName` join the CloudKit shared settings (`sharedSettings.ts`), so changing the location on one iPad moves them all; the Shopify-metaobject path still keeps it per device. **Half-hourly refresh:** `refreshCatalogue` in `sync.ts` re-reads products, stock, collections and discounts (not customers) when the last read is 30 minutes old, the location differs from the one last read, and no sales are queued (`src/lib/catalogueRefresh.ts`). New `tests/cataloguerefresh.test.ts`, a shared-location test, `T116`, Help edits. Also type-checked the whole project for the first time here (the missing packages installed): no errors in `src/`, and all 1985 tests pass, including 0243's. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index 56a34ec..9660810 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -84,6 +84,7 @@ Built and running in Development since 2026-11-11 (patches 0231 to 0241, see `de
+ | Id | What is left |
+ | --- | --- |
+ | 0182 | Stock actions from Scan: built in 0243. Needs your device test, T115. |
++| 0244 | Shared Shopify location and the half-hourly catalogue and stock refresh: built. Needs your device test, T116. |
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/help/fix/stock-mismatch.md b/help/fix/stock-mismatch.md
+index 5b941c1..769f9cc 100644
+--- a/help/fix/stock-mismatch.md
++++ b/help/fix/stock-mismatch.md
+@@ -5,13 +5,15 @@ parent: fix
+ summary: Refresh the selected location's stock, check variant tracking and distinguish local sales from Shopify's available quantity.
+ tags: [stock, inventory, mismatch, Shopify, location, tracked, refresh, negative]
+ related: [fix, stock, stock/inventory, settings/shopify]
+-updated: 2026-10-11
++updated: 2026-11-15
+ ---
+ Inventory shows stock for the Shopify location selected on this register. Refresh from Shopify before comparing, and make sure you are looking at the same location and variant in both places.
+ 
+ ## Basic
+ 
+ ### Refresh the catalogue and stock
++With iCloud sync on, every iPad uses the same location (change it on one and the others follow). Every 30 minutes each iPad also re-reads products, stock, collections and discounts by itself, so a count that is wrong here usually fixes itself within half an hour.
++
+ 1. Check the location in **More ▸ Settings ▸ Shopify**.
+ 2. Open **Inventory** and tap **Refresh stock from Shopify**.
+ 3. In **Filters & sort**, check the import time and total variants on this iPad.
+diff --git a/help/help.json b/help/help.json
+index 316f124..234c2be 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "e40e4756",
++ "version": "4b7aa9eb",
+  "pages": [
+   {
+    "id": "cash",
+@@ -716,10 +716,10 @@
+     "stock/inventory",
+     "settings/shopify"
+    ],
+-   "updated": "2026-10-11",
++   "updated": "2026-11-15",
+    "lead": "Inventory shows stock for the Shopify location selected on this register. Refresh from Shopify before comparing, and make sure you are looking at the same location and variant in both places.",
+    "sections": {
+-    "basic": "### Refresh the catalogue and stock\n1. Check the location in **More ▸ Settings ▸ Shopify**.\n2. Open **Inventory** and tap **Refresh stock from Shopify**.\n3. In **Filters & sort**, check the import time and total variants on this iPad.\n4. Search by variant name, SKU or barcode and check that the product status and stock filters do not hide it.\n\nIf this register is connected to the wrong location, select the correct active location and refresh again. For the filter meanings and stock update controls, see [[stock/inventory]].\n\n### Check whether the item is tracked\n**-** means inventory is not tracked; **0** means tracked and currently out of stock. A negative number means more units have been sold than the available count. Check the tracked setting and available quantity for that exact variant in Shopify.",
++    "basic": "### Refresh the catalogue and stock\nWith iCloud sync on, every iPad uses the same location (change it on one and the others follow). Every 30 minutes each iPad also re-reads products, stock, collections and discounts by itself, so a count that is wrong here usually fixes itself within half an hour.\n\n1. Check the location in **More ▸ Settings ▸ Shopify**.\n2. Open **Inventory** and tap **Refresh stock from Shopify**.\n3. In **Filters & sort**, check the import time and total variants on this iPad.\n4. Search by variant name, SKU or barcode and check that the product status and stock filters do not hide it.\n\nIf this register is connected to the wrong location, select the correct active location and refresh again. For the filter meanings and stock update controls, see [[stock/inventory]].\n\n### Check whether the item is tracked\n**-** means inventory is not tracked; **0** means tracked and currently out of stock. A negative number means more units have been sold than the available count. Check the tracked setting and available quantity for that exact variant in Shopify.",
+     "deep": "### Why registers can temporarily differ\nShopify is the shared source. Each register keeps a local catalogue and stock snapshot. Sales update this register's local count immediately, while the sale upload and the other registers' stock refresh happen separately. A register that is offline or has not polled yet can show an older count.\n\nThe POS reads the selected location's **available** quantity. Shopify's other inventory states or another location may not match that number.\n\n### When a sale is queued\nA completed sale reduces the local count and queues its Shopify order. If it is still queued, correct the sync issue rather than adjusting stock to make the local display look right. See [[fix/offline-sync]].",
+     "advanced": "### Stock update and refresh path\n```mermaid\nflowchart TD\n  A[Choose active Shopify location] --> B[Import variants and available quantity]\n  B --> C[Save local catalogue snapshot]\n  D[Complete a sale] --> E[Reduce local stock]\n  E --> F[Upload order to Shopify]\n  F --> G[Other registers refresh stock delta]\n```\n\n| Job | Where |\n|---|---|\n| Select location and full catalogue import | `src/screens/Settings.tsx`, `importFromShopify` in `src/lib/sync.ts` |\n| Read tracked and available stock | `fetchVariants` in `src/lib/shopify/catalogue.ts` |\n| Poll location stock changes | `fetchStockDelta` in `src/lib/shopify/catalogue.ts`, `pollShared` in `src/lib/sync.ts` |\n| Mirror completed sale stock locally | `applyLocalStock` in `src/lib/sync.ts` |\n| Set or adjust stock from the POS | `src/screens/Inventory.tsx`, `src/lib/shopify/inventory.ts` |\n\nCompare the same variant, location and Shopify quantity name (**available**). A manual Inventory count or adjustment writes to Shopify; do not use one to conceal a delayed sync."
+    }
+@@ -1741,7 +1741,7 @@
+    "lead": "Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to the records this one holds. One register sets the shop up and shows a link; every other register joins with that link. Both iPads need to be signed in to iCloud, and only managers and owners see this page.",
+    "sections": {
+     "basic": "### Set up the register that holds the shop\n- Open **Settings**, tap **Data**, then **Cloud sync**.\n- Tap **Set up this till**. The page says this register holds the shop records and shows an **Invite link**.\n- Tap **Share the invite link** to send it by Messages, email or AirDrop, or to copy it.\n\n```screen\ntitle: Cloud sync\nlabel: Set this till up\ntext: Makes this till the one that holds the shop records, then shows a link for the other tills.\nprimary: !1 Set up this till\nnote: Do this on one iPad only. Every other iPad joins with its link.\n```\n\n```screen\ntitle: Cloud sync\nlabel: This till holds the shop records\ntext: Send this link to each other till. On that till, open Cloud sync and paste it in.\ninput: Invite link | https://www.icloud.com/share/...\nprimary: !1 Share the invite link\nnote: This is what the page shows after Set up this till.\n```\n\n### Join from another register\n- On the other iPad, open **Settings ▸ Data ▸ Cloud sync**.\n- Paste the link into the box and tap **Join**. The page then says the register has joined.\n- If the link is tapped on the iPad itself, the app opens with the link already in the box: just tap **Join**.\n\n```screen\ntitle: Cloud sync\nlabel: Join a shop\ntext: Paste the invite link from the till that set the shop up.\ninput: !1 Invite link | https://www.icloud.com/share/...\nprimary: !2 Join\nnote: Join stays greyed out until a link is in the box.\n```\n\n### Back up everything in iCloud\nOnly the owner register (the one that set the shop up) has this. On **Settings ▸ Data ▸ Cloud sync**, tap **Back up everything**. It reads every record the shop keeps in iCloud and makes one zip of JSON files, then opens the share sheet so you can save it to Files or AirDrop it. It can take a minute or two on a slow connection: leave the page open until the share sheet appears.\n\n**Export all events** (shown once sync is switched on, on every register) makes one CSV of the events from every register instead.\n\n```screen\ntitle: Cloud sync\nlabel: Back up everything in iCloud\ntext: Makes one zip of JSON files with everything the shop keeps in iCloud.\nprimary: !1 Back up everything\nlabel: Events from every register\nbutton: !2 Export all events\nnote: Keep the zip private. It is as sensitive as the Shopify login.\n```\n\nThe zip is a copy that does not depend on the owner's Apple ID. Do not email it or leave it where other people can open it.\n\n### What you need\n- Both iPads signed in to iCloud. The top of the Cloud sync page says whether this one is.\n- One register set up first. Joining needs its link: there is no list of shops to pick from.\n- A manager or owner signed in, on both iPads.",
+-    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, and the AI assistant's address, model name and options. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.\n- If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.\n\n### One file of every register's events\nOnce sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.\n\n### Cash and refund notices on every register\nOnce sync is switched on, two kinds of notice reach every register: **cash** (cash taken outside the drawer, to add to the next count) and **refund** (a refund Shopify did not record, which needs a manager). A notice raised on one iPad shows up unread on the others a few seconds later, with **From** and the register's name above it. The other kinds (sync, queue, stock, reader, pass and info) describe one iPad, so they stay on it.\n\nReading or clearing a notice only affects the iPad you do it on. It is never sent, so it does not clear the notice on the other iPads, and a notice you cleared does not come back. A notice older than a week is not sent or shown, so a register that has just joined does not open on a pile of old ones. Practice mode never sends or takes in any.\n\n### The logo on every register\nOnce sync is switched on, the logo image you upload under **Settings ▸ Screensaver & display** is shared. Upload it on one iPad and the others pick it up a few seconds later, with nothing to upload on them. Replace it and they follow. Remove it and it is removed on the others too, so they fall back to the logo link. If two iPads change it at the same moment, the one that finishes last is kept. The logo link (the https address) is not shared, and neither is anything else on that page. The image must be a PNG, JPG, GIF or WebP under 700 KB; a larger one stays on the iPad you uploaded it on. Practice mode never sends or takes in a logo.\n\n### Square history on every register\nOnce sync is switched on, imported Square history is shared one month at a time. Import it on one iPad and the others take the months in a little later, with no QR code or PC. A newer import of a month replaces it everywhere, and **Delete imported Square history** removes it from iCloud and every register, which the confirmation says. If two registers changed the same month, the one with more sales is kept on both. A month is only ever deleted on a register that had not changed it since the last time it agreed with the shop. The copy in iCloud has every customer's name, email and phone taken out, so a register that took the history from iCloud shows those sales without a customer name; the register that imported keeps its full files. Practice mode never sends or takes in history.\n\n### Training progress on every register\nOnce sync is switched on, each person's training progress is shared, so a tick earned on one iPad shows on the others. Work done on two registers is joined, not replaced. Owners and managers can reset progress from **More → Training**, and a reset clears it on every register. Practice data is never shared.\n\n### The assistant's conversation log on every register\nOnce sync is on and the encrypted switch has been turned on, each conversation with the assistant is also sent to iCloud, encrypted, with the register's name. A manager opens **Settings ▸ AI assistant ▸ conversation log** and chooses **All registers** to read every register's conversations. This includes what a local model was sent, which can include a customer's name, so the copy is encrypted and only registers in your share can read it. A register's own log is sent once after it joins. Clearing or purging the log on an iPad does not remove the copy in iCloud. Conversations in a practice run are sent after the run ends. Nothing is sent until the encrypted switch is on.\n\n### What is and is not kept in iCloud\nThe Cloud sync page lists this in full under **What is kept in iCloud**. In short:\n- **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.\n- **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.\n- **Customer names:** sales hold only the Shopify customer id, and the Square history in iCloud has customer names, emails and phones removed. The assistant's log can still contain names a local model was sent, and a sale's note or a Square ticket name can contain one.\n- **The invite link is a key.** Anyone who holds it can read and write the shop records.\n\nYour shop's own privacy policy and App Store privacy details are yours to update.",
++    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, the AI assistant's address, model name and options, and the Shopify location, so every iPad sells from and counts the same stock. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.\n- If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.\n\n### One file of every register's events\nOnce sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.\n\n### Cash and refund notices on every register\nOnce sync is switched on, two kinds of notice reach every register: **cash** (cash taken outside the drawer, to add to the next count) and **refund** (a refund Shopify did not record, which needs a manager). A notice raised on one iPad shows up unread on the others a few seconds later, with **From** and the register's name above it. The other kinds (sync, queue, stock, reader, pass and info) describe one iPad, so they stay on it.\n\nReading or clearing a notice only affects the iPad you do it on. It is never sent, so it does not clear the notice on the other iPads, and a notice you cleared does not come back. A notice older than a week is not sent or shown, so a register that has just joined does not open on a pile of old ones. Practice mode never sends or takes in any.\n\n### The logo on every register\nOnce sync is switched on, the logo image you upload under **Settings ▸ Screensaver & display** is shared. Upload it on one iPad and the others pick it up a few seconds later, with nothing to upload on them. Replace it and they follow. Remove it and it is removed on the others too, so they fall back to the logo link. If two iPads change it at the same moment, the one that finishes last is kept. The logo link (the https address) is not shared, and neither is anything else on that page. The image must be a PNG, JPG, GIF or WebP under 700 KB; a larger one stays on the iPad you uploaded it on. Practice mode never sends or takes in a logo.\n\n### Square history on every register\nOnce sync is switched on, imported Square history is shared one month at a time. Import it on one iPad and the others take the months in a little later, with no QR code or PC. A newer import of a month replaces it everywhere, and **Delete imported Square history** removes it from iCloud and every register, which the confirmation says. If two registers changed the same month, the one with more sales is kept on both. A month is only ever deleted on a register that had not changed it since the last time it agreed with the shop. The copy in iCloud has every customer's name, email and phone taken out, so a register that took the history from iCloud shows those sales without a customer name; the register that imported keeps its full files. Practice mode never sends or takes in history.\n\n### Training progress on every register\nOnce sync is switched on, each person's training progress is shared, so a tick earned on one iPad shows on the others. Work done on two registers is joined, not replaced. Owners and managers can reset progress from **More → Training**, and a reset clears it on every register. Practice data is never shared.\n\n### The assistant's conversation log on every register\nOnce sync is on and the encrypted switch has been turned on, each conversation with the assistant is also sent to iCloud, encrypted, with the register's name. A manager opens **Settings ▸ AI assistant ▸ conversation log** and chooses **All registers** to read every register's conversations. This includes what a local model was sent, which can include a customer's name, so the copy is encrypted and only registers in your share can read it. A register's own log is sent once after it joins. Clearing or purging the log on an iPad does not remove the copy in iCloud. Conversations in a practice run are sent after the run ends. Nothing is sent until the encrypted switch is on.\n\n### What is and is not kept in iCloud\nThe Cloud sync page lists this in full under **What is kept in iCloud**. In short:\n- **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.\n- **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.\n- **Customer names:** sales hold only the Shopify customer id, and the Square history in iCloud has customer names, emails and phones removed. The assistant's log can still contain names a local model was sent, and a sale's note or a Square ticket name can contain one.\n- **The invite link is a key.** Anyone who holds it can read and write the shop records.\n\nYour shop's own privacy policy and App Store privacy details are yours to update.",
+     "advanced": "### How a register is linked\n```mermaid\nflowchart TD\n  A[Settings, Data, Cloud sync] --> B{Role}\n  B -->|First register| C[Set up this till: open the zone and make the invite link]\n  C --> D[Share the link]\n  B -->|Another register| E[Paste the link and Join]\n  D --> E\n  E --> F[Both registers read and write the shop records]\n```\n\n| Job | Where |\n|---|---|\n| The page itself, and the all-events export | `src/screens/CloudSync.tsx` |\n| The wording of the iCloud note | `src/lib/icloudNote.ts` |\n| The bridge and the no-native fallback | `modules/cloudkit-sync/index.ts` and `modules/cloudkit-sync/status.ts` |\n| The CloudKit calls (zone, share, join) | `modules/cloudkit-sync/ios/CloudKitSyncModule.swift` |\n| The iCloud container and the share link handler | `plugins/withCloudKit.js` |\n| The plan and the patch list | `dev_docs/CLOUDKIT_SYNC_PLAN.md` |\n\n### If it will not join\n- **\"This till is not signed in to iCloud.\"** Sign in to iCloud in the iPad's own Settings app on this iPad, then tap **Check again**.\n- **The link opens nothing.** The app was built without its iCloud entitlement, or the link belongs to a different iCloud container. Rebuild with `npm run ios:reset`.\n- **A link from another shop will not join.** A link only opens the shop it was made for. Ask the other shop's owner for its link, or set this register up as its own shop.\n- **CloudKit has two environments.** A build from Xcode uses the development environment; TestFlight and the App Store use production. A share made in one is not visible in the other, so link registers that were built the same way.\n\n### The parts that are easy to miss\n- The zone is called Store on both sides. The register that set up holds it in its private database; a register that joined sees it in its shared database. That is how each register knows which side it is on.\n- The invite link lets anyone who has it read and write the shop records, so treat it like a password. Turning the share off in iCloud stops it.\n- iOS gives the app the share link through the AppDelegate method added by `plugins/withCloudKit.js`, because Expo does not forward that call itself. The link is also kept, so a link tapped while the app was closed can be finished from the page."
+    },
+    "figures": [
+diff --git a/help/settings/cloud-sync.md b/help/settings/cloud-sync.md
+index 1394173..cbbf1e8 100644
+--- a/help/settings/cloud-sync.md
++++ b/help/settings/cloud-sync.md
+@@ -82,7 +82,7 @@ Two things follow from that:
+ ### What travels
+ - Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.
+ - The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.
+-- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, and the AI assistant's address, model name and options. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.
++- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, the AI assistant's address, model name and options, and the Shopify location, so every iPad sells from and counts the same stock. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.
+ - If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.
+ 
+ ### One file of every register's events
+diff --git a/src/lib/catalogueRefresh.ts b/src/lib/catalogueRefresh.ts
+new file mode 100644
+index 0000000..48b2fb5
+--- /dev/null
++++ b/src/lib/catalogueRefresh.ts
+@@ -0,0 +1,9 @@
++// Location: src/lib/catalogueRefresh.ts
++// 0244: when the catalogue and stock are read again on their own. Pure, so the node tests can pin it.
++export const CATALOGUE_REFRESH_MS = 30 * 60 * 1000;
++export const refreshDue = (catalogueAt: string | undefined, catalogueLoc: string | undefined, locationId: string | undefined, now: number, queued: number): boolean => {
++  if (!locationId || queued > 0) return false;
++  if (!catalogueAt) return false; // nothing imported yet: the first import is the person's to run
++  if (catalogueLoc !== locationId) return true;
++  const t = Date.parse(catalogueAt); return !Number.isFinite(t) || now - t >= CATALOGUE_REFRESH_MS;
++};
+diff --git a/src/lib/sharedSettings.ts b/src/lib/sharedSettings.ts
+index f857265..c8c12d5 100644
+--- a/src/lib/sharedSettings.ts
++++ b/src/lib/sharedSettings.ts
+@@ -5,7 +5,7 @@
+ // Two key sets exist because the shop is moving from Shopify to CloudKit (decisions items 1 to 3, 5, 19 to 21, 23 and O2):
+ //   - `metaobject` is the original seven keys and nothing else. The Shopify path behaves exactly as it did before.
+ //   - `cloudkit` is those seven plus the shop name, the receipt details, the two server addresses, auto-receipt, smart change,
+-//     consolidate and the assistant's connection settings.
++//     consolidate, the assistant's connection settings and the Shopify location (0244).
+ // Not in either set, on purpose: secrets and cashier pass codes (patch 6d, after the encryption test), the logo (its own patch),
+ // notices, and everything per device (decisions items 4, 16, 22, 24 to 26).
+ import { normaliseAssistant, type AssistantSettings } from './assistantConfig';
+@@ -18,7 +18,7 @@ export type SharedKind = 'metaobject' | 'cloudkit';
+ export type SharedPayload = Record<string, unknown>;
+ 
+ export const SHOPIFY_KEYS = ['staff', 'bundlesJson', 'fees', 'cashRounding', 'requirePin', 'adjustPerms', 'cartWarnings'] as const;
+-export const CLOUD_EXTRA_KEYS = ['shopName', 'receipt', 'passServerUrl', 'giftClaimUrl', 'autoReceipt', 'smartChange', 'consolidate', 'assistant'] as const;
++export const CLOUD_EXTRA_KEYS = ['shopName', 'receipt', 'passServerUrl', 'giftClaimUrl', 'autoReceipt', 'smartChange', 'consolidate', 'assistant', 'locationId', 'locationName'] as const;
+ export const CLOUD_KEYS = [...SHOPIFY_KEYS, ...CLOUD_EXTRA_KEYS] as const;
+ export const sharedKeys = (kind: SharedKind): readonly string[] => (kind === 'cloudkit' ? CLOUD_KEYS : SHOPIFY_KEYS);
+ 
+@@ -83,6 +83,7 @@ export function parseShared(json: string | undefined | null, kind: SharedKind):
+     switch (k) {
+       case 'staff': if (Array.isArray(v)) out[k] = v.filter(validStaff); break;
+       case 'bundlesJson': case 'shopName': case 'passServerUrl': case 'giftClaimUrl': if (str(v)) out[k] = v; break;
++      case 'locationId': case 'locationName': if (str(v) && v !== '') out[k] = v; break; // 0244: every register sells from, and counts, the same Shopify location
+       case 'cashRounding': case 'requirePin': case 'smartChange': case 'consolidate': if (bool(v)) out[k] = v; break;
+       case 'autoReceipt': if (v === 'ask' || v === 'none') out[k] = v; break;
+       case 'fees': { const f = readFees(v); if (f) out[k] = f; break; }
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index 6278440..2234c11 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -18,6 +18,7 @@ import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
+ import * as shop from './shopify/catalogue';
+ import { activeBackendKind, getShared, listShared, putShared, detailReadyShared, type BackendRow } from './syncBackend';
+ import { applyPulled, baseOf, mergeSaved, parseSavedRow } from './savedMerge';
++import { refreshDue, CATALOGUE_REFRESH_MS } from './catalogueRefresh';
+ import { applyShared, canon, mergeShared, needsSending, parseShared, pickShared, readBase, samePayload, type SharedKind } from './sharedSettings';
+ import { pullCloudDrawerState, pushCloudDrawer, type DrawerNative } from './cloudkit/drawerCloud';
+ import { createAttemptSync } from './cloudkit/attemptSync';
+@@ -364,10 +365,26 @@ export async function importFromShopify(onProgress: (s: string) => void) {
+   onProgress('Collections…'); const collections = await shop.fetchCollections(onProgress);
+   onProgress('Customers…'); const customers = await shop.fetchCustomers(onProgress);
+   onProgress('Discounts…'); const autos = await shop.fetchAutoDiscounts(); const presets = await shop.fetchManualPresets();
+-  s.patchData({ variants: Object.fromEntries(vs.map(v => [v.id, v])), collections, customers, autos, presets, catalogueAt: new Date().toISOString(), stockSince: new Date().toISOString() });
++  s.patchData({ variants: Object.fromEntries(vs.map(v => [v.id, v])), collections, customers, autos, presets, catalogueAt: new Date().toISOString(), stockSince: new Date().toISOString(), catalogueLoc: s.settings.locationId });
+   return { variants: vs.length, collections: collections.length, customers: customers.length, discounts: autos.length + presets.length };
+ }
+ 
++/**
++ * 0244: the half-hourly (and on a location change) read of products, stock, collections and discounts. Like the import, minus the
++ * customer list (large, and nothing at the till needs it fresh). It is a safety net under the incremental stock check in the poll,
++ * which only sees items Shopify reports as updated. It waits while sales are still queued, because the local counts already
++ * include those and Shopify's do not yet. Never throws.
++ */
++export { CATALOGUE_REFRESH_MS, refreshDue };
++const refreshOnce = singleFlight(async () => {
++  const s = st(); const loc = s.settings.locationId; if (!loc) return;
++  const stamp = new Date().toISOString(); // taken before reading, so a change made during the read is picked up next poll
++  const vs = await shop.fetchVariants(loc); const collections = await shop.fetchCollections(() => {});
++  const autos = await shop.fetchAutoDiscounts(); const presets = await shop.fetchManualPresets();
++  s.patchData({ variants: Object.fromEntries(vs.map(v => [v.id, v])), collections, autos, presets, catalogueAt: stamp, stockSince: stamp, catalogueLoc: loc });
++});
++export async function refreshCatalogue(): Promise<void> { try { await refreshOnce(); } catch { /* try again at the next poll */ } }
++
+ /** Pull what other registers may have changed. Cheap enough to poll every ~20 s while foregrounded. A call made while a poll is still running joins it (0239). */
+ const pollOnce = singleFlight(pollSharedWork);
+ export async function pollShared(): Promise<void> { return pollOnce(); }
+@@ -407,6 +424,7 @@ async function pollSharedWork(): Promise<void> {
+       lap('order recovery');
+     }
+     // stock
++    if (!isTraining() && refreshDue(st().data.catalogueAt, st().data.catalogueLoc, st().settings.locationId, Date.now(), st().pos.outbox.length)) { await refreshCatalogue(); lap('catalogue refresh'); }
+     if (s.settings.locationId && s.data.stockSince) {
+       const since = new Date().toISOString();
+       const delta = await shop.fetchStockDelta(s.data.stockSince, s.settings.locationId);
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 4d1365f..a721e0a 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -87,6 +87,8 @@ export type Shift = { open: boolean; openedAt?: string; floatCents: number; paid
+ type Data = {
+   variants: Record<string, Variant>; collections: Collection[]; customers: Customer[]; autos: AutoDiscount[]; presets: ManualPreset[];
+   catalogueAt?: string; stockSince?: string;
++  /** 0244: the Shopify location the catalogue and stock were last read for; a change of location forces a fresh read. */
++  catalogueLoc?: string;
+ };
+ type Pos = { saved: SavedCart[]; outbox: OutboxItem[]; sales: SaleRecord[]; attempts: Attempt[]; notices: Notice[]; rollups: Record<string, Totals>; shift: Shift; cart: Cart; ledger: CashLedger;
+   /** Other tills' recent sales and daily totals, pulled from Shopify (see pullSalesHistory). Kept apart from `sales`, which is this
+diff --git a/tests/cataloguerefresh.test.ts b/tests/cataloguerefresh.test.ts
+new file mode 100644
+index 0000000..d6e59e3
+--- /dev/null
++++ b/tests/cataloguerefresh.test.ts
+@@ -0,0 +1,22 @@
++// Location: tests/cataloguerefresh.test.ts
++// 0244: when the catalogue and stock are read again on their own.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { CATALOGUE_REFRESH_MS, refreshDue } from '../src/lib/catalogueRefresh';
++
++const now = Date.parse('2026-11-15T12:00:00Z'); const ago = (ms: number) => new Date(now - ms).toISOString(); const L = 'gid://shopify/Location/1';
++
++test('due after half an hour, not before', () => {
++  assert.equal(refreshDue(ago(CATALOGUE_REFRESH_MS - 1000), L, L, now, 0), false);
++  assert.equal(refreshDue(ago(CATALOGUE_REFRESH_MS), L, L, now, 0), true);
++});
++test('a different location is due straight away, an older import with no location too', () => {
++  assert.equal(refreshDue(ago(1000), 'gid://shopify/Location/2', L, now, 0), true);
++  assert.equal(refreshDue(ago(1000), undefined, L, now, 0), true);
++});
++test('never while sales are queued, with no location, or before the first import', () => {
++  assert.equal(refreshDue(ago(CATALOGUE_REFRESH_MS * 3), L, L, now, 1), false);
++  assert.equal(refreshDue(ago(CATALOGUE_REFRESH_MS * 3), L, undefined, now, 0), false);
++  assert.equal(refreshDue(undefined, undefined, L, now, 0), false);
++});
++test('an unreadable import time counts as due', () => { assert.equal(refreshDue('nonsense', L, L, now, 0), true); });
+diff --git a/tests/sharedsettings.test.ts b/tests/sharedsettings.test.ts
+index a40b26e..d3029d7 100644
+--- a/tests/sharedsettings.test.ts
++++ b/tests/sharedsettings.test.ts
+@@ -13,18 +13,18 @@ const person = (id: string, o: Partial<StaffMember> = {}): StaffMember => ({ id,
+ const mk = (o: Partial<Settings> = {}): Settings => ({ ...defaultSettings(), ...o });
+ const rec = (p: Record<string, unknown>) => JSON.stringify(p);
+ 
+-test('Shopify shares exactly the original seven keys, CloudKit those plus eight more', () => {
++test('Shopify shares exactly the original seven keys, CloudKit those plus ten more', () => {
+   assert.deepEqual([...SHOPIFY_KEYS], ['staff', 'bundlesJson', 'fees', 'cashRounding', 'requirePin', 'adjustPerms', 'cartWarnings']);
+-  assert.deepEqual([...CLOUD_EXTRA_KEYS], ['shopName', 'receipt', 'passServerUrl', 'giftClaimUrl', 'autoReceipt', 'smartChange', 'consolidate', 'assistant']);
+-  assert.equal(CLOUD_KEYS.length, 15); assert.deepEqual([...sharedKeys('metaobject')], [...SHOPIFY_KEYS]); assert.deepEqual([...sharedKeys('cloudkit')], [...CLOUD_KEYS]);
++  assert.deepEqual([...CLOUD_EXTRA_KEYS], ['shopName', 'receipt', 'passServerUrl', 'giftClaimUrl', 'autoReceipt', 'smartChange', 'consolidate', 'assistant', 'locationId', 'locationName']);
++  assert.equal(CLOUD_KEYS.length, 17); assert.deepEqual([...sharedKeys('metaobject')], [...SHOPIFY_KEYS]); assert.deepEqual([...sharedKeys('cloudkit')], [...CLOUD_KEYS]);
+ });
+ 
+ test('what a register sends: the Shopify record is unchanged, the CloudKit one carries the new keys and never a device or secret key', () => {
+-  const s = mk({ shopName: 'Aiden', smartChange: true, passServerUrl: 'https://pass.example', registerName: 'Till 2', theme: 'dark', accent: '#ff0000', inventory: { ...defaultSettings().inventory } });
++  const s = mk({ shopName: 'Aiden', locationId: 'gid://shopify/Location/1', locationName: 'Main', smartChange: true, passServerUrl: 'https://pass.example', registerName: 'Till 2', theme: 'dark', accent: '#ff0000', inventory: { ...defaultSettings().inventory } });
+   assert.deepEqual(Object.keys(pickShared(s, 'metaobject')).sort(), [...SHOPIFY_KEYS].sort());
+   const c = pickShared(s, 'cloudkit'); assert.deepEqual(Object.keys(c).sort(), [...CLOUD_KEYS].sort());
+   assert.equal(c.shopName, 'Aiden'); assert.equal(c.smartChange, true);
+-  for (const k of ['registerId', 'registerName', 'theme', 'accent', 'tileSize', 'inventory', 'screensaver', 'appMode', 'sharedVersion', 'sharedBase', 'drawerVersion', 'locationId', 'scannerCal']) assert.ok(!(k in c), k);
++  for (const k of ['registerId', 'registerName', 'theme', 'accent', 'tileSize', 'inventory', 'screensaver', 'appMode', 'sharedVersion', 'sharedBase', 'drawerVersion', 'scannerCal']) assert.ok(!(k in c), k);
+   assert.ok(!/secret|apikey|key/i.test(Object.keys(c).join(',')));
+ });
+ 
+@@ -133,3 +133,12 @@ test('source pins: the push merges on CloudKit only, pulls take only known keys,
+   assert.ok((DEVICE_KEYS as readonly string[]).includes('sharedBase'));
+   const store = readFileSync('src/state/store.ts', 'utf8'); assert.ok(/sharedBase\?: string/.test(store));
+ });
++
++test('the Shopify location is shared on CloudKit only, and an empty or non-text one is ignored', () => {
++  const s = mk({ locationId: 'gid://shopify/Location/9', locationName: 'Front' });
++  assert.equal(pickShared(s, 'cloudkit').locationId, 'gid://shopify/Location/9');
++  assert.ok(!('locationId' in pickShared(s, 'metaobject')));
++  assert.deepEqual(parseShared(rec({ locationId: 'gid://shopify/Location/9', locationName: 'Front' }), 'cloudkit'), { locationId: 'gid://shopify/Location/9', locationName: 'Front' });
++  assert.deepEqual(parseShared(rec({ locationId: '', locationName: 5 }), 'cloudkit'), {});
++  assert.deepEqual(parseShared(rec({ locationId: 'x' }), 'metaobject'), {});
++});
+-- 
+2.43.0
+
