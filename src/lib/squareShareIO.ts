@@ -38,7 +38,7 @@ const write = (s: Sock, data: string | Uint8Array): Promise<void> => new Promise
  * the LAST one, reading an IPv6 entry as if it were IPv4, so on most iPads it returns garbage and sharing always said "not on
  * Wi-Fi". expo-network asks for IPv4 only, so it goes first; device-info stays as a fallback. Returns the first usable address.
  */
-async function lanIp(): Promise<{ ip: string; seen: string[] }> {
+export async function lanIp(): Promise<{ ip: string; seen: string[] }> {
   const seen: string[] = [];
   const sources: (() => Promise<string>)[] = [() => Network.getIpAddressAsync(), () => DeviceInfo.getIpAddress()];
   for (const get of sources) {
@@ -48,7 +48,7 @@ async function lanIp(): Promise<{ ip: string; seen: string[] }> {
 }
 
 /** Asks the cashier to type the address when neither lookup found one (iOS can list several interfaces and the lookups may pick a self-assigned 169.254 one). */
-const askForIp = (seen: string[]): Promise<string> => new Promise(done => {
+export const askForIp = (seen: string[]): Promise<string> => new Promise(done => {
   Alert.prompt('Wi-Fi address needed',
     `The app could not work out this iPad's Wi-Fi address (it saw ${seen.map(x => x || 'nothing').join(', ')}).\n\nOpen Settings ▸ Wi-Fi, tap the (i) next to the network, and type the IP Address shown there (like 172.20.10.5).`,
     [{ text: 'Cancel', style: 'cancel', onPress: () => done('') }, { text: 'Share', onPress: (v?: string) => done((v ?? '').trim()) }], 'plain-text', '', 'numbers-and-punctuation');

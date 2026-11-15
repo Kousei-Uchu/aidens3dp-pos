@@ -1557,3 +1557,19 @@ Setup: a tracked item with 3 in stock, and one with plenty.
 10. On a second iPad with iCloud sync, check the setting followed.
 
 Tell me pass or fail for each, and the exact text of any error.
+
+## T118. Set up a new device by QR (0246)
+
+Setup: one register that is fully set up, and a second device with a fresh install (or one you are happy to overwrite) on the same Wi-Fi. Local Network allowed for the app on both.
+
+1. On the set up device: More ▸ Settings ▸ Backup & transfer ▸ **Show setup QR**. Pass: it asks for the PIN if one is set, takes a few seconds to seal, then shows a QR and "Waiting for the new device to scan this code…".
+2. On the new device's first run Set up this device page, tap **Set up from another device** and scan it. Pass: it asks to confirm, naming the other device's address.
+3. Confirm. Pass: it shows Fetching, Applying, Loading the catalogue, then "Set up. Loaded N items from Shopify". The checklist shows Connect Shopify done.
+4. Pass: the set up device shows "Sent. Setup sharing has stopped" and the QR disappears.
+5. On the new device check the staff and PINs, the grid layout, shop name and receipt settings match, and that it kept its own register name and mode. Make a test sale.
+6. Show a fresh QR and scan it with a phone's ordinary camera app. Pass: it shows only text starting POSSETUP1, nothing opens.
+7. Scan the same QR twice (use a second try after step 4's code is spent). Pass: "That code has already been used or has expired".
+8. Show a QR and wait 5 minutes. Pass: it stops by itself and says so. Also check that leaving the page, or turning Wi-Fi off on the new device, ends cleanly with a plain message.
+9. Repeat on a companion (set to Companion first). Pass: it stays a companion and keeps its features.
+
+Tell me pass or fail for each, and the exact text of any error.

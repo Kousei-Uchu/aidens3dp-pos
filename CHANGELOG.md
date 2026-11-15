@@ -8,6 +8,7 @@ There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `
 
 ### Added
 
+- **Set up a new device by QR.** Show a setup QR on a set up device and scan it on a new register or companion to copy settings, staff, grid and logins over the shop Wi-Fi, no iCloud needed (0246).
 - **Stock running out warning.** An optional extra page at Charge listing items the sale would leave at 0 or below (0245).
 - **Shared Shopify location and a half-hourly refresh.** With iCloud sync on, every iPad uses the same location, and each re-reads products, stock, collections and discounts every 30 minutes (0244).
 - **Stock actions from Scan.** On the companion's Scan tab, a stock check has a Receive, adjust or count button. Same reasons, keypad and PIN rule as Inventory (0243).

@@ -3,9 +3,9 @@ id: settings/backup
 title: Backup, transfer and local data
 parent: settings
 summary: Export and restore settings securely, move them to another iPad, or export and delete local CSV history.
-tags: [backup, transfer, restore, export, import, CSV, history, passphrase, secrets, data]
+tags: [backup, transfer, qr, set up another device, restore, export, import, CSV, history, passphrase, secrets, data]
 related: [settings, settings/shopify, settings/receipts, settings/assistant, staff/screensaver]
-updated: 2026-10-11
+updated: 2026-11-15
 roles: [manager, owner]
 ---
 Use **More ▸ Settings ▸ Backup & transfer** to move settings and logins to another iPad. Use **More ▸ Settings ▸ Data** to export or delete this iPad's local CSV history; these are separate tools.
@@ -20,6 +20,14 @@ Use **More ▸ Settings ▸ Backup & transfer** to move settings and logins to a
 The encrypted backup includes settings, staff, the grid layout and logins, including the AI assistant's address, model and API key (see [[settings/assistant]]). It does not include sales history or the product catalogue. Zeller reader pairing stays on the original iPad.
 
 **Export plain JSON (not encrypted)** is available only after a warning and confirmation. The file contains Shopify and other login secrets in readable text. Prefer the encrypted backup; if you export plain JSON, protect it and delete it after importing.
+
+### Set up a new device by QR
+No file and no iCloud: both devices just need the same Wi-Fi.
+1. On the device that is already set up, open **More ▸ Settings ▸ Backup & transfer** and tap **Show setup QR**. Enter the PIN if it asks. A QR code appears.
+2. On the new device, tap **Set up from another device** (here, or on the **Set up this device** page the first time it opens) and scan the code.
+3. Confirm. The new device fetches the setup, applies it, and loads the catalogue from Shopify.
+
+The code works once, and stops after 5 minutes or when you leave the page. The setup travels sealed with a one-time code that only appears in the QR, so other people on the Wi-Fi only see scrambled data. Even so, show the code only to the new device: anyone who scans it in time gets your logins. It copies the same things as a backup file (settings, staff, grid layout, Shopify and other logins). The new device keeps its own name, mode and features, and the Zeller reader still has to be paired again. If it cannot connect, check both devices are on the same Wi-Fi and that Local Network is allowed for the app in iOS Settings.
 
 ### Restore on another iPad
 Tap **Choose backup file…** and select the backup. For an encrypted file, enter its passphrase and tap **Decrypt & restore**. Confirm the restore. It replaces the receiving iPad's settings, grid and logins, but keeps that iPad's own register name and ID.

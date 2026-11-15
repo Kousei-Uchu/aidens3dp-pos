@@ -84,6 +84,7 @@ Built and running in Development since 2026-11-11 (patches 0231 to 0241, see `de
 | Id | What is left |
 | --- | --- |
 | 0182 | Stock actions from Scan: built in 0243. Needs your device test, T115. |
+| 0246 | Set up a new device by QR (no iCloud): built. Needs your device test, T118. Square history and the reader pairing are not part of it. |
 | 0245 | Stock running out warning at Charge: built, off by default. Needs your device test, T117. |
 | 0244 | Shared Shopify location and the half-hourly catalogue and stock refresh: built. Needs your device test, T116. |
 

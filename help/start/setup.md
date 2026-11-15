@@ -11,6 +11,9 @@ A device that has never been set up opens **Set up this device** once, on the fi
 
 ## Basic
 
+### Copy a set up register instead
+If you already have a register set up, tap **Set up from another device** at the top and scan the code it shows (**More ▸ Settings ▸ Backup & transfer ▸ Show setup QR**). It brings the settings, staff, grid layout and Shopify login across and loads the catalogue, so most of the checklist below is already done. Details in [[settings/backup]].
+
 ### Choose how the device will be used
 - **A register** is a till: everything is on, exactly as the app has always been.
 - **A companion** is a phone or tablet beside the till. It keeps browsing, the assistant, notifications and Settings, and has the register features you switch on. See [[device-mode]].

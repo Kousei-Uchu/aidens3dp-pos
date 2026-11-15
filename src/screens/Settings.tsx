@@ -15,6 +15,7 @@ import { uploadSampleReceipt } from '../lib/receiptSync';
 import { csv } from '../lib/csvStore';
 import { backupFileName, decryptBackup, detectBackup, encryptBackup, MIN_PASSPHRASE, validateBackup } from '../lib/backupFile';
 import { applyBackup, collectBackup } from '../lib/backupIO';
+import { SetupFromQrRow, ShareSetupSection } from './SetupTransfer';
 import { IDLE_CHOICES, LOCKED_CHOICES, SWATCHES, contrastOn, logoSource, normaliseHex, type ScreensaverSettings } from '../lib/screensaver';
 import { parseGrid, serialiseGrid } from '../lib/grid';
 import { SPOT } from '../lib/trainingSpots';
@@ -237,6 +238,8 @@ function BackupSettings() {
   });
   return (
     <View>
+      <ShareSetupSection />
+      <Section title="Set up this device" footer="On a new register or companion: scan the code another device shows under Set up another device. No iCloud needed; both must be on the same Wi-Fi."><SetupFromQrRow last /></Section>
       <Section title="Export" footer="Includes your settings, staff, grid layout and logins (Shopify, receipt server, pass server). It does not include sales history or the catalogue, which come back from Shopify. The Zeller reader pairing is stored on the device and has to be set up again.">
         <View style={{ padding: 16 }}>
           <Field kind="secret" label="Passphrase" value={pass} onChangeText={setPass} placeholder={`At least ${MIN_PASSPHRASE} characters`} />

@@ -9,6 +9,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Btn, Page, Row, Section, Txt, alertMsg } from '../ui/kit';
+import { SetupFromQrRow } from './SetupTransfer';
 import { useNav } from '../ui/nav';
 import { useTheme } from '../ui/theme';
 import { useApp, currentStaff } from '../state/store';
@@ -60,6 +61,10 @@ export default function Setup() {
       <View style={{ padding: 16 }}>
         <Txt size={13} sub>Two choices to make, then a short checklist. Nothing is locked in: both live in More, Device mode.</Txt>
       </View>
+
+      <Section title="Already have a set up register?" footer="Copies its settings, staff, grid layout and logins over the shop Wi-Fi, then loads the catalogue. On the other device: More ▸ Settings ▸ Backup & transfer ▸ Show setup QR.">
+        <SetupFromQrRow last />
+      </Section>
 
       <Section title="How will this device be used?" footer="A register is the default, and a device that was already in use stays one. It can be changed later under More, Device mode.">
         {DEVICE_MODES.map((m, i) => (
