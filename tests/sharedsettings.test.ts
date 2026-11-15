@@ -13,18 +13,18 @@ const person = (id: string, o: Partial<StaffMember> = {}): StaffMember => ({ id,
 const mk = (o: Partial<Settings> = {}): Settings => ({ ...defaultSettings(), ...o });
 const rec = (p: Record<string, unknown>) => JSON.stringify(p);
 
-test('Shopify shares exactly the original seven keys, CloudKit those plus eight more', () => {
+test('Shopify shares exactly the original seven keys, CloudKit those plus ten more', () => {
   assert.deepEqual([...SHOPIFY_KEYS], ['staff', 'bundlesJson', 'fees', 'cashRounding', 'requirePin', 'adjustPerms', 'cartWarnings']);
-  assert.deepEqual([...CLOUD_EXTRA_KEYS], ['shopName', 'receipt', 'passServerUrl', 'giftClaimUrl', 'autoReceipt', 'smartChange', 'consolidate', 'assistant']);
-  assert.equal(CLOUD_KEYS.length, 15); assert.deepEqual([...sharedKeys('metaobject')], [...SHOPIFY_KEYS]); assert.deepEqual([...sharedKeys('cloudkit')], [...CLOUD_KEYS]);
+  assert.deepEqual([...CLOUD_EXTRA_KEYS], ['shopName', 'receipt', 'passServerUrl', 'giftClaimUrl', 'autoReceipt', 'smartChange', 'consolidate', 'assistant', 'locationId', 'locationName']);
+  assert.equal(CLOUD_KEYS.length, 17); assert.deepEqual([...sharedKeys('metaobject')], [...SHOPIFY_KEYS]); assert.deepEqual([...sharedKeys('cloudkit')], [...CLOUD_KEYS]);
 });
 
 test('what a register sends: the Shopify record is unchanged, the CloudKit one carries the new keys and never a device or secret key', () => {
-  const s = mk({ shopName: 'Aiden', smartChange: true, passServerUrl: 'https://pass.example', registerName: 'Till 2', theme: 'dark', accent: '#ff0000', inventory: { ...defaultSettings().inventory } });
+  const s = mk({ shopName: 'Aiden', locationId: 'gid://shopify/Location/1', locationName: 'Main', smartChange: true, passServerUrl: 'https://pass.example', registerName: 'Till 2', theme: 'dark', accent: '#ff0000', inventory: { ...defaultSettings().inventory } });
   assert.deepEqual(Object.keys(pickShared(s, 'metaobject')).sort(), [...SHOPIFY_KEYS].sort());
   const c = pickShared(s, 'cloudkit'); assert.deepEqual(Object.keys(c).sort(), [...CLOUD_KEYS].sort());
   assert.equal(c.shopName, 'Aiden'); assert.equal(c.smartChange, true);
-  for (const k of ['registerId', 'registerName', 'theme', 'accent', 'tileSize', 'inventory', 'screensaver', 'appMode', 'sharedVersion', 'sharedBase', 'drawerVersion', 'locationId', 'scannerCal']) assert.ok(!(k in c), k);
+  for (const k of ['registerId', 'registerName', 'theme', 'accent', 'tileSize', 'inventory', 'screensaver', 'appMode', 'sharedVersion', 'sharedBase', 'drawerVersion', 'scannerCal']) assert.ok(!(k in c), k);
   assert.ok(!/secret|apikey|key/i.test(Object.keys(c).join(',')));
 });
 
@@ -132,4 +132,13 @@ test('source pins: the push merges on CloudKit only, pulls take only known keys,
   assert.ok(/useApp\.subscribe\(/.test(sync) && /needsSending\(/.test(sync) && /isTraining\(\)/.test(sync.slice(sync.indexOf('useApp.subscribe('), sync.indexOf('useApp.subscribe(') + 400)), 'the watcher exists and skips practice mode');
   assert.ok((DEVICE_KEYS as readonly string[]).includes('sharedBase'));
   const store = readFileSync('src/state/store.ts', 'utf8'); assert.ok(/sharedBase\?: string/.test(store));
+});
+
+test('the Shopify location is shared on CloudKit only, and an empty or non-text one is ignored', () => {
+  const s = mk({ locationId: 'gid://shopify/Location/9', locationName: 'Front' });
+  assert.equal(pickShared(s, 'cloudkit').locationId, 'gid://shopify/Location/9');
+  assert.ok(!('locationId' in pickShared(s, 'metaobject')));
+  assert.deepEqual(parseShared(rec({ locationId: 'gid://shopify/Location/9', locationName: 'Front' }), 'cloudkit'), { locationId: 'gid://shopify/Location/9', locationName: 'Front' });
+  assert.deepEqual(parseShared(rec({ locationId: '', locationName: 5 }), 'cloudkit'), {});
+  assert.deepEqual(parseShared(rec({ locationId: 'x' }), 'metaobject'), {});
 });

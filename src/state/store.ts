@@ -87,6 +87,8 @@ export type Shift = { open: boolean; openedAt?: string; floatCents: number; paid
 type Data = {
   variants: Record<string, Variant>; collections: Collection[]; customers: Customer[]; autos: AutoDiscount[]; presets: ManualPreset[];
   catalogueAt?: string; stockSince?: string;
+  /** 0244: the Shopify location the catalogue and stock were last read for; a change of location forces a fresh read. */
+  catalogueLoc?: string;
 };
 type Pos = { saved: SavedCart[]; outbox: OutboxItem[]; sales: SaleRecord[]; attempts: Attempt[]; notices: Notice[]; rollups: Record<string, Totals>; shift: Shift; cart: Cart; ledger: CashLedger;
   /** Other tills' recent sales and daily totals, pulled from Shopify (see pullSalesHistory). Kept apart from `sales`, which is this

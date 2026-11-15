@@ -1529,3 +1529,14 @@ Setup: a companion device (or any device in companion mode) with a tracked item 
 7. On the register's checkout grid, open **Stock check**. Pass: there is no Receive button there.
 
 Tell me pass or fail for each, and the exact text of any error.
+
+## T116. Shared location and the half-hourly refresh (0244)
+
+Setup: two iPads on iCloud sync, a shop with two Shopify locations.
+
+1. On iPad A, change the location in More ▸ Settings ▸ Shopify. Pass: within a minute iPad B shows the same location selected there.
+2. On iPad B, open Inventory. Pass: within a minute or two the stock numbers match the new location (no manual refresh).
+3. In Shopify, change one item's stock by hand. Leave both iPads open for 30 minutes. Pass: both show the new number without you pressing Refresh.
+4. Make a sale on A and turn off its Wi-Fi before it uploads. Pass: A keeps showing the lowered count (it does not jump back up) until the sale uploads.
+
+Tell me pass or fail for each, and the exact text of any error.

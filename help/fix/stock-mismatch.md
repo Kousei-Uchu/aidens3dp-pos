@@ -5,13 +5,15 @@ parent: fix
 summary: Refresh the selected location's stock, check variant tracking and distinguish local sales from Shopify's available quantity.
 tags: [stock, inventory, mismatch, Shopify, location, tracked, refresh, negative]
 related: [fix, stock, stock/inventory, settings/shopify]
-updated: 2026-10-11
+updated: 2026-11-15
 ---
 Inventory shows stock for the Shopify location selected on this register. Refresh from Shopify before comparing, and make sure you are looking at the same location and variant in both places.
 
 ## Basic
 
 ### Refresh the catalogue and stock
+With iCloud sync on, every iPad uses the same location (change it on one and the others follow). Every 30 minutes each iPad also re-reads products, stock, collections and discounts by itself, so a count that is wrong here usually fixes itself within half an hour.
+
 1. Check the location in **More ▸ Settings ▸ Shopify**.
 2. Open **Inventory** and tap **Refresh stock from Shopify**.
 3. In **Filters & sort**, check the import time and total variants on this iPad.

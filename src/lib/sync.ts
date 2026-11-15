@@ -18,6 +18,7 @@ import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
 import * as shop from './shopify/catalogue';
 import { activeBackendKind, getShared, listShared, putShared, detailReadyShared, type BackendRow } from './syncBackend';
 import { applyPulled, baseOf, mergeSaved, parseSavedRow } from './savedMerge';
+import { refreshDue, CATALOGUE_REFRESH_MS } from './catalogueRefresh';
 import { applyShared, canon, mergeShared, needsSending, parseShared, pickShared, readBase, samePayload, type SharedKind } from './sharedSettings';
 import { pullCloudDrawerState, pushCloudDrawer, type DrawerNative } from './cloudkit/drawerCloud';
 import { createAttemptSync } from './cloudkit/attemptSync';
@@ -364,9 +365,25 @@ export async function importFromShopify(onProgress: (s: string) => void) {
   onProgress('Collections…'); const collections = await shop.fetchCollections(onProgress);
   onProgress('Customers…'); const customers = await shop.fetchCustomers(onProgress);
   onProgress('Discounts…'); const autos = await shop.fetchAutoDiscounts(); const presets = await shop.fetchManualPresets();
-  s.patchData({ variants: Object.fromEntries(vs.map(v => [v.id, v])), collections, customers, autos, presets, catalogueAt: new Date().toISOString(), stockSince: new Date().toISOString() });
+  s.patchData({ variants: Object.fromEntries(vs.map(v => [v.id, v])), collections, customers, autos, presets, catalogueAt: new Date().toISOString(), stockSince: new Date().toISOString(), catalogueLoc: s.settings.locationId });
   return { variants: vs.length, collections: collections.length, customers: customers.length, discounts: autos.length + presets.length };
 }
+
+/**
+ * 0244: the half-hourly (and on a location change) read of products, stock, collections and discounts. Like the import, minus the
+ * customer list (large, and nothing at the till needs it fresh). It is a safety net under the incremental stock check in the poll,
+ * which only sees items Shopify reports as updated. It waits while sales are still queued, because the local counts already
+ * include those and Shopify's do not yet. Never throws.
+ */
+export { CATALOGUE_REFRESH_MS, refreshDue };
+const refreshOnce = singleFlight(async () => {
+  const s = st(); const loc = s.settings.locationId; if (!loc) return;
+  const stamp = new Date().toISOString(); // taken before reading, so a change made during the read is picked up next poll
+  const vs = await shop.fetchVariants(loc); const collections = await shop.fetchCollections(() => {});
+  const autos = await shop.fetchAutoDiscounts(); const presets = await shop.fetchManualPresets();
+  s.patchData({ variants: Object.fromEntries(vs.map(v => [v.id, v])), collections, autos, presets, catalogueAt: stamp, stockSince: stamp, catalogueLoc: loc });
+});
+export async function refreshCatalogue(): Promise<void> { try { await refreshOnce(); } catch { /* try again at the next poll */ } }
 
 /** Pull what other registers may have changed. Cheap enough to poll every ~20 s while foregrounded. A call made while a poll is still running joins it (0239). */
 const pollOnce = singleFlight(pollSharedWork);
@@ -407,6 +424,7 @@ async function pollSharedWork(): Promise<void> {
       lap('order recovery');
     }
     // stock
+    if (!isTraining() && refreshDue(st().data.catalogueAt, st().data.catalogueLoc, st().settings.locationId, Date.now(), st().pos.outbox.length)) { await refreshCatalogue(); lap('catalogue refresh'); }
     if (s.settings.locationId && s.data.stockSince) {
       const since = new Date().toISOString();
       const delta = await shop.fetchStockDelta(s.data.stockSince, s.settings.locationId);
