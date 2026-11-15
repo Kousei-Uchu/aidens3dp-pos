@@ -1,0 +1,420 @@
+From 2b17756b8cd312a7f46c21d6388168c2cbe7c476 Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Sun, 15 Nov 2026 11:16:26 +1100
+Subject: [PATCH] 0245 - Stock running out warning at Charge
+
+---
+ CHANGELOG.md                         |  1 +
+ dev_docs/DEVICE_TESTS.md             | 17 ++++++++++
+ dev_docs/PROGRESS.md                 |  1 +
+ dev_docs/TO_DO.md                    |  1 +
+ help/help.json                       | 11 ++++---
+ help/sales/cart-warnings.md          |  9 +++--
+ help/settings/cloud-sync.md          |  2 +-
+ src/lib/sharedSettings.ts            |  5 +--
+ src/lib/stockWarning.ts              | 49 ++++++++++++++++++++++++++++
+ src/screens/CartWarningsSettings.tsx |  8 +++++
+ src/screens/CartWarningsSheet.tsx    |  8 ++++-
+ src/state/store.ts                   |  2 ++
+ tests/sharedsettings.test.ts         | 16 ++++++---
+ tests/stockwarning.test.ts           | 48 +++++++++++++++++++++++++++
+ 14 files changed, 163 insertions(+), 15 deletions(-)
+ create mode 100644 src/lib/stockWarning.ts
+ create mode 100644 tests/stockwarning.test.ts
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d1bd952..1330ad8 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -8,6 +8,7 @@ There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `
+ 
+ ### Added
+ 
++- **Stock running out warning.** An optional extra page at Charge listing items the sale would leave at 0 or below (0245).
+ - **Shared Shopify location and a half-hourly refresh.** With iCloud sync on, every iPad uses the same location, and each re-reads products, stock, collections and discounts every 30 minutes (0244).
+ - **Stock actions from Scan.** On the companion's Scan tab, a stock check has a Receive, adjust or count button. Same reasons, keypad and PIN rule as Inventory (0243).
+ - **Loans to the drawer.** Paid in has a switch to mark the money as a loan, the drawer shows what is owed back, and Take loan back pays it out again. Closing with a loan still owed asks first (0188).
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index 2bdfda9..f7c6cfe 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1540,3 +1540,20 @@ Setup: two iPads on iCloud sync, a shop with two Shopify locations.
+ 4. Make a sale on A and turn off its Wi-Fi before it uploads. Pass: A keeps showing the lowered count (it does not jump back up) until the sale uploads.
+ 
+ Tell me pass or fail for each, and the exact text of any error.
++
++## T117. Stock running out warning (0245)
++
++Setup: a tracked item with 3 in stock, and one with plenty.
++
++1. More ▸ Settings ▸ Cart warnings: turn on **Warn when a sale leaves an item at 0 or below**. Pass: a **Cashier must tick it** switch appears under it.
++2. Sell 2 of the 3-in-stock item and tap Charge. Pass: no stock warning (it leaves 1).
++3. Make it 3 and tap Charge. Pass: a **Stock running out** page says 3 in stock, this sale uses them all, with Back to cart.
++4. Make it 4. Pass: the page comes up again and says it leaves the item at -1.
++5. Add 2 separate lines of that item. Pass: they are added together in one sentence.
++6. Add the plenty-of-stock item too. Pass: only the short item is listed.
++7. Turn on **Cashier must tick it**. Pass: Continue to payment stays off until you tick.
++8. Also add a normal cart warning for the same item. Pass: yours shows first, the stock page last.
++9. Turn the stock warning off. Pass: nothing appears at Charge. Check it behaves the same in Guided checkout.
++10. On a second iPad with iCloud sync, check the setting followed.
++
++Tell me pass or fail for each, and the exact text of any error.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 46eff64..e48a29e 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -204,6 +204,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0242 | 2026-11-14 | Docs only (your request: "make the docs up to date"). `dev_docs/TO_DO.md` and `dev_docs/QUEUE.md` were last written in October and said nothing about CloudKit, so both are rewritten against what is built: the queue now holds only what is left, and TO_DO gains a CloudKit section and the new device test T114. `CLOUDKIT_SYNC_PLAN.md` gains section 10 (status after the first real run, 0231 to 0241, and the Development environment note), `CLOUDKIT_SYNC_DECISIONS.md` records your choice to stay on Development for now, `SETUP.md` gains the schema command and `.cloudkit.env`, and `CHANGELOG.md` the CloudKit, Transactions and gift-card entries. No code. | B7e, B8, docs |
+ | 0243 | 2026-11-15 | Companion mode, patch 8 (your request: "go for Companion 0182"). **Stock actions from Scan.** On a Stock check opened from the companion's Scan tab, a **Receive, adjust or count** button under the result opens a panel with the same three modes, reasons and keypad as Inventory. It asks for the PIN (`requireStepUp('shopify')`), writes through `adjustStock`/`setStock`, and updates the local count. Tapping one of the other variations switches to it. A retry after a dropped connection reuses the same idempotency key, so Shopify applies it once. Training changes this device only. The checkout grid's Stock check is unchanged (the panel is off there). New `src/lib/stockAction.ts` (pure plan, summary and retry key), `src/screens/StockActionPanel.tsx`, `tests/stockaction.test.ts` (7 tests), a line in the Device mode Help page, `COMPANION_PLAN.md` C22, `QUEUE.md`, `TO_DO.md`, `DEVICE_TESTS.md` T115. Not compiled here (no `tsc`); needs a device test. |
+ | 0244 | 2026-11-15 | Stock stays in step (your request: share one Shopify stock count between the devices, and refresh the catalogue and stock half-hourly). First your question about whether each iPad pushed an absolute stock number after a sale: **it does not**. A sale creates a Shopify order with `DECREMENT_IGNORING_POLICY` at the register's location, so Shopify subtracts and two iPads selling together both count; the poll only reads stock. Only Count and starting stock send an absolute number. **Shared location (iCloud only):** `locationId` and `locationName` join the CloudKit shared settings (`sharedSettings.ts`), so changing the location on one iPad moves them all; the Shopify-metaobject path still keeps it per device. **Half-hourly refresh:** `refreshCatalogue` in `sync.ts` re-reads products, stock, collections and discounts (not customers) when the last read is 30 minutes old, the location differs from the one last read, and no sales are queued (`src/lib/catalogueRefresh.ts`). New `tests/cataloguerefresh.test.ts`, a shared-location test, `T116`, Help edits. Also type-checked the whole project for the first time here (the missing packages installed): no errors in `src/`, and all 1985 tests pass, including 0243's. |
++| 0245 | 2026-11-15 | Stock running out warning (your request: a feature like the cart warnings, for an item the current order would leave at 0 or below). **A built-in extra page on the Charge warnings.** `src/lib/stockWarning.ts`: `stockShortfalls` adds up the lines of each tracked variation and keeps those whose stock minus the quantity is 0 or lower (untracked, custom, gift card and unknown items never count); `stockWarningPage` shapes it as a normal cart warning page, so `CartWarningsSheet` and both checkouts show it with the same Next/Back, tick-to-continue and "not asked again unless it changes" behaviour (the page text carries the numbers, so a changed cart brings it back). It is appended after the shop's own warnings in `useCartWarningGate`. Setting `stockWarning { enabled, requireAcknowledgement }`, **off by default**, in Settings ▸ Cart warnings, shared on iCloud (a new CloudKit shared key; the Shopify-metaobject set is unchanged). Not a queue-mode warning: it only appears at Charge. `tests/stockwarning.test.ts` (7), shared-settings tests, Help page `sales/cart-warnings`, `T117`. `tsc` clean in `src/`. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index 9660810..50d4848 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -84,6 +84,7 @@ Built and running in Development since 2026-11-11 (patches 0231 to 0241, see `de
+ | Id | What is left |
+ | --- | --- |
+ | 0182 | Stock actions from Scan: built in 0243. Needs your device test, T115. |
++| 0245 | Stock running out warning at Charge: built, off by default. Needs your device test, T117. |
+ | 0244 | Shared Shopify location and the half-hourly catalogue and stock refresh: built. Needs your device test, T116. |
+ 
+ ## 4. Flagged in the repo but not on a list
+diff --git a/help/help.json b/help/help.json
+index 234c2be..d1ac4d3 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "4b7aa9eb",
++ "version": "d8d82a2d",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1326,15 +1326,16 @@
+     "sales/cart-and-prices",
+     "sales/bundles",
+     "pay",
+-    "settings"
++    "settings",
++    "fix/stock-mismatch"
+    ],
+-   "updated": "2026-10-18",
++   "updated": "2026-11-15",
+    "needs": [
+     "selling"
+    ],
+    "lead": "A customer warning is a message the till shows the cashier when they press **Charge**, before payment starts. Use it for things the customer should be told, for example *Joints are fragile, do not bend or apply pressure as it will snap* on a mini dragon.",
+    "sections": {
+-    "basic": "### What the cashier sees\nTap **Charge**. If anything in the cart has a warning, a popup opens before the price adjustments and bundle checks. The popup is the warning: its title is the header that was set (*Customer Warning* if left blank), with a warning icon, and the message is the big text in the middle. **For:** under the message names the items that set it off.\n\n```screen\ntitle: Customer Warning\ntext: Fragile. Do not bend, drop or apply pressure to the item.\nlabel: For\ntext: Mini dragon · Grey\nbutton: Back to cart\nprimary: !1 I have read this and dealt with it\nnote: The cashier must tick to continue if the warning asks for it.\n```\n- With one warning there is just the message, **Continue to payment** and **Back to cart**.\n- With several warnings it is still one popup, one warning per page. Dots at the bottom show which page you are on. Tap **Next** and **Back** to move between them.\n- On the last warning, **Next** becomes **Continue to payment**. **Back to cart** is on every page and closes the popup so you can change the cart.\n- If a warning needs ticking, tap **I have read this and dealt with it** on each one. **Continue to payment** stays off until every warning that needs it has been ticked, and a note says how many are left.\n\nOnce you have carried on from a warning, it is not asked again on the same sale unless it changes (its text is edited, or another line sets it off). A warning set to always show comes up every time you press Charge.\n\n### Setting them up\nOpen **More ▸ Settings ▸ Cart warnings** (managers and owners). Tap **Add warning**, then:\n1. **Header**: the title of the window. Leave it blank for *Customer Warning*.\n2. **Message for the cashier**: the text shown.\n3. **Show on every sale**: turn on to show it on every Charge, whatever is in the cart.\n4. **Cashier must tick it**: turn on to stop payment until the cashier ticks that they have read it and dealt with it.\n5. **Shows when the cart has**: pick **Variation**, **Product** or **Category**, search, and tap the one you want. A *Product* covers every variation of it. A *Category* is a Shopify collection, so it covers every product in it. This is hidden when **Show on every sale** is on.\n6. Tap **Save**. **Save** stays off until there is a message and something to attach it to (or Show on every sale is on).\n\nIn the list, **On** and **Off** switch a warning without deleting it. **Edit** and **Delete** are on each card. Delete asks first.\n\n### Good to know\n- Gift cards and custom amounts never set a warning off.\n- Warnings are shared with the other registers, like the staff list and bundle deals.\n- Practice runs in Training never show the shop's real warnings.\n- A warning for an item or category that has since been removed from the catalogue shows its name as *no longer in the catalogue*. It never fires. Edit it or delete it.",
++    "basic": "### What the cashier sees\nTap **Charge**. If anything in the cart has a warning, a popup opens before the price adjustments and bundle checks. The popup is the warning: its title is the header that was set (*Customer Warning* if left blank), with a warning icon, and the message is the big text in the middle. **For:** under the message names the items that set it off.\n\n```screen\ntitle: Customer Warning\ntext: Fragile. Do not bend, drop or apply pressure to the item.\nlabel: For\ntext: Mini dragon · Grey\nbutton: Back to cart\nprimary: !1 I have read this and dealt with it\nnote: The cashier must tick to continue if the warning asks for it.\n```\n- With one warning there is just the message, **Continue to payment** and **Back to cart**.\n- With several warnings it is still one popup, one warning per page. Dots at the bottom show which page you are on. Tap **Next** and **Back** to move between them.\n- On the last warning, **Next** becomes **Continue to payment**. **Back to cart** is on every page and closes the popup so you can change the cart.\n- If a warning needs ticking, tap **I have read this and dealt with it** on each one. **Continue to payment** stays off until every warning that needs it has been ticked, and a note says how many are left.\n\nOnce you have carried on from a warning, it is not asked again on the same sale unless it changes (its text is edited, or another line sets it off). A warning set to always show comes up every time you press Charge.\n\n### Setting them up\nOpen **More ▸ Settings ▸ Cart warnings** (managers and owners). Tap **Add warning**, then:\n1. **Header**: the title of the window. Leave it blank for *Customer Warning*.\n2. **Message for the cashier**: the text shown.\n3. **Show on every sale**: turn on to show it on every Charge, whatever is in the cart.\n4. **Cashier must tick it**: turn on to stop payment until the cashier ticks that they have read it and dealt with it.\n5. **Shows when the cart has**: pick **Variation**, **Product** or **Category**, search, and tap the one you want. A *Product* covers every variation of it. A *Category* is a Shopify collection, so it covers every product in it. This is hidden when **Show on every sale** is on.\n6. Tap **Save**. **Save** stays off until there is a message and something to attach it to (or Show on every sale is on).\n\nIn the list, **On** and **Off** switch a warning without deleting it. **Edit** and **Delete** are on each card. Delete asks first.\n\n### Stock running out\nAt the top of **More ▸ Settings ▸ Cart warnings**, **Warn when a sale leaves an item at 0 or below** adds one more page at Charge, after your own warnings. It lists each tracked item this sale would leave out of stock, for example *Mini dragon: 3 in stock, this sale uses them all* or *Keyring: already out of stock, this sale leaves it at -1*. Several lines of the same variation are added together. Items that are not tracked, custom amounts and gift cards are ignored. It is off until you turn it on, **Cashier must tick it** works the same way, and with iCloud sync on it is the same on every iPad.\n\nIt goes by this iPad's last stock count, which refreshes every half hour (see [[fix/stock-mismatch]]), so it can be a little behind another register's sales.\n\n### Good to know\n- Gift cards and custom amounts never set a warning off.\n- Warnings are shared with the other registers, like the staff list and bundle deals.\n- Practice runs in Training never show the shop's real warnings.\n- A warning for an item or category that has since been removed from the catalogue shows its name as *no longer in the catalogue*. It never fires. Edit it or delete it.",
+     "deep": "### Order of the checks\nCharge runs the checks in this order, and each one only appears if it applies: customer warnings, then **Check the price adjustments**, then **Check these bundles**, then the Payment screen. A sale that is already part paid goes straight to Payment and skips all three.\n\n### What counts as \"already seen\"\nWhen you tap **Continue to payment**, the till remembers each warning you carried on from, along with which cart lines set it off and the exact header and message. If you come back to the cart and press Charge again, only warnings that are new or changed appear. Warnings set to always show are never remembered. Starting a new sale (an empty cart) forgets everything.\n\n### Ticking\nTicking is per warning, and it resets each time the window opens, so a cashier cannot tick on one visit and skip on the next. Ticking again un-ticks. **Next** and **Back** are always free, and **Continue to payment** only takes the place of **Next** on the last warning so every one is paged through.\n\n### Order of the warnings\nWarnings appear in the order they were added in Settings.",
+     "advanced": "### From Charge to payment\n```mermaid\nflowchart TD\n  A[Charge in CartPane.tsx or takePayment in GuidedCheckout.tsx] --> B{sale part paid}\n  B -->|yes| P[adjustment review check]\n  B -->|no| C[useCartWarningGate pages]\n  C -->|none| P\n  C -->|some| D[CartWarningsSheet]\n  D -->|Continue| E[markSeen then afterWarnings]\n  E --> P\n  P --> F[bundle check then pay screen]\n```\n\n### Where it lives\n- `src/lib/cartWarnings.ts`: `matchCartWarnings` finds which warnings the cart sets off (variant, product, or collection through `collectionsOfProduct`; `category` is read as `collection`), `warningKey` fingerprints one, `pendingCartWarnings` drops those already seen, `unacknowledged` lists those still to tick.\n- `src/screens/CartWarningsSheet.tsx`: the popup, and `useCartWarningGate`, the hook both checkouts use. It is a `Sheet` in popup mode (`src/ui/kit.tsx`), with the dots from `PageDots`, the same ones the Show stage uses.\n- `src/screens/CartWarningsSettings.tsx`: the editor under Settings ▸ Cart warnings.\n- `Settings.cartWarnings` in `src/state/store.ts`, typed by `CartWarning` in `src/lib/types.ts`.\n- Shared between registers by `pushSharedSettings` and `pullSettings` in `src/lib/sync.ts`.\n- `sandboxSettings` in `src/lib/trainingSandbox.ts` sets `cartWarnings: []` so practice never meets the real ones.\n- Popup controls (Back, Next, the tick, Continue to payment, Back to cart) are the `warning.*` spots in `src/lib/trainingSpots.ts`, placed on `sheet_cart_warnings` in `src/lib/appControls.ts` and `src/app.navgraph`.\n\n### Tracing a warning that does not show\n1. Is it **On** in Settings ▸ Cart warnings, and does it have a message and a target (or Show on every sale)?\n2. Does the cart line come from the catalogue? Gift cards and custom amounts are skipped.\n3. Does the line's product sit in the collection? A category warning uses the collection's product list from the last sync.\n4. Was it already carried on from on this sale? Only a change to the warning or its lines brings it back, unless it is set to always show.\n5. Is the sale part paid? Part-paid sales skip the warnings.\n\nTests: `tests/cartwarnings.test.ts`."
+    },
+@@ -1741,7 +1742,7 @@
+    "lead": "Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to the records this one holds. One register sets the shop up and shows a link; every other register joins with that link. Both iPads need to be signed in to iCloud, and only managers and owners see this page.",
+    "sections": {
+     "basic": "### Set up the register that holds the shop\n- Open **Settings**, tap **Data**, then **Cloud sync**.\n- Tap **Set up this till**. The page says this register holds the shop records and shows an **Invite link**.\n- Tap **Share the invite link** to send it by Messages, email or AirDrop, or to copy it.\n\n```screen\ntitle: Cloud sync\nlabel: Set this till up\ntext: Makes this till the one that holds the shop records, then shows a link for the other tills.\nprimary: !1 Set up this till\nnote: Do this on one iPad only. Every other iPad joins with its link.\n```\n\n```screen\ntitle: Cloud sync\nlabel: This till holds the shop records\ntext: Send this link to each other till. On that till, open Cloud sync and paste it in.\ninput: Invite link | https://www.icloud.com/share/...\nprimary: !1 Share the invite link\nnote: This is what the page shows after Set up this till.\n```\n\n### Join from another register\n- On the other iPad, open **Settings ▸ Data ▸ Cloud sync**.\n- Paste the link into the box and tap **Join**. The page then says the register has joined.\n- If the link is tapped on the iPad itself, the app opens with the link already in the box: just tap **Join**.\n\n```screen\ntitle: Cloud sync\nlabel: Join a shop\ntext: Paste the invite link from the till that set the shop up.\ninput: !1 Invite link | https://www.icloud.com/share/...\nprimary: !2 Join\nnote: Join stays greyed out until a link is in the box.\n```\n\n### Back up everything in iCloud\nOnly the owner register (the one that set the shop up) has this. On **Settings ▸ Data ▸ Cloud sync**, tap **Back up everything**. It reads every record the shop keeps in iCloud and makes one zip of JSON files, then opens the share sheet so you can save it to Files or AirDrop it. It can take a minute or two on a slow connection: leave the page open until the share sheet appears.\n\n**Export all events** (shown once sync is switched on, on every register) makes one CSV of the events from every register instead.\n\n```screen\ntitle: Cloud sync\nlabel: Back up everything in iCloud\ntext: Makes one zip of JSON files with everything the shop keeps in iCloud.\nprimary: !1 Back up everything\nlabel: Events from every register\nbutton: !2 Export all events\nnote: Keep the zip private. It is as sensitive as the Shopify login.\n```\n\nThe zip is a copy that does not depend on the owner's Apple ID. Do not email it or leave it where other people can open it.\n\n### What you need\n- Both iPads signed in to iCloud. The top of the Cloud sync page says whether this one is.\n- One register set up first. Joining needs its link: there is no list of shops to pick from.\n- A manager or owner signed in, on both iPads.",
+-    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, the AI assistant's address, model name and options, and the Shopify location, so every iPad sells from and counts the same stock. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.\n- If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.\n\n### One file of every register's events\nOnce sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.\n\n### Cash and refund notices on every register\nOnce sync is switched on, two kinds of notice reach every register: **cash** (cash taken outside the drawer, to add to the next count) and **refund** (a refund Shopify did not record, which needs a manager). A notice raised on one iPad shows up unread on the others a few seconds later, with **From** and the register's name above it. The other kinds (sync, queue, stock, reader, pass and info) describe one iPad, so they stay on it.\n\nReading or clearing a notice only affects the iPad you do it on. It is never sent, so it does not clear the notice on the other iPads, and a notice you cleared does not come back. A notice older than a week is not sent or shown, so a register that has just joined does not open on a pile of old ones. Practice mode never sends or takes in any.\n\n### The logo on every register\nOnce sync is switched on, the logo image you upload under **Settings ▸ Screensaver & display** is shared. Upload it on one iPad and the others pick it up a few seconds later, with nothing to upload on them. Replace it and they follow. Remove it and it is removed on the others too, so they fall back to the logo link. If two iPads change it at the same moment, the one that finishes last is kept. The logo link (the https address) is not shared, and neither is anything else on that page. The image must be a PNG, JPG, GIF or WebP under 700 KB; a larger one stays on the iPad you uploaded it on. Practice mode never sends or takes in a logo.\n\n### Square history on every register\nOnce sync is switched on, imported Square history is shared one month at a time. Import it on one iPad and the others take the months in a little later, with no QR code or PC. A newer import of a month replaces it everywhere, and **Delete imported Square history** removes it from iCloud and every register, which the confirmation says. If two registers changed the same month, the one with more sales is kept on both. A month is only ever deleted on a register that had not changed it since the last time it agreed with the shop. The copy in iCloud has every customer's name, email and phone taken out, so a register that took the history from iCloud shows those sales without a customer name; the register that imported keeps its full files. Practice mode never sends or takes in history.\n\n### Training progress on every register\nOnce sync is switched on, each person's training progress is shared, so a tick earned on one iPad shows on the others. Work done on two registers is joined, not replaced. Owners and managers can reset progress from **More → Training**, and a reset clears it on every register. Practice data is never shared.\n\n### The assistant's conversation log on every register\nOnce sync is on and the encrypted switch has been turned on, each conversation with the assistant is also sent to iCloud, encrypted, with the register's name. A manager opens **Settings ▸ AI assistant ▸ conversation log** and chooses **All registers** to read every register's conversations. This includes what a local model was sent, which can include a customer's name, so the copy is encrypted and only registers in your share can read it. A register's own log is sent once after it joins. Clearing or purging the log on an iPad does not remove the copy in iCloud. Conversations in a practice run are sent after the run ends. Nothing is sent until the encrypted switch is on.\n\n### What is and is not kept in iCloud\nThe Cloud sync page lists this in full under **What is kept in iCloud**. In short:\n- **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.\n- **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.\n- **Customer names:** sales hold only the Shopify customer id, and the Square history in iCloud has customer names, emails and phones removed. The assistant's log can still contain names a local model was sent, and a sale's note or a Square ticket name can contain one.\n- **The invite link is a key.** Anyone who holds it can read and write the shop records.\n\nYour shop's own privacy policy and App Store privacy details are yours to update.",
++    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, the AI assistant's address, model name and options, the stock warning, and the Shopify location, so every iPad sells from and counts the same stock. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.\n- If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.\n\n### One file of every register's events\nOnce sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.\n\n### Cash and refund notices on every register\nOnce sync is switched on, two kinds of notice reach every register: **cash** (cash taken outside the drawer, to add to the next count) and **refund** (a refund Shopify did not record, which needs a manager). A notice raised on one iPad shows up unread on the others a few seconds later, with **From** and the register's name above it. The other kinds (sync, queue, stock, reader, pass and info) describe one iPad, so they stay on it.\n\nReading or clearing a notice only affects the iPad you do it on. It is never sent, so it does not clear the notice on the other iPads, and a notice you cleared does not come back. A notice older than a week is not sent or shown, so a register that has just joined does not open on a pile of old ones. Practice mode never sends or takes in any.\n\n### The logo on every register\nOnce sync is switched on, the logo image you upload under **Settings ▸ Screensaver & display** is shared. Upload it on one iPad and the others pick it up a few seconds later, with nothing to upload on them. Replace it and they follow. Remove it and it is removed on the others too, so they fall back to the logo link. If two iPads change it at the same moment, the one that finishes last is kept. The logo link (the https address) is not shared, and neither is anything else on that page. The image must be a PNG, JPG, GIF or WebP under 700 KB; a larger one stays on the iPad you uploaded it on. Practice mode never sends or takes in a logo.\n\n### Square history on every register\nOnce sync is switched on, imported Square history is shared one month at a time. Import it on one iPad and the others take the months in a little later, with no QR code or PC. A newer import of a month replaces it everywhere, and **Delete imported Square history** removes it from iCloud and every register, which the confirmation says. If two registers changed the same month, the one with more sales is kept on both. A month is only ever deleted on a register that had not changed it since the last time it agreed with the shop. The copy in iCloud has every customer's name, email and phone taken out, so a register that took the history from iCloud shows those sales without a customer name; the register that imported keeps its full files. Practice mode never sends or takes in history.\n\n### Training progress on every register\nOnce sync is switched on, each person's training progress is shared, so a tick earned on one iPad shows on the others. Work done on two registers is joined, not replaced. Owners and managers can reset progress from **More → Training**, and a reset clears it on every register. Practice data is never shared.\n\n### The assistant's conversation log on every register\nOnce sync is on and the encrypted switch has been turned on, each conversation with the assistant is also sent to iCloud, encrypted, with the register's name. A manager opens **Settings ▸ AI assistant ▸ conversation log** and chooses **All registers** to read every register's conversations. This includes what a local model was sent, which can include a customer's name, so the copy is encrypted and only registers in your share can read it. A register's own log is sent once after it joins. Clearing or purging the log on an iPad does not remove the copy in iCloud. Conversations in a practice run are sent after the run ends. Nothing is sent until the encrypted switch is on.\n\n### What is and is not kept in iCloud\nThe Cloud sync page lists this in full under **What is kept in iCloud**. In short:\n- **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.\n- **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.\n- **Customer names:** sales hold only the Shopify customer id, and the Square history in iCloud has customer names, emails and phones removed. The assistant's log can still contain names a local model was sent, and a sale's note or a Square ticket name can contain one.\n- **The invite link is a key.** Anyone who holds it can read and write the shop records.\n\nYour shop's own privacy policy and App Store privacy details are yours to update.",
+     "advanced": "### How a register is linked\n```mermaid\nflowchart TD\n  A[Settings, Data, Cloud sync] --> B{Role}\n  B -->|First register| C[Set up this till: open the zone and make the invite link]\n  C --> D[Share the link]\n  B -->|Another register| E[Paste the link and Join]\n  D --> E\n  E --> F[Both registers read and write the shop records]\n```\n\n| Job | Where |\n|---|---|\n| The page itself, and the all-events export | `src/screens/CloudSync.tsx` |\n| The wording of the iCloud note | `src/lib/icloudNote.ts` |\n| The bridge and the no-native fallback | `modules/cloudkit-sync/index.ts` and `modules/cloudkit-sync/status.ts` |\n| The CloudKit calls (zone, share, join) | `modules/cloudkit-sync/ios/CloudKitSyncModule.swift` |\n| The iCloud container and the share link handler | `plugins/withCloudKit.js` |\n| The plan and the patch list | `dev_docs/CLOUDKIT_SYNC_PLAN.md` |\n\n### If it will not join\n- **\"This till is not signed in to iCloud.\"** Sign in to iCloud in the iPad's own Settings app on this iPad, then tap **Check again**.\n- **The link opens nothing.** The app was built without its iCloud entitlement, or the link belongs to a different iCloud container. Rebuild with `npm run ios:reset`.\n- **A link from another shop will not join.** A link only opens the shop it was made for. Ask the other shop's owner for its link, or set this register up as its own shop.\n- **CloudKit has two environments.** A build from Xcode uses the development environment; TestFlight and the App Store use production. A share made in one is not visible in the other, so link registers that were built the same way.\n\n### The parts that are easy to miss\n- The zone is called Store on both sides. The register that set up holds it in its private database; a register that joined sees it in its shared database. That is how each register knows which side it is on.\n- The invite link lets anyone who has it read and write the shop records, so treat it like a password. Turning the share off in iCloud stops it.\n- iOS gives the app the share link through the AppDelegate method added by `plugins/withCloudKit.js`, because Expo does not forward that call itself. The link is also kept, so a link tapped while the app was closed can be finished from the page."
+    },
+    "figures": [
+diff --git a/help/sales/cart-warnings.md b/help/sales/cart-warnings.md
+index 56e65e6..a37b9e1 100644
+--- a/help/sales/cart-warnings.md
++++ b/help/sales/cart-warnings.md
+@@ -5,8 +5,8 @@ parent: sales
+ needs: [selling]
+ summary: Prompts that appear before payment when the cart holds a chosen item or category, such as "joints are fragile", and how to set them up.
+ tags: [warning, customer warning, prompt, fragile, acknowledge, charge, category, always show, next, back]
+-related: [sales, sales/cart-and-prices, sales/bundles, pay, settings]
+-updated: 2026-10-18
++related: [sales, sales/cart-and-prices, sales/bundles, pay, settings, fix/stock-mismatch]
++updated: 2026-11-15
+ ---
+ A customer warning is a message the till shows the cashier when they press **Charge**, before payment starts. Use it for things the customer should be told, for example *Joints are fragile, do not bend or apply pressure as it will snap* on a mini dragon.
+ 
+@@ -42,6 +42,11 @@ Open **More ▸ Settings ▸ Cart warnings** (managers and owners). Tap **Add wa
+ 
+ In the list, **On** and **Off** switch a warning without deleting it. **Edit** and **Delete** are on each card. Delete asks first.
+ 
++### Stock running out
++At the top of **More ▸ Settings ▸ Cart warnings**, **Warn when a sale leaves an item at 0 or below** adds one more page at Charge, after your own warnings. It lists each tracked item this sale would leave out of stock, for example *Mini dragon: 3 in stock, this sale uses them all* or *Keyring: already out of stock, this sale leaves it at -1*. Several lines of the same variation are added together. Items that are not tracked, custom amounts and gift cards are ignored. It is off until you turn it on, **Cashier must tick it** works the same way, and with iCloud sync on it is the same on every iPad.
++
++It goes by this iPad's last stock count, which refreshes every half hour (see [[fix/stock-mismatch]]), so it can be a little behind another register's sales.
++
+ ### Good to know
+ - Gift cards and custom amounts never set a warning off.
+ - Warnings are shared with the other registers, like the staff list and bundle deals.
+diff --git a/help/settings/cloud-sync.md b/help/settings/cloud-sync.md
+index cbbf1e8..06d4264 100644
+--- a/help/settings/cloud-sync.md
++++ b/help/settings/cloud-sync.md
+@@ -82,7 +82,7 @@ Two things follow from that:
+ ### What travels
+ - Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.
+ - The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.
+-- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, the AI assistant's address, model name and options, and the Shopify location, so every iPad sells from and counts the same stock. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.
++- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, the AI assistant's address, model name and options, the stock warning, and the Shopify location, so every iPad sells from and counts the same stock. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.
+ - If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.
+ 
+ ### One file of every register's events
+diff --git a/src/lib/sharedSettings.ts b/src/lib/sharedSettings.ts
+index c8c12d5..7c3a358 100644
+--- a/src/lib/sharedSettings.ts
++++ b/src/lib/sharedSettings.ts
+@@ -5,7 +5,7 @@
+ // Two key sets exist because the shop is moving from Shopify to CloudKit (decisions items 1 to 3, 5, 19 to 21, 23 and O2):
+ //   - `metaobject` is the original seven keys and nothing else. The Shopify path behaves exactly as it did before.
+ //   - `cloudkit` is those seven plus the shop name, the receipt details, the two server addresses, auto-receipt, smart change,
+-//     consolidate, the assistant's connection settings and the Shopify location (0244).
++//     consolidate, the assistant's connection settings and the Shopify location (0244) and the stock warning (0245).
+ // Not in either set, on purpose: secrets and cashier pass codes (patch 6d, after the encryption test), the logo (its own patch),
+ // notices, and everything per device (decisions items 4, 16, 22, 24 to 26).
+ import { normaliseAssistant, type AssistantSettings } from './assistantConfig';
+@@ -18,7 +18,7 @@ export type SharedKind = 'metaobject' | 'cloudkit';
+ export type SharedPayload = Record<string, unknown>;
+ 
+ export const SHOPIFY_KEYS = ['staff', 'bundlesJson', 'fees', 'cashRounding', 'requirePin', 'adjustPerms', 'cartWarnings'] as const;
+-export const CLOUD_EXTRA_KEYS = ['shopName', 'receipt', 'passServerUrl', 'giftClaimUrl', 'autoReceipt', 'smartChange', 'consolidate', 'assistant', 'locationId', 'locationName'] as const;
++export const CLOUD_EXTRA_KEYS = ['shopName', 'receipt', 'passServerUrl', 'giftClaimUrl', 'autoReceipt', 'smartChange', 'consolidate', 'assistant', 'locationId', 'locationName', 'stockWarning'] as const;
+ export const CLOUD_KEYS = [...SHOPIFY_KEYS, ...CLOUD_EXTRA_KEYS] as const;
+ export const sharedKeys = (kind: SharedKind): readonly string[] => (kind === 'cloudkit' ? CLOUD_KEYS : SHOPIFY_KEYS);
+ 
+@@ -89,6 +89,7 @@ export function parseShared(json: string | undefined | null, kind: SharedKind):
+       case 'fees': { const f = readFees(v); if (f) out[k] = f; break; }
+       case 'adjustPerms': if (isObj(v)) out[k] = v; break;
+       case 'cartWarnings': if (Array.isArray(v)) out[k] = v; break;
++      case 'stockWarning': if (isObj(v) && bool(v.enabled)) out[k] = { enabled: v.enabled, requireAcknowledgement: bool(v.requireAcknowledgement) ? v.requireAcknowledgement : false }; break;
+       case 'receipt': { const r = readReceipt(v); if (r) out[k] = r; break; }
+       case 'assistant': if (isObj(v)) out[k] = assistantShared(normaliseAssistant(v)); break;
+     }
+diff --git a/src/lib/stockWarning.ts b/src/lib/stockWarning.ts
+new file mode 100644
+index 0000000..7bb6af6
+--- /dev/null
++++ b/src/lib/stockWarning.ts
+@@ -0,0 +1,49 @@
++// Location: src/lib/stockWarning.ts
++// 0245: a built-in cart warning for stock. When Charge is pressed, any item in the sale that would be left at 0 or below in
++// stock is listed, so the cashier can say so before the sale goes through. It reuses the cart warning pages, so it looks and
++// behaves like the others. Pure, so the node tests pin it.
++import type { Cart, CartWarning, Variant } from './types';
++import type { MatchedCartWarning } from './cartWarnings';
++
++export type StockWarningSettings = { enabled: boolean; requireAcknowledgement: boolean };
++export const DEFAULT_STOCK_WARNING: StockWarningSettings = { enabled: false, requireAcknowledgement: false };
++export const STOCK_WARNING_ID = 'builtin:stock';
++
++export type StockShortfall = { variantId: string; lineIds: string[]; title: string; stock: number; qty: number; after: number };
++
++/**
++ * The tracked items this sale would leave at 0 or below. Lines for the same variation are added together. Items that are not
++ * tracked (stock unknown), custom amounts and gift cards never count, and neither does an item missing from the catalogue.
++ */
++export function stockShortfalls(cart: Cart, variants: Record<string, Variant>): StockShortfall[] {
++  const by = new Map<string, StockShortfall>();
++  for (const l of cart.lines) {
++    if (l.kind !== 'item' || !l.variantId || !(l.qty > 0)) continue;
++    const v = variants[l.variantId]; if (!v || v.stock === null || v.stock === undefined) continue;
++    const cur = by.get(l.variantId);
++    if (cur) { cur.qty += l.qty; cur.lineIds.push(l.id); cur.after = cur.stock - cur.qty; continue; }
++    by.set(l.variantId, { variantId: l.variantId, lineIds: [l.id], title: l.title, stock: v.stock, qty: l.qty, after: v.stock - l.qty });
++  }
++  return [...by.values()].filter(s => s.after <= 0);
++}
++
++/** `{{ }}` in a product name must not be read as a template when the page is drawn. */
++const plain = (s: string): string => s.replace(/\{\{|\}\}/g, '');
++
++/** One plain sentence per item: what is in stock, and what it will be after this sale. */
++export function shortfallLine(s: StockShortfall): string {
++  const name = plain(s.title);
++  if (s.stock <= 0) return `${name}: already ${s.stock === 0 ? 'out of stock' : `${-s.stock} oversold`}, this sale leaves it at ${s.after}.`;
++  return s.after === 0 ? `${name}: ${s.stock} in stock, this sale uses them all.` : `${name}: ${s.stock} in stock, this sale takes ${s.qty} and leaves it at ${s.after}.`;
++}
++
++/** The warning page for the cart, or null when it is off or nothing runs short. Shaped like a matched cart warning so the existing sheet shows it. */
++export function stockWarningPage(cart: Cart, variants: Record<string, Variant>, cfg: StockWarningSettings | undefined): MatchedCartWarning | null {
++  const c = { ...DEFAULT_STOCK_WARNING, ...cfg }; if (!c.enabled) return null;
++  const short = stockShortfalls(cart, variants); if (!short.length) return null;
++  const warning: CartWarning = {
++    id: STOCK_WARNING_ID, enabled: true, title: 'Stock running out', body: short.map(shortfallLine).join('\n'),
++    scope: 'variant', targetId: '', alwaysShow: false, requireAcknowledgement: c.requireAcknowledgement, mode: 'charge',
++  };
++  return { warning, matches: short.flatMap(s => s.lineIds.map(lineId => ({ lineId, title: s.title, variantId: s.variantId }))) };
++}
+diff --git a/src/screens/CartWarningsSettings.tsx b/src/screens/CartWarningsSettings.tsx
+index 2178af2..606750c 100644
+--- a/src/screens/CartWarningsSettings.tsx
++++ b/src/screens/CartWarningsSettings.tsx
+@@ -11,6 +11,7 @@ import { uid } from '../lib/ids';
+ import { DEFAULT_WARNING_TITLE, normaliseScope, warningTitle } from '../lib/cartWarnings';
+ import { TEMPLATE_HINTS } from '../lib/textTemplates';
+ import type { CartWarning, CartWarningMode } from '../lib/types';
++import { DEFAULT_STOCK_WARNING } from '../lib/stockWarning';
+ 
+ type Scope = 'variant' | 'product' | 'collection';
+ const SCOPES: { v: Scope; label: string }[] = [{ v: 'variant', label: 'Variation' }, { v: 'product', label: 'Product' }, { v: 'collection', label: 'Category' }];
+@@ -33,12 +34,19 @@ function useTargetName() {
+ export function CartWarningsSettings() {
+   const warnings = useApp(s => s.settings.cartWarnings) ?? []; const patch = useApp(s => s.patchSettings);
+   const [editing, setEditing] = useState<CartWarning | 'new' | null>(null); const nameOf = useTargetName();
++  const stock = { ...DEFAULT_STOCK_WARNING, ...useApp(s => s.settings.stockWarning) };
++  const saveStock = (next: typeof stock) => { patch({ stockWarning: next }); void pushSharedSettings().catch(() => {}); };
+   const save = (next: CartWarning[]) => { patch({ cartWarnings: next }); void pushSharedSettings().catch(() => {}); };
+   const put = (w: CartWarning) => { save(warnings.some(x => x.id === w.id) ? warnings.map(x => (x.id === w.id ? w : x)) : [...warnings, w]); setEditing(null); };
+   const remove = async (w: CartWarning) => { if (await confirm('Delete this warning?', `“${warningTitle(w)}” stops appearing at Charge.`, 'Delete', true)) save(warnings.filter(x => x.id !== w.id)); };
+   return (
+     <View style={{ padding: 16, gap: 10 }}>
+       <Txt size={13} sub>When Charge is pressed, the cashier sees a warning for each of these that applies to the sale, one page each with Next and Back, before payment starts. It can need ticking off, and it is the same on every register.</Txt>
++      <Card style={{ padding: 12, gap: 4 }}>
++        <Txt weight="700">Stock running out</Txt>
++        <Toggle label="Warn when a sale leaves an item at 0 or below" sub="At Charge, lists each tracked item this sale would leave out of stock (or further oversold), with how many are in stock now. Items that are not tracked are ignored." value={stock.enabled} onChange={v => saveStock({ ...stock, enabled: v })} />
++        {stock.enabled ? <Toggle label="Cashier must tick it" sub="Payment cannot start until they tick that they have read it." value={stock.requireAcknowledgement} onChange={v => saveStock({ ...stock, requireAcknowledgement: v })} /> : null}
++      </Card>
+       {warnings.length === 0 ? <Empty title="No warnings yet" sub="Add one for a fragile item, or one that shows on every sale." /> : warnings.map(w => (
+         <Card key={w.id} style={{ padding: 12, gap: 6, opacity: w.enabled ? 1 : 0.6 }}>
+           <Row title={warningTitle(w)} sub={nameOf(w)} last right={<Chip label={w.enabled ? 'On' : 'Off'} active={w.enabled} onPress={() => save(warnings.map(x => (x.id === w.id ? { ...x, enabled: !w.enabled } : x)))} />} />
+diff --git a/src/screens/CartWarningsSheet.tsx b/src/screens/CartWarningsSheet.tsx
+index 2bfd427..ca4539f 100644
+--- a/src/screens/CartWarningsSheet.tsx
++++ b/src/screens/CartWarningsSheet.tsx
+@@ -3,6 +3,7 @@
+ // that has a warning set in Settings ▸ Cart warnings, or when a warning is set to always show.
+ // The popup IS the warning: its header is the warning's header and its message is the popup's main text. With several warnings it is one popup
+ // paged like the Show stage (dots at the bottom, Back and Next, Next becomes Continue to payment on the last one).
++import { stockWarningPage } from '../lib/stockWarning';
+ import React, { useEffect, useMemo, useRef, useState } from 'react';
+ import { AccessibilityInfo, Animated, Easing, ScrollView, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+@@ -25,7 +26,12 @@ import { usePriced } from '../state/selectors';
+ export function useCartWarningGate() {
+   const cart = useApp(s => s.pos.cart); const warnings = useApp(s => s.settings.cartWarnings); const cat = useCatalogue();
+   const [open, setOpen] = useState(false); const [seen, setSeen] = useState<string[]>([]);
+-  const pages = useMemo(() => pendingCartWarnings(matchCartWarnings(cart, warnings, cat).filter(m => (m.warning.mode ?? 'charge') !== 'queue'), seen), [cart, warnings, cat, seen]);
++  const stockCfg = useApp(s => s.settings.stockWarning);
++  const pages = useMemo(() => {
++    const matched = matchCartWarnings(cart, warnings, cat).filter(m => (m.warning.mode ?? 'charge') !== 'queue');
++    const stock = stockWarningPage(cart, cat.variants, stockCfg); // 0245: last, after the shop's own warnings
++    return pendingCartWarnings(stock ? [...matched, stock] : matched, seen);
++  }, [cart, warnings, cat, seen, stockCfg]);
+   const markSeen = () => setSeen(s => Array.from(new Set([...s, ...pages.map(warningKey)])));
+   const reset = () => { setOpen(false); setSeen([]); };
+   // A new sale starts with nothing seen.
+diff --git a/src/state/store.ts b/src/state/store.ts
+index a721e0a..8ee7a9b 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -18,6 +18,7 @@ import { defaultInvPrefs, type InvPrefs } from '../lib/inventoryView';
+ import { emptyLedger, readLedger, type CashLedger } from '../lib/cashLedger';
+ import type { AdjustPerms } from '../lib/adjustPerms';
+ import type { CartWarnings, WarningList } from '../lib/types';
++import type { StockWarningSettings } from '../lib/stockWarning';
+ import type { ScannerCalibration } from '../lib/scanSpeed';
+ import { isTraining } from '../lib/trainingGuard';
+ import { DEFAULT_FEATURES, noticeAllowed, readFeatures, readMode, type DeviceMode, type RegisterFeatures } from '../lib/appMode';
+@@ -54,6 +55,7 @@ export type Settings = {
+   // these are its sync bookkeeping: `drawerVersion` is the shared record's version we last saw, `drawerPending` an unsent change,
+   // `drawerShiftPending` says that change included the shift (open/paid in/out/close), so a push must not be beaten by an older one.
+   drawerVersion?: number; drawerPending?: boolean; drawerShiftPending?: boolean;
++  stockWarning?: StockWarningSettings; // 0245: Settings ▸ Cart warnings ▸ Stock running out (shared to every register on iCloud)
+   cartWarnings?: CartWarnings; // Settings ▸ Cart warnings: prompts on Charge for chosen items or categories (shared to every register)
+   // The warning list (a warning set to "Add to the list"): shared between registers, so the list carries the same lines
+   // everywhere. `warningListVersion` is the shared record's version we last saw; `warningListPending` an unsent change.
+diff --git a/tests/sharedsettings.test.ts b/tests/sharedsettings.test.ts
+index d3029d7..bab1e41 100644
+--- a/tests/sharedsettings.test.ts
++++ b/tests/sharedsettings.test.ts
+@@ -13,14 +13,14 @@ const person = (id: string, o: Partial<StaffMember> = {}): StaffMember => ({ id,
+ const mk = (o: Partial<Settings> = {}): Settings => ({ ...defaultSettings(), ...o });
+ const rec = (p: Record<string, unknown>) => JSON.stringify(p);
+ 
+-test('Shopify shares exactly the original seven keys, CloudKit those plus ten more', () => {
++test('Shopify shares exactly the original seven keys, CloudKit those plus eleven more', () => {
+   assert.deepEqual([...SHOPIFY_KEYS], ['staff', 'bundlesJson', 'fees', 'cashRounding', 'requirePin', 'adjustPerms', 'cartWarnings']);
+-  assert.deepEqual([...CLOUD_EXTRA_KEYS], ['shopName', 'receipt', 'passServerUrl', 'giftClaimUrl', 'autoReceipt', 'smartChange', 'consolidate', 'assistant', 'locationId', 'locationName']);
+-  assert.equal(CLOUD_KEYS.length, 17); assert.deepEqual([...sharedKeys('metaobject')], [...SHOPIFY_KEYS]); assert.deepEqual([...sharedKeys('cloudkit')], [...CLOUD_KEYS]);
++  assert.deepEqual([...CLOUD_EXTRA_KEYS], ['shopName', 'receipt', 'passServerUrl', 'giftClaimUrl', 'autoReceipt', 'smartChange', 'consolidate', 'assistant', 'locationId', 'locationName', 'stockWarning']);
++  assert.equal(CLOUD_KEYS.length, 18); assert.deepEqual([...sharedKeys('metaobject')], [...SHOPIFY_KEYS]); assert.deepEqual([...sharedKeys('cloudkit')], [...CLOUD_KEYS]);
+ });
+ 
+ test('what a register sends: the Shopify record is unchanged, the CloudKit one carries the new keys and never a device or secret key', () => {
+-  const s = mk({ shopName: 'Aiden', locationId: 'gid://shopify/Location/1', locationName: 'Main', smartChange: true, passServerUrl: 'https://pass.example', registerName: 'Till 2', theme: 'dark', accent: '#ff0000', inventory: { ...defaultSettings().inventory } });
++  const s = mk({ shopName: 'Aiden', locationId: 'gid://shopify/Location/1', locationName: 'Main', stockWarning: { enabled: true, requireAcknowledgement: false }, smartChange: true, passServerUrl: 'https://pass.example', registerName: 'Till 2', theme: 'dark', accent: '#ff0000', inventory: { ...defaultSettings().inventory } });
+   assert.deepEqual(Object.keys(pickShared(s, 'metaobject')).sort(), [...SHOPIFY_KEYS].sort());
+   const c = pickShared(s, 'cloudkit'); assert.deepEqual(Object.keys(c).sort(), [...CLOUD_KEYS].sort());
+   assert.equal(c.shopName, 'Aiden'); assert.equal(c.smartChange, true);
+@@ -142,3 +142,11 @@ test('the Shopify location is shared on CloudKit only, and an empty or non-text
+   assert.deepEqual(parseShared(rec({ locationId: '', locationName: 5 }), 'cloudkit'), {});
+   assert.deepEqual(parseShared(rec({ locationId: 'x' }), 'metaobject'), {});
+ });
++
++test('the stock warning is shared on CloudKit only, and read safely', () => {
++  assert.ok(!('stockWarning' in pickShared(mk({ stockWarning: { enabled: true, requireAcknowledgement: true } }), 'metaobject')));
++  assert.deepEqual(parseShared(rec({ stockWarning: { enabled: true, requireAcknowledgement: true, evil: 1 } }), 'cloudkit'), { stockWarning: { enabled: true, requireAcknowledgement: true } });
++  assert.deepEqual(parseShared(rec({ stockWarning: { enabled: true } }), 'cloudkit'), { stockWarning: { enabled: true, requireAcknowledgement: false } });
++  assert.deepEqual(parseShared(rec({ stockWarning: { enabled: 'yes' } }), 'cloudkit'), {});
++  assert.deepEqual(parseShared(rec({ stockWarning: 5 }), 'cloudkit'), {});
++});
+diff --git a/tests/stockwarning.test.ts b/tests/stockwarning.test.ts
+new file mode 100644
+index 0000000..cd6ac36
+--- /dev/null
++++ b/tests/stockwarning.test.ts
+@@ -0,0 +1,48 @@
++// Location: tests/stockwarning.test.ts
++// 0245: the built-in "stock running out" cart warning.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { shortfallLine, stockShortfalls, stockWarningPage } from '../src/lib/stockWarning';
++import { pendingCartWarnings, warningKey } from '../src/lib/cartWarnings';
++import type { Cart, CartLine, Variant } from '../src/lib/types';
++
++const V = (id: string, stock: number | null): Variant => ({ id, productId: 'p' + id, productTitle: 'Item ' + id, variantTitle: '', priceCents: 1000, tracked: stock !== null, stock, tags: [], active: true } as Variant);
++const L = (id: string, variantId: string | undefined, qty: number, kind: CartLine['kind'] = 'item'): CartLine => ({ id, kind, variantId, title: 'Item ' + (variantId ?? id), qty, unitCents: 1000 } as CartLine);
++const cart = (...lines: CartLine[]): Cart => ({ lines } as Cart);
++const vars = (...v: Variant[]) => Object.fromEntries(v.map(x => [x.id, x]));
++
++test('only items left at 0 or below are listed', () => {
++  const r = stockShortfalls(cart(L('a', 'v1', 2), L('b', 'v2', 2), L('c', 'v3', 3)), vars(V('v1', 5), V('v2', 2), V('v3', 1)));
++  assert.deepEqual(r.map(x => [x.variantId, x.after]), [['v2', 0], ['v3', -2]]);
++});
++test('lines for the same variation are added together', () => {
++  const r = stockShortfalls(cart(L('a', 'v1', 2), L('b', 'v1', 2)), vars(V('v1', 3)));
++  assert.equal(r.length, 1); assert.equal(r[0].qty, 4); assert.equal(r[0].after, -1); assert.deepEqual(r[0].lineIds, ['a', 'b']);
++});
++test('untracked, custom, gift card and unknown items never count', () => {
++  const r = stockShortfalls(cart(L('a', 'v1', 9), L('b', undefined, 9, 'custom'), L('c', 'v9', 9), L('d', 'v2', 9, 'gift_card')), vars(V('v1', null), V('v2', 0)));
++  assert.deepEqual(r, []);
++});
++test('an item already at 0 or oversold is listed, with plain wording', () => {
++  const [a] = stockShortfalls(cart(L('a', 'v1', 1)), vars(V('v1', 0))); assert.match(shortfallLine(a), /already out of stock.*-1/);
++  const [b] = stockShortfalls(cart(L('a', 'v1', 1)), vars(V('v1', -2))); assert.match(shortfallLine(b), /already 2 oversold.*-3/);
++  const [c] = stockShortfalls(cart(L('a', 'v1', 3)), vars(V('v1', 3))); assert.match(shortfallLine(c), /3 in stock, this sale uses them all/);
++});
++test('the page is null when off or nothing runs short, and shaped like a warning when it applies', () => {
++  const c = cart(L('a', 'v1', 3)); const v = vars(V('v1', 3));
++  assert.equal(stockWarningPage(c, v, undefined), null);
++  assert.equal(stockWarningPage(c, v, { enabled: false, requireAcknowledgement: true }), null);
++  assert.equal(stockWarningPage(cart(L('a', 'v1', 1)), v, { enabled: true, requireAcknowledgement: false }), null);
++  const p = stockWarningPage(c, v, { enabled: true, requireAcknowledgement: true })!;
++  assert.equal(p.warning.requireAcknowledgement, true); assert.equal(p.warning.mode, 'charge'); assert.deepEqual(p.matches.map(m => m.lineId), ['a']);
++});
++test('braces in a product name are removed so they are not read as a template', () => {
++  const l = { ...L('a', 'v1', 1), title: 'Odd {{staff}} name' };
++  const [s] = stockShortfalls(cart(l), vars(V('v1', 1))); assert.ok(!shortfallLine(s).includes('{{'));
++});
++test('the page comes back when the cart changes, and not when it is the same', () => {
++  const cfg = { enabled: true, requireAcknowledgement: false }; const v = vars(V('v1', 3));
++  const a = stockWarningPage(cart(L('a', 'v1', 3)), v, cfg)!; const same = stockWarningPage(cart(L('a', 'v1', 3)), v, cfg)!; const more = stockWarningPage(cart(L('a', 'v1', 4)), v, cfg)!;
++  assert.equal(warningKey(a), warningKey(same)); assert.notEqual(warningKey(a), warningKey(more));
++  assert.equal(pendingCartWarnings([a], [warningKey(a)]).length, 0); assert.equal(pendingCartWarnings([more], [warningKey(a)]).length, 1);
++});
+-- 
+2.43.0
+
