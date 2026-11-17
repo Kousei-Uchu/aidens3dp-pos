@@ -22,7 +22,7 @@
 // the build fails to sign.
 const { withEntitlementsPlist, withInfoPlist, withPodfileProperties, withPodfile, withXcodeProject, withAppDelegate } = require('@expo/config-plugins');
 
-const CONTAINER = 'iCloud.com.aidens3dp.pos';
+const CONTAINER = 'iCloud.page.aspens.tillium';
 const DEPLOYMENT_TARGET = '17.0';
 
 // The key the CloudKit module reads: a share link that opened the app, kept for a cold launch.

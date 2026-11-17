@@ -5,7 +5,7 @@ import UIKit
 
 // The iCloud container declared by plugins/withCloudKit.js. The two must stay the same string: the entitlement and
 // this identifier together are what let CloudKit open the container, and a mismatch fails at runtime, not at build.
-private let cloudKitContainerIdentifier = "iCloud.com.aidens3dp.pos"
+private let cloudKitContainerIdentifier = "iCloud.page.aspens.tillium"
 
 // The one zone every till shares: the owner's private database holds it, participants see it in their shared database.
 // The name is the same on both sides, so the two roles can find each other.
@@ -28,8 +28,8 @@ private let cloudKitDidAcceptShareNotification = Notification.Name("cloudkitDidA
 // Patch 8b: change pushes. One database subscription on each database: the owner's records change in the private database, a joined till
 // hears about the owner's changes through the shared one. Fixed ids, so asking again finds the subscription already there and saves nothing.
 // CloudKitPushSubscriber (its own file) posts the notification below when a silent push for either database arrives.
-private let cloudKitPrivateSubscriptionID = "aidens3dp-private-changes"
-private let cloudKitSharedSubscriptionID = "aidens3dp-shared-changes"
+private let cloudKitPrivateSubscriptionID = "tillium-private-changes"
+private let cloudKitSharedSubscriptionID = "tillium-shared-changes"
 let cloudKitRemoteChangeNotification = Notification.Name("cloudkitRemoteChange")
 
 // What the Cloud sync page reads back. `role` is "owner" on the till that set the shop up, "participant" on a till that

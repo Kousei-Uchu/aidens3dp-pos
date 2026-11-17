@@ -95,7 +95,7 @@ test('startSubscriptions subscribes both databases with fixed ids, silently, and
   assert.match(b, /shouldSendContentAvailable = true/); assert.doesNotMatch(b, /alertBody|soundName|shouldBadge/, 'a silent push carries no alert, sound or badge');
   assert.match(b, /registerForRemoteNotifications\(\)/); assert.match(b, /database\.subscription\(for: id\)/, 'an existing subscription is found, not saved again');
   assert.match(b, /allInPlace = false/); assert.match(b, /return allInPlace/);
-  assert.match(src, /cloudKitPrivateSubscriptionID = "aidens3dp-private-changes"/); assert.match(src, /cloudKitSharedSubscriptionID = "aidens3dp-shared-changes"/);
+  assert.match(src, /cloudKitPrivateSubscriptionID = "tillium-private-changes"/); assert.match(src, /cloudKitSharedSubscriptionID = "tillium-shared-changes"/);
 });
 test('a database push becomes the onRemoteChange event, and anything else is reported as no data', () => {
   assert.match(src, /Events\("onShareJoined", "onRemoteChange"\)/);

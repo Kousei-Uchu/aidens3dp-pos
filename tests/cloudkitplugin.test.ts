@@ -77,7 +77,7 @@ test('a file with no AppDelegate is left alone rather than mangled', () => {
 const { applyEntitlements } = require('../plugins/withCloudKit') as { applyEntitlements: (e: Record<string, unknown>) => Record<string, unknown> };
 test('the entitlements carry the container, CloudKit and the push environment', () => {
   const e = applyEntitlements({});
-  assert.deepEqual(e['com.apple.developer.icloud-container-identifiers'], ['iCloud.com.aidens3dp.pos']); assert.deepEqual(e['com.apple.developer.icloud-services'], ['CloudKit']);
+  assert.deepEqual(e['com.apple.developer.icloud-container-identifiers'], ['iCloud.page.aspens.tillium']); assert.deepEqual(e['com.apple.developer.icloud-services'], ['CloudKit']);
   assert.equal(e['aps-environment'], 'development');
 });
 test('an aps-environment already set is kept, and running twice changes nothing', () => {
@@ -92,7 +92,7 @@ test('an Objective-C AppDelegate is left alone rather than having Swift written 
 // 0231: Xcode 27 builds for iOS 15.0 and up only, so pod targets that still ask for less are lifted from inside the Podfile's post_install.
 const { injectPodsTarget } = require('../plugins/withCloudKit') as { injectPodsTarget: (contents: string) => string };
 const PODFILE = [
-  "target 'aidens3dpos' do",
+  "target 'Tillium' do",
   '  use_expo_modules!',
   '  post_install do |installer|',
   '    react_native_post_install(',
