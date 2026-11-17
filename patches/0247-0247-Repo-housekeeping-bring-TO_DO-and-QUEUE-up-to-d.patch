@@ -1,0 +1,103 @@
+From d88e30287da987f4346ee86efb8f3f20dfd9a72c Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Mon, 16 Nov 2026 16:58:28 +1100
+Subject: [PATCH] 0247 - Repo housekeeping: bring TO_DO and QUEUE up to date
+
+---
+ dev_docs/PROGRESS.md |  1 +
+ dev_docs/QUEUE.md    |  2 +-
+ dev_docs/TO_DO.md    | 27 +++++++++++++++++----------
+ 3 files changed, 19 insertions(+), 11 deletions(-)
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index d0487a2..bfd03db 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -206,6 +206,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0244 | 2026-11-15 | Stock stays in step (your request: share one Shopify stock count between the devices, and refresh the catalogue and stock half-hourly). First your question about whether each iPad pushed an absolute stock number after a sale: **it does not**. A sale creates a Shopify order with `DECREMENT_IGNORING_POLICY` at the register's location, so Shopify subtracts and two iPads selling together both count; the poll only reads stock. Only Count and starting stock send an absolute number. **Shared location (iCloud only):** `locationId` and `locationName` join the CloudKit shared settings (`sharedSettings.ts`), so changing the location on one iPad moves them all; the Shopify-metaobject path still keeps it per device. **Half-hourly refresh:** `refreshCatalogue` in `sync.ts` re-reads products, stock, collections and discounts (not customers) when the last read is 30 minutes old, the location differs from the one last read, and no sales are queued (`src/lib/catalogueRefresh.ts`). New `tests/cataloguerefresh.test.ts`, a shared-location test, `T116`, Help edits. Also type-checked the whole project for the first time here (the missing packages installed): no errors in `src/`, and all 1985 tests pass, including 0243's. |
+ | 0245 | 2026-11-15 | Stock running out warning (your request: a feature like the cart warnings, for an item the current order would leave at 0 or below). **A built-in extra page on the Charge warnings.** `src/lib/stockWarning.ts`: `stockShortfalls` adds up the lines of each tracked variation and keeps those whose stock minus the quantity is 0 or lower (untracked, custom, gift card and unknown items never count); `stockWarningPage` shapes it as a normal cart warning page, so `CartWarningsSheet` and both checkouts show it with the same Next/Back, tick-to-continue and "not asked again unless it changes" behaviour (the page text carries the numbers, so a changed cart brings it back). It is appended after the shop's own warnings in `useCartWarningGate`. Setting `stockWarning { enabled, requireAcknowledgement }`, **off by default**, in Settings ▸ Cart warnings, shared on iCloud (a new CloudKit shared key; the Shopify-metaobject set is unchanged). Not a queue-mode warning: it only appears at Charge. `tests/stockwarning.test.ts` (7), shared-settings tests, Help page `sales/cart-warnings`, `T117`. `tsc` clean in `src/`. |
+ | 0246 | 2026-11-15 | Set up a new device by QR, no iCloud (your request: QR-transferable settings and data for setting up new terminals and companions; you chose the one-QR setup, offered on first run). **The set up device** (Settings ▸ Backup & transfer ▸ **Show setup QR**, admin PIN first) seals its ordinary backup (`collectBackup`, the same settings, staff, grid and logins as a backup file) with `encryptBackup` using a fresh 16-symbol one-time code (80 bits), serves it on the shop Wi-Fi from the same small server as the Square history share (`answerRequest`, now with `lanIp` and `askForIp` exported), and stops after the first successful transfer, 5 minutes, leaving the page or the app going to the background. The QR is `POSSETUP1|ip|port|key|code`: the address, a random path key and the code, so Wi-Fi only ever carries ciphertext. **The new device** (a row on Settings ▸ Backup & transfer and at the top of the first-run Set up this device page) scans it, confirms (naming the address), asks the admin PIN if one exists, fetches (`assistantFetch`, falling back to a raw socket), decrypts with the code, `validateBackup`, `applyBackup`, then loads the catalogue with `importFromShopify`. It only follows private Wi-Fi addresses (10., 172.16 to 31., 192.168.), and device-only settings (name, mode, features, register id) are never overwritten (`DEVICE_KEYS`). New `src/lib/setupTransfer.ts`, `setupTransferIO.ts`, `src/screens/SetupTransfer.tsx`, `tests/setuptransfer.test.ts` (7), Help pages `settings/backup` and `start/setup`, `T118`. Not included: Square history (still its own QR, 0150) and the Zeller pairing. `tsc` clean in `src/`. |
++| 0247 | 2026-11-16 | Repo housekeeping (your request). Docs only. `TO_DO.md`: brought up to date through 0247; the four newest device tests (T115 to T118) added to the waiting-on-you table; section 3c rewritten as one tidy table (it had grown out of order and described 0182 as not started in places); the `0175-companion-mode-plan.patch` item corrected, because it is in `patches/APPLIED.txt` and nothing in `patches/` is unlisted (checked); D7 noted as a placeholder with no ideas written down. `QUEUE.md` date updated. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index 8dcf88b..788c9d6 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -1,7 +1,7 @@
+ # Patch queue
+ 
+ The work that is planned but not yet built, in the order it should be done. One line per item, with the first step so a
+-fresh session can start without reading the whole plan. Brought up to date on 2026-11-14, through patch 0242. What is
++fresh session can start without reading the whole plan. Brought up to date on 2026-11-16, through patch 0247. What is
+ built is in `PROGRESS.md`; the open items outside this queue are in `TO_DO.md`.
+ 
+ ## Stream A: CloudKit sync is built
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index 5bad9f4..5a21535 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -4,7 +4,7 @@ Every open item I could find across the repo's lists, with training and the in-a
+ tracked in `dev_docs/TRAINING_PLAN.md`, `dev_docs/TRAINING_MODULE_CHECKLIST.md`, `dev_docs/archive/TRAINING_MODULE_BUGS.md`,
+ `dev_docs/TRAINING_CORRECTIONS.md` and `dev_docs/AI_ASSISTANT_PLAN.md`).
+ 
+-Last brought up to date on 2026-11-14, through patch 0242. The main source was `dev_docs/PROGRESS.md`. Nothing else in the repo (code TODOs or the other docs) holds open items of
++Last brought up to date on 2026-11-16, through patch 0247. The main source was `dev_docs/PROGRESS.md`. Nothing else in the repo (code TODOs or the other docs) holds open items of
+ its own that are not already listed here.
+ 
+ Two kinds of item:
+@@ -35,6 +35,10 @@ These are the tests only the owner can run. Each has exact steps in `dev_docs/DE
+ | N26 | Price adjustments: reasons, the transaction card, the Reports card, the Shopify `pos_adjustments` attribute. |
+ | N27 | The Help screen itself: search, depth flip, links, back walk, flowcharts, Simple and Minimal modes, dark theme. |
+ | T10 / B8 | Gift cards on your live Shopify store: pay, cancel, refund to the original card or a new one, and the new Wi-Fi-off charge test (0240). |
++| T115 | Stock actions from Scan (0243): Receive, Adjust and Count from a Scan result, the PIN, the retry with no connection. |
++| T116 | Shared Shopify location and the half-hourly catalogue and stock refresh (0244), on two iPads. |
++| T117 | Stock running out warning at Charge (0245): off by default, then on, with and without the tick. |
++| T118 | Set up a new device by QR (0246): a fresh device, an expired or reused code, and a companion. |
+ | T114 | First run on iCloud (0234 to 0241): Back up everything, the sync chip, the Transactions tab on two iPads, the Last full sync line, cash drawer and exports across iPads. The backup, the chip, the cash drawer and the exports passed on 2026-11-14 by your report; the Transactions tab and the Last full sync line are untested. |
+ | T102 to T113 | The CloudKit real-shop tests (import, count check, the switch, secrets, change pushes, a joined till, the loan flow). The import has been run for real in Development, but I do not have a record of which of these you ran. Tell me and I will tick them. |
+ | N32 | **Resolved.** F4 (2026-10-18) used the `avoid-ai-writing` skill at `.opencode/skills/avoid-ai-writing/` for the AI-sounding/Australian-English sweep, so the style-skill question is answered. No action needed. |
+@@ -55,7 +59,7 @@ No owner input needed.
+ | F8 | Demo mode: the app locks into a full demo with virtual terminals (card, drawer, scanner, receipts) so nothing real is touched, with a home screen showing every feature in the Training Show style. Built on the Training fixture state. | **Done (2026-10-18).** More > Demo mode. One guard locks the till onto the Training fixtures (card terminal, scanner, drawer, receipts and every sync seam are the practice ones), signed in as a made-up owner so every feature is on show. `src/screens/DemoHome.tsx` lists every feature by area; each one plays its Training Show or opens live. A bar across the top says so and leaves in one tap. Nothing is written or sent; leaving restores the real till exactly. Details and guesses in `dev_docs/GUESSES.md`. **Changed 2026-10-20 (0187):** it now runs on a copy of the till's own catalogue, customers, sales and drawer, with practice data only where there is none, and the guard was audited and closed (see PROGRESS). |
+ | F9 | A new public template repo from the app, with everything personal stripped (store, domains, keys, branding, staff, passes, certificates, history), published as open source. | **Waiting on you.** Needs your answers to seven decisions: which branding to strip, what to do with the assets, the secrets/config placeholder rules, whether to keep or discard the git history, exactly what counts as me-specific, whether the three Workers ship as is or are left out, and the licence choice. Once answered, I can prepare the public repo. |
+ | D5 | Fill in the tender machine adapter (built in 0024 as one empty function plus a locked-Off setting). | Waits on your hardware. |
+-| D7 | Extra ideas, saved for last after E1. | Not started. |
++| D7 | Extra ideas, saved for last after E1. | Not started, and now unblocked (E1 was done in 0170). It is a placeholder: no ideas are written down anywhere in the repo yet. |
+ 
+ ## 3. Half done, one step left
+ 
+@@ -79,19 +83,22 @@ Built and running in Development since 2026-11-11 (patches 0231 to 0241, see `de
+ | Zone changes feed | Considered and declined (2026-11-11): it cannot read one record type at a time, so it does not suit the polls. |
+ | Rows from other registers on Transactions | Built (0238). It lists the 800 newest sales from other registers; Return or exchange needs the sale in the Shopify list first. |
+ 
+-## 3c. Companion mode
++## 3c. Companion mode and the newest patches
+ 
+-| Id | What is left |
+-| --- | --- |
+-| 0182 | Stock actions from Scan: built in 0243. Needs your device test, T115. |
+-| 0246 | Set up a new device by QR (no iCloud): built. Needs your device test, T118. Square history and the reader pairing are not part of it. |
+-| 0245 | Stock running out warning at Charge: built, off by default. Needs your device test, T117. |
+-| 0244 | Shared Shopify location and the half-hourly catalogue and stock refresh: built. Needs your device test, T116. |
++Everything here is built and unit tested. What is left on each is your device test.
++
++| Id | Built in | What is left |
++| --- | --- | --- |
++| C23 | 0175 to 0182 | The companion device tests (setup checklist, PIN lock, the feature switches, quick sale, Help and Training gating). |
++| 0182 | 0243 | Stock actions from Scan. Device test T115. |
++| 0244 | 0244 | Shared Shopify location and the half-hourly catalogue and stock refresh. Device test T116. |
++| 0245 | 0245 | Stock running out warning at Charge, off by default. Device test T117. |
++| 0246 | 0246 | Set up a new device by QR, no iCloud. Device test T118. Square history and the reader pairing are not part of it. |
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+ - **Duplicate docs (stale, closed).** F3 checked the whole repo for Finder-style copies (`AI_ASSISTANT_PLAN 2.md`, and the same pattern for `PROGRESS` and `DEVICE_TESTS`): none exist. Nothing to delete.
+-- **Patch files not in `patches/APPLIED.txt`.** F3 found 11 on disk but unlisted (0167, 0168, 0169 and eight unnumbered ones); all 11 are listed now. One file is unlisted: `0175-companion-mode-plan.patch`. Its changes are already in the tree, so `scripts/apply-patches.sh` fails on it and stops, and no later patch is tried. Add that name to the ledger. Decide before F9 whether `patches/` belongs in the public repo at all.
++- **Patch files and `patches/APPLIED.txt`.** F3 found 11 on disk but unlisted (0167, 0168, 0169 and eight unnumbered ones); all 11 are listed now. `0175-companion-mode-plan.patch` is listed too (checked 2026-11-16: every file in `patches/` is in the ledger, so `scripts/apply-patches.sh` has nothing left over). Decide before F9 whether `patches/` belongs in the public repo at all.
+ 
+ ## 5. Training Modules
+ 
+-- 
+2.43.0
+
