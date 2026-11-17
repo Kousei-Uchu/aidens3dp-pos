@@ -15,7 +15,8 @@ git push -u origin tillium-dev
 cd ..
 git clone --branch tillium-dev --single-branch https://github.com/Kousei-Uchu/aidens3dp-pos.git aidens3dp-pos-tillium
 cd aidens3dp-pos-tillium && npm install
-git am path/to/0248-*.patch path/to/0249-*.patch
+mv ~/Downloads/0248-*.patch ~/Downloads/0249-*.patch patches/
+bash ./scripts/apply-patches.sh
 git push
 ```
 
@@ -23,8 +24,9 @@ You now have `aidens3dp-pos` (main, the live shop) and `aidens3dp-pos-tillium` (
 `node_modules` and `ios/` folder. Alternatively, `git worktree add ../aidens3dp-pos-tillium tillium-dev` makes the second
 folder from the same repository without a second download; either works.
 
-Apply every patch from 0248 on inside `aidens3dp-pos-tillium` with `git am <patch>`, and **do not** put them in `patches/` (the
-apply-patches workflow only watches `main`). Bring main's fixes across with `git merge main`.
+Every patch from 0248 on goes into `aidens3dp-pos-tillium/patches/` and is applied with `bash ./scripts/apply-patches.sh`, then
+`git push`, exactly as on main. The apply-patches workflow only runs for pushes to `main`, so it does nothing on this branch.
+Make sure `~/Downloads` holds only the latest copy of each patch. Bring main's fixes across with `git merge main`.
 
 ## 2. What the identity change does (patch 0249)
 

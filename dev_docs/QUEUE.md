@@ -1,7 +1,7 @@
 # Patch queue
 
 The work that is planned but not yet built, in the order it should be done. One line per item, with the first step so a
-fresh session can start without reading the whole plan. Brought up to date on 2026-11-16, through patch 0247. What is
+fresh session can start without reading the whole plan. Brought up to date on 2026-11-17, through patch 0250. What is
 built is in `PROGRESS.md`; the open items outside this queue are in `TO_DO.md`.
 
 ## Stream A: CloudKit sync is built
@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only 
 
 ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
 
-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. First step: P1, the `src/alloykit/` types, `src/alloys/index.ts`, selection rules and the boundary test that enforces `dev_docs/ALLOYS.md`, with nothing calling them.
+Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250). Next: P2, characterisation tests that pin what the Shopify and Zeller code does today, against fakes, before anything moves.
 
 ## Rules that hold for the whole queue
 

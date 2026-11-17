@@ -4,7 +4,7 @@ Every open item I could find across the repo's lists, with training and the in-a
 tracked in `dev_docs/TRAINING_PLAN.md`, `dev_docs/TRAINING_MODULE_CHECKLIST.md`, `dev_docs/archive/TRAINING_MODULE_BUGS.md`,
 `dev_docs/TRAINING_CORRECTIONS.md` and `dev_docs/AI_ASSISTANT_PLAN.md`).
 
-Last brought up to date on 2026-11-16, through patch 0247. The main source was `dev_docs/PROGRESS.md`. Nothing else in the repo (code TODOs or the other docs) holds open items of
+Last brought up to date on 2026-11-17, through patch 0250. The main source was `dev_docs/PROGRESS.md`. Nothing else in the repo (code TODOs or the other docs) holds open items of
 its own that are not already listed here.
 
 Two kinds of item:
@@ -98,8 +98,9 @@ Everything here is built and unit tested. What is left on each is your device te
 ## 3d. Tillium: Alloys and Elements
 
 Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
-decisions are recorded in section 10 of the plan. Next is phase P1: the `alloykit` types, the registry, the selection rules
-and the boundary test, with nothing calling them. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
+the boundary test, with nothing calling them). Next is P2: characterisation tests that pin what the Shopify and Zeller code does
+now. Later: users deploy their own Cloudflare workers (section 8 of the plan).
 
 ## 4. Flagged in the repo but not on a list
 

@@ -1,7 +1,7 @@
 # Writing an Alloy
 
-The rules every Alloy follows. The plan and the reasons are in `dev_docs/ALLOYS_PLAN.md`. A test (added in phase P1) checks
-the structure and import rules below and fails the build when one is broken.
+The rules every Alloy follows. The plan and the reasons are in `dev_docs/ALLOYS_PLAN.md`. `tests/alloyboundaries.test.ts` (rules in
+`src/alloykit/boundaries.ts`) checks the structure and import rules below over the whole of `src/` and fails the build when one is broken.
 
 An **Alloy** is the code specific to one service (Shopify, Zeller, iCloud, Square...) and nothing else. The app does the shared
 work. If a piece of code would be needed by every Alloy, it belongs in `src/alloykit/` or `src/alloyhost/`, not in an Alloy.

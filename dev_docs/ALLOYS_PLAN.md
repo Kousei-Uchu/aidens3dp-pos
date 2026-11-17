@@ -174,8 +174,9 @@ limits so the report can say so before anyone commits.
 
 - Branch **`tillium-dev`**, made from main **before** any of this work, and cloned beside the main folder
   (`dev_docs/TILLIUM_BRANCH.md` has the commands). This plan and every patch after it (0248 onwards, until the merge) are
-  applied on the branch only, with `git am`, and kept **out of `patches/`**: the apply-patches workflow only watches `main`,
-  so main never sees them.
+  applied on the branch only. Put them in the branch's `patches/` folder and run `bash ./scripts/apply-patches.sh`, as on main,
+  then `git push`. The apply-patches workflow only runs for pushes to `main`, so nothing is applied for you on the branch, and
+  main never sees them. When the branch is merged the patches and the ledger arrive together, so the workflow has nothing to apply.
 - Fixes needed on main meanwhile go to main and are merged into the branch regularly (`git merge main`).
 - **Identity.** The branch's app is a separate app: bundle ID `page.aspens.tillium`, its own CloudKit container, its own
   Keychain and data. It installs beside the current app, so the live shop is never touched (patch 0249).
