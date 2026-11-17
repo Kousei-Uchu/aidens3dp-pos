@@ -1,7 +1,7 @@
 # Patch queue
 
 The work that is planned but not yet built, in the order it should be done. One line per item, with the first step so a
-fresh session can start without reading the whole plan. Brought up to date on 2026-11-14, through patch 0242. What is
+fresh session can start without reading the whole plan. Brought up to date on 2026-11-16, through patch 0247. What is
 built is in `PROGRESS.md`; the open items outside this queue are in `TO_DO.md`.
 
 ## Stream A: CloudKit sync is built

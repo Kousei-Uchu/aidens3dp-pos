@@ -4,7 +4,7 @@ Every open item I could find across the repo's lists, with training and the in-a
 tracked in `dev_docs/TRAINING_PLAN.md`, `dev_docs/TRAINING_MODULE_CHECKLIST.md`, `dev_docs/archive/TRAINING_MODULE_BUGS.md`,
 `dev_docs/TRAINING_CORRECTIONS.md` and `dev_docs/AI_ASSISTANT_PLAN.md`).
 
-Last brought up to date on 2026-11-14, through patch 0242. The main source was `dev_docs/PROGRESS.md`. Nothing else in the repo (code TODOs or the other docs) holds open items of
+Last brought up to date on 2026-11-16, through patch 0247. The main source was `dev_docs/PROGRESS.md`. Nothing else in the repo (code TODOs or the other docs) holds open items of
 its own that are not already listed here.
 
 Two kinds of item:
@@ -35,6 +35,10 @@ These are the tests only the owner can run. Each has exact steps in `dev_docs/DE
 | N26 | Price adjustments: reasons, the transaction card, the Reports card, the Shopify `pos_adjustments` attribute. |
 | N27 | The Help screen itself: search, depth flip, links, back walk, flowcharts, Simple and Minimal modes, dark theme. |
 | T10 / B8 | Gift cards on your live Shopify store: pay, cancel, refund to the original card or a new one, and the new Wi-Fi-off charge test (0240). |
+| T115 | Stock actions from Scan (0243): Receive, Adjust and Count from a Scan result, the PIN, the retry with no connection. |
+| T116 | Shared Shopify location and the half-hourly catalogue and stock refresh (0244), on two iPads. |
+| T117 | Stock running out warning at Charge (0245): off by default, then on, with and without the tick. |
+| T118 | Set up a new device by QR (0246): a fresh device, an expired or reused code, and a companion. |
 | T114 | First run on iCloud (0234 to 0241): Back up everything, the sync chip, the Transactions tab on two iPads, the Last full sync line, cash drawer and exports across iPads. The backup, the chip, the cash drawer and the exports passed on 2026-11-14 by your report; the Transactions tab and the Last full sync line are untested. |
 | T102 to T113 | The CloudKit real-shop tests (import, count check, the switch, secrets, change pushes, a joined till, the loan flow). The import has been run for real in Development, but I do not have a record of which of these you ran. Tell me and I will tick them. |
 | N32 | **Resolved.** F4 (2026-10-18) used the `avoid-ai-writing` skill at `.opencode/skills/avoid-ai-writing/` for the AI-sounding/Australian-English sweep, so the style-skill question is answered. No action needed. |
@@ -55,7 +59,7 @@ No owner input needed.
 | F8 | Demo mode: the app locks into a full demo with virtual terminals (card, drawer, scanner, receipts) so nothing real is touched, with a home screen showing every feature in the Training Show style. Built on the Training fixture state. | **Done (2026-10-18).** More > Demo mode. One guard locks the till onto the Training fixtures (card terminal, scanner, drawer, receipts and every sync seam are the practice ones), signed in as a made-up owner so every feature is on show. `src/screens/DemoHome.tsx` lists every feature by area; each one plays its Training Show or opens live. A bar across the top says so and leaves in one tap. Nothing is written or sent; leaving restores the real till exactly. Details and guesses in `dev_docs/GUESSES.md`. **Changed 2026-10-20 (0187):** it now runs on a copy of the till's own catalogue, customers, sales and drawer, with practice data only where there is none, and the guard was audited and closed (see PROGRESS). |
 | F9 | A new public template repo from the app, with everything personal stripped (store, domains, keys, branding, staff, passes, certificates, history), published as open source. | **Waiting on you.** Needs your answers to seven decisions: which branding to strip, what to do with the assets, the secrets/config placeholder rules, whether to keep or discard the git history, exactly what counts as me-specific, whether the three Workers ship as is or are left out, and the licence choice. Once answered, I can prepare the public repo. |
 | D5 | Fill in the tender machine adapter (built in 0024 as one empty function plus a locked-Off setting). | Waits on your hardware. |
-| D7 | Extra ideas, saved for last after E1. | Not started. |
+| D7 | Extra ideas, saved for last after E1. | Not started, and now unblocked (E1 was done in 0170). It is a placeholder: no ideas are written down anywhere in the repo yet. |
 
 ## 3. Half done, one step left
 
@@ -79,19 +83,22 @@ Built and running in Development since 2026-11-11 (patches 0231 to 0241, see `de
 | Zone changes feed | Considered and declined (2026-11-11): it cannot read one record type at a time, so it does not suit the polls. |
 | Rows from other registers on Transactions | Built (0238). It lists the 800 newest sales from other registers; Return or exchange needs the sale in the Shopify list first. |
 
-## 3c. Companion mode
+## 3c. Companion mode and the newest patches
 
-| Id | What is left |
-| --- | --- |
-| 0182 | Stock actions from Scan: built in 0243. Needs your device test, T115. |
-| 0246 | Set up a new device by QR (no iCloud): built. Needs your device test, T118. Square history and the reader pairing are not part of it. |
-| 0245 | Stock running out warning at Charge: built, off by default. Needs your device test, T117. |
-| 0244 | Shared Shopify location and the half-hourly catalogue and stock refresh: built. Needs your device test, T116. |
+Everything here is built and unit tested. What is left on each is your device test.
+
+| Id | Built in | What is left |
+| --- | --- | --- |
+| C23 | 0175 to 0182 | The companion device tests (setup checklist, PIN lock, the feature switches, quick sale, Help and Training gating). |
+| 0182 | 0243 | Stock actions from Scan. Device test T115. |
+| 0244 | 0244 | Shared Shopify location and the half-hourly catalogue and stock refresh. Device test T116. |
+| 0245 | 0245 | Stock running out warning at Charge, off by default. Device test T117. |
+| 0246 | 0246 | Set up a new device by QR, no iCloud. Device test T118. Square history and the reader pairing are not part of it. |
 
 ## 4. Flagged in the repo but not on a list
 
 - **Duplicate docs (stale, closed).** F3 checked the whole repo for Finder-style copies (`AI_ASSISTANT_PLAN 2.md`, and the same pattern for `PROGRESS` and `DEVICE_TESTS`): none exist. Nothing to delete.
-- **Patch files not in `patches/APPLIED.txt`.** F3 found 11 on disk but unlisted (0167, 0168, 0169 and eight unnumbered ones); all 11 are listed now. One file is unlisted: `0175-companion-mode-plan.patch`. Its changes are already in the tree, so `scripts/apply-patches.sh` fails on it and stops, and no later patch is tried. Add that name to the ledger. Decide before F9 whether `patches/` belongs in the public repo at all.
+- **Patch files and `patches/APPLIED.txt`.** F3 found 11 on disk but unlisted (0167, 0168, 0169 and eight unnumbered ones); all 11 are listed now. `0175-companion-mode-plan.patch` is listed too (checked 2026-11-16: every file in `patches/` is in the ledger, so `scripts/apply-patches.sh` has nothing left over). Decide before F9 whether `patches/` belongs in the public repo at all.
 
 ## 5. Training Modules
 
