@@ -26,6 +26,10 @@ Support & diagnostics first (0239). Then group the steps that write different pa
 Patches 0175 to 0182 are in (plan, setup checklist, PIN lock, the gate, the card reader and drawer switches, quick sale,
 Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only the device tests are left (C23).
 
+## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+
+Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. First step: P1, the `src/alloykit/` types, `src/alloys/index.ts`, selection rules and the boundary test that enforces `dev_docs/ALLOYS.md`, with nothing calling them.
+
 ## Rules that hold for the whole queue
 
 - **Customers live in Shopify.** CloudKit must never carry customer names, emails or phones. A CloudKit sale keeps only

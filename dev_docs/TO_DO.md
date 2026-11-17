@@ -95,6 +95,12 @@ Everything here is built and unit tested. What is left on each is your device te
 | 0245 | 0245 | Stock running out warning at Charge, off by default. Device test T117. |
 | 0246 | 0246 | Set up a new device by QR, no iCloud. Device test T118. Square history and the reader pairing are not part of it. |
 
+## 3d. Tillium: Alloys and Elements
+
+Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+decisions are recorded in section 10 of the plan. Next is phase P1: the `alloykit` types, the registry, the selection rules
+and the boundary test, with nothing calling them. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+
 ## 4. Flagged in the repo but not on a list
 
 - **Duplicate docs (stale, closed).** F3 checked the whole repo for Finder-style copies (`AI_ASSISTANT_PLAN 2.md`, and the same pattern for `PROGRESS` and `DEVICE_TESTS`): none exist. Nothing to delete.
