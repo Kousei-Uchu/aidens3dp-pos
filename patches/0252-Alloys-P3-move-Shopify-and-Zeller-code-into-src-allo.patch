@@ -1,0 +1,2578 @@
+From a818e211e2f01e44f1651007cf772c3d0e8c9212 Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Wed, 18 Nov 2026 09:02:05 +1100
+Subject: [PATCH] Alloys P3: move Shopify and Zeller code into src/alloys with
+ shims at the old paths
+
+---
+ dev_docs/ALLOYS_PLAN.md                 |   2 +-
+ dev_docs/PROGRESS.md                    |   1 +
+ dev_docs/QUEUE.md                       |   2 +-
+ dev_docs/TO_DO.md                       |   2 +-
+ scripts/package-zeller-sdk.sh           |   4 +-
+ src/alloykit/boundaries.ts              |  44 +++++-
+ src/alloys/shopify/catalogue.ts         | 191 +++++++++++++++++++++++
+ src/alloys/shopify/client.ts            | 131 ++++++++++++++++
+ src/alloys/shopify/customers.ts         |  23 +++
+ src/alloys/shopify/giftCardOnce.ts      |  18 +++
+ src/alloys/shopify/giftcards.ts         | 132 ++++++++++++++++
+ src/alloys/shopify/inventory.ts         |  27 ++++
+ src/alloys/shopify/metaobjectBackend.ts |  59 ++++++++
+ src/alloys/shopify/metaobjects.ts       |  81 ++++++++++
+ src/alloys/shopify/orderModel.ts        |  91 +++++++++++
+ src/alloys/shopify/orders.ts            |  79 ++++++++++
+ src/alloys/shopify/products.ts          |  42 ++++++
+ src/alloys/zeller/terminal.ts           | 177 ++++++++++++++++++++++
+ src/lib/secrets.ts                      |  17 +++
+ src/lib/shopify/catalogue.ts            | 192 +-----------------------
+ src/lib/shopify/client.ts               | 145 +-----------------
+ src/lib/shopify/customers.ts            |  26 +---
+ src/lib/shopify/giftCardOnce.ts         |  19 +--
+ src/lib/shopify/giftcards.ts            | 133 +---------------
+ src/lib/shopify/inventory.ts            |  30 +---
+ src/lib/shopify/metaobjectBackend.ts    |  60 +-------
+ src/lib/shopify/metaobjects.ts          |  84 +----------
+ src/lib/shopify/orderModel.ts           |  92 +-----------
+ src/lib/shopify/orders.ts               |  80 +---------
+ src/lib/shopify/products.ts             |  45 +-----
+ src/lib/zeller.ts                       | 180 +---------------------
+ tests/alloyboundaries.test.ts           |  20 ++-
+ tests/demoguard.test.ts                 |   2 +-
+ tests/giftcardonce.test.ts              |   2 +-
+ 34 files changed, 1162 insertions(+), 1071 deletions(-)
+ create mode 100644 src/alloys/shopify/catalogue.ts
+ create mode 100644 src/alloys/shopify/client.ts
+ create mode 100644 src/alloys/shopify/customers.ts
+ create mode 100644 src/alloys/shopify/giftCardOnce.ts
+ create mode 100644 src/alloys/shopify/giftcards.ts
+ create mode 100644 src/alloys/shopify/inventory.ts
+ create mode 100644 src/alloys/shopify/metaobjectBackend.ts
+ create mode 100644 src/alloys/shopify/metaobjects.ts
+ create mode 100644 src/alloys/shopify/orderModel.ts
+ create mode 100644 src/alloys/shopify/orders.ts
+ create mode 100644 src/alloys/shopify/products.ts
+ create mode 100644 src/alloys/zeller/terminal.ts
+ create mode 100644 src/lib/secrets.ts
+
+diff --git a/dev_docs/ALLOYS_PLAN.md b/dev_docs/ALLOYS_PLAN.md
+index eae515e..e5a635b 100644
+--- a/dev_docs/ALLOYS_PLAN.md
++++ b/dev_docs/ALLOYS_PLAN.md
+@@ -189,7 +189,7 @@ limits so the report can say so before anyone commits.
+ | P0 | This plan, the names, the branch, the new identity (0248, 0249) | none |
+ | P1 | The `alloykit` types, `alloys/index.ts`, selection rules, and the **boundary test** that enforces `ALLOYS.md`. Nothing calls it yet | none |
+ | P2 | Characterisation tests for every function in the section 2 table, against fakes | none |
+-| P3 | `git mv` the Shopify and Zeller code into `src/alloys/`, with shims at the old paths. Secrets helpers out of `client.ts` | low |
++| P3 | `git mv` the Shopify and Zeller code into `src/alloys/`, with shims at the old paths. Secrets helpers out of `client.ts`. **Done (0252).** The moved code is allowed a listed set of exceptions (`TRANSITION` in `boundaries.ts`) until P4 and P5 remove them | low |
+ | P4 | Element contracts, the Shopify, Zeller and iCloud Alloys as `alloy.ts` adapters over the moved code, the router with the legacy default | low |
+ | P5 | Move callers to the router, one Element per patch: Catalogue, Stock, Discounts, Customers, Orders, Gift cards, Shared state, Terminal | medium: each has a device test |
+ | P6 | The setup picker and Settings screen: Alloy cards, tick boxes, the unchosen-Elements warning, per-Alloy credentials | medium |
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 5e5f217..6535d4e 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -211,6 +211,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0249 | 2026-11-17 | Tillium identity for the `tillium-dev` branch (your request: new branch, a second clone beside the first, and the bundle ID `page.aspens.tillium` with its extensions). **Apply on `tillium-dev` only, not main.** `app.json`: name `Tillium`, slug `tillium`, bundle ID `page.aspens.tillium`. The CloudKit container becomes `iCloud.page.aspens.tillium` (Swift module, `plugins/withCloudKit.js`, its test) and the two subscription ids `tillium-private-changes` and `tillium-shared-changes`. New `dev_docs/TILLIUM_BRANCH.md`: the commands to make the branch and a sibling clone, a table of what differs from the live app, and the one-off Apple Developer, schema and setup-copy steps. The workers and the `aidens3dp.com` domain are left alone for now (a later step has each user deploy their own). Not run here: it needs a new App ID, container and a clean prebuild on your Mac. |
+ | 0250 | 2026-11-17 | Alloys phase P1: the scaffold (your "next!"). **Nothing in the app calls any of it**, so it changes no behaviour. New `src/alloykit/`: `types.ts` (the Alloy format and the nine Element APIs in the app's own types, the `Ctx` an Alloy is handed, `Selection`), `elements.ts` (names, which are required, what a shop loses when one is Off), `selection.ts` (pure rules: `validateSelection` for the setup warning, `legacySelection` for what an install that never chose reads as, `featuresOf` from the functions an Element really has, `diffSelection` for the Smelter, `applyPolicy`), `policy.ts` (`ALLOY_POLICY.icloudCustomers`, `'allowed'` or `'disabled'`), `errors.ts` (`AlloyNetworkError`, `AlloyUserError`) and `boundaries.ts` (the `ALLOYS.md` structure and import rules as a pure checker). New `src/alloys/index.ts`, the registry, empty until P4. `tests/alloyboundaries.test.ts` (runs the rules over the real `src/` and over made-up folders that break each one), `tests/alloyselection.test.ts`. Also corrected the branch docs: patches on `tillium-dev` go in `patches/` and are applied with `bash ./scripts/apply-patches.sh`, as on main (the workflow only runs for `main`). `tsc` clean in the new files. |
+ | 0251 | 2026-11-18 | Alloys phase P2: characterisation tests. **No app code changed**, so it changes no behaviour. These pin what the Shopify and Zeller code does today, so the later moves (P3 onwards) can be proved to change nothing. New `tests/helpers/fakeShopify.ts`, a fake Shopify (stands in for the Keychain, the SHA-256 helper and `fetch`, records every call, plays back queued replies). New `tests/characterise_shopify_client.test.ts` (sign-in, token reuse and refresh, 401 and 429 retries, throttling, user errors, practice mode, the receipt, claim and pass secrets), `characterise_shopify_catalogue.test.ts` (shop and locations, the three bulk imports, the stock delta, automatic discounts and discount codes), `characterise_shopify_writes.test.ts` (stock adjust and count with their idempotency keys, item create and update, customers, order create with its lookup-by-tag retry, listing, fulfilment, refunds), `characterise_shopify_state.test.ts` (gift cards, the once-only debit and credit, the five shared-state metaobject types and the backend over them) and `characterise_zeller.test.ts` (the exact terminal calls, reconcile, the refund error branches, cancel, events). 73 tests; the full suite is 2092 passing. If one fails after a later move, the move changed behaviour: fix the move, not the test. |
++| 0252 | 2026-11-18 | Alloys phase P3: the Shopify and Zeller code moves into `src/alloys/`, with the old paths kept working. **The app behaves the same**: nothing was rewritten, only moved with `git mv`. `src/lib/shopify/*.ts` is now `src/alloys/shopify/*.ts` and `src/lib/zeller.ts` is `src/alloys/zeller/terminal.ts`. Each old path is now a one-line shim (`export * from ...`), so the 66 files that import them are untouched. The wallet-pass, gift-claim and receipt secrets, which sat at the bottom of the Shopify client but belong to your own servers, moved to `src/lib/secrets.ts`; the client shim re-exports them. The moved code still reaches a few app files (the practice-mode guard, id helpers, price and sale codecs) and has no `alloy.ts` yet, which the Alloy rules forbid, so `src/alloykit/boundaries.ts` now has a `TRANSITION` list naming exactly those exceptions. The boundary test fails if an exception is unused (so the list can only shrink), if a shim holds anything but `export *`, or if the rules stop flagging the moved code without the list. Also fixed the paths in `demoguard.test.ts`, `giftcardonce.test.ts` and `scripts/package-zeller-sdk.sh`. The 73 characterisation tests from 0251 pass unchanged through the shims. Full suite 2094 passing. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index 2e3ed89..8619e7f 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only
+ 
+ ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+ 
+-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). Next: P3, `git mv` of the Shopify and Zeller files with re-export shims at the old paths.
++Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). Next: P4, the Element contracts, `alloy.ts` adapters, the router and the legacy default selection; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index eb3f446..52ff821 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -100,7 +100,7 @@ Everything here is built and unit tested. What is left on each is your device te
+ Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+ decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
+ the boundary test, with nothing calling them). P2 is built (0251: tests that pin what the Shopify and Zeller code does now).
+-Next is P3: move the Shopify and Zeller files under `src/alloys/` with re-export shims at the old paths. Later: users deploy their own Cloudflare workers (section 8 of the plan).
++P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). Next is P4: the Element contracts, the Shopify, Zeller and iCloud `alloy.ts` adapters, the router and the legacy default selection. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/scripts/package-zeller-sdk.sh b/scripts/package-zeller-sdk.sh
+index 29dd631..4f10065 100755
+--- a/scripts/package-zeller-sdk.sh
++++ b/scripts/package-zeller-sdk.sh
+@@ -3,7 +3,7 @@
+ # The SDK is gated, so this script strips credentials first, scans what is left for anything that still looks like a key,
+ # and refuses to write the zip if it finds one. It prints the file list so you can review it before sending.
+ #
+-# It looks in: vendor/*.tgz (the tarballs from install-zeller.sh), node_modules/@zeller-public (if installed), and src/zellerBridge.tsx + src/lib/zeller.ts.
++# It looks in: vendor/*.tgz (the tarballs from install-zeller.sh), node_modules/@zeller-public (if installed), and src/zellerBridge.tsx + src/alloys/zeller/terminal.ts.
+ set -eu
+ cd "$(dirname "$0")/.."
+ OUT="zeller-sdk-pack.zip"
+@@ -13,7 +13,7 @@ PACK="$WORK/zeller-sdk-pack"
+ mkdir -p "$PACK/app" "$PACK/vendor-unpacked" "$PACK/node_modules-copy"
+ 
+ echo "1/5 Collecting files..."
+-cp src/zellerBridge.tsx src/lib/zeller.ts src/types/zeller.d.ts "$PACK/app/" 2>/dev/null || true
++cp src/zellerBridge.tsx src/alloys/zeller/terminal.ts src/types/zeller.d.ts "$PACK/app/" 2>/dev/null || true
+ for t in vendor/*.tgz; do
+   [ -e "$t" ] || continue
+   d="$PACK/vendor-unpacked/$(basename "$t" .tgz)"; mkdir -p "$d"; tar -xzf "$t" -C "$d"
+diff --git a/src/alloykit/boundaries.ts b/src/alloykit/boundaries.ts
+index ccb9051..7452ef7 100644
+--- a/src/alloykit/boundaries.ts
++++ b/src/alloykit/boundaries.ts
+@@ -31,7 +31,39 @@ export function alloyOf(path: string): string | null {
+   return rest.includes('/') ? rest.split('/')[0] : rest.replace(/\.tsx?$/, '');
+ }
+ 
+-export function checkAlloys(files: Record<string, string>): Violation[] {
++/**
++ * Alloys P3 to P9 only. The Shopify and Zeller code moved into `src/alloys/` before it was an Alloy, so for now it is allowed three things
++ * the real rules forbid, each listed here so nothing else gets them and each removed as the phase that fixes it lands:
++ *  - `pendingEntry`: no `alloy.ts` and no registry entry yet (arrives in P4).
++ *  - `legacyImports`: app files it still imports (the practice-mode guard, id helpers and so on; P4 to P5 replace them with `Ctx`).
++ *  - `shims`: the one-line re-export files left at the old paths, which reach into `src/alloys/` directly (removed in P9).
++ * `staleTransition` lists any entry that is no longer needed, and the test fails on it, so this can only shrink.
++ */
++export type Transition = { pendingEntry: string[]; legacyImports: Record<string, string[]>; shims: string[] };
++export const NO_TRANSITION: Transition = { pendingEntry: [], legacyImports: {}, shims: [] };
++export const TRANSITION: Transition = {
++  pendingEntry: ['shopify', 'zeller'],
++  legacyImports: {
++    shopify: ['src/lib/ids', 'src/lib/trainingGuard', 'src/lib/trainingGifts', 'src/lib/productStatus', 'src/lib/giftCode', 'src/lib/syncBackend', 'src/lib/adjustReason', 'src/lib/pricing', 'src/lib/saleCodec', 'src/lib/startingStock'],
++    zeller: ['src/lib/cards', 'src/lib/responseCodes'],
++  },
++  shims: ['catalogue', 'client', 'customers', 'giftCardOnce', 'giftcards', 'inventory', 'metaobjectBackend', 'metaobjects', 'orderModel', 'orders', 'products'].map(f => `src/lib/shopify/${f}.ts`).concat('src/lib/zeller.ts'),
++};
++
++/** Entries of a Transition that nothing uses any more. Empty means the list is honest. */
++export function staleTransition(files: Record<string, string>, t: Transition): string[] {
++  const stale: string[] = []; const used = new Set<string>();
++  for (const [p, src] of Object.entries(files)) {
++    const own = alloyOf(p); if (!own) continue;
++    for (const spec of importsOf(src)) { const to = resolveImport(p, spec); if (to) used.add(`${own}>${stripIndex(to)}`); }
++  }
++  for (const id of t.pendingEntry) if (files[`${ALLOYS}${id}/alloy.ts`] || files[`${ALLOYS}${id}.ts`]) stale.push(`pendingEntry:${id} (it has an entry file now)`);
++  for (const [id, list] of Object.entries(t.legacyImports)) for (const target of list) if (!used.has(`${id}>${target}`)) stale.push(`legacyImports:${id}>${target}`);
++  for (const sh of t.shims) if (!(sh in files)) stale.push(`shims:${sh} (file is gone)`);
++  return stale;
++}
++
++export function checkAlloys(files: Record<string, string>, t: Transition = NO_TRANSITION): Violation[] {
+   const v: Violation[] = []; const paths = Object.keys(files).sort();
+ 
+   // Structure: top level of src/alloys/ is index.ts, <id>.ts (Option A) or <id>/ (Option B, which needs alloy.ts).
+@@ -42,20 +74,20 @@ export function checkAlloys(files: Record<string, string>): Violation[] {
+     else if (rest !== 'index.ts') { if (/^[a-z][a-z0-9-]*\.ts$/.test(rest)) optionA.add(rest.replace(/\.ts$/, '')); else v.push({ file: p, rule: 'structure', detail: 'Only index.ts, <id>.ts and <id>/ folders may sit directly in src/alloys/.' }); }
+   }
+   for (const id of optionBDirs) {
+-    if (!files[`${ALLOYS}${id}/alloy.ts`]) v.push({ file: `${ALLOYS}${id}/`, rule: 'structure', detail: 'A folder Alloy must contain alloy.ts, the file the app sees.' });
++    if (!files[`${ALLOYS}${id}/alloy.ts`] && !t.pendingEntry.includes(id)) v.push({ file: `${ALLOYS}${id}/`, rule: 'structure', detail: 'A folder Alloy must contain alloy.ts, the file the app sees.' });
+     if (!/^[a-z][a-z0-9-]*$/.test(id)) v.push({ file: `${ALLOYS}${id}/`, rule: 'structure', detail: 'Alloy ids are lowercase letters, digits and hyphens.' });
+     if (optionA.has(id)) v.push({ file: `${ALLOYS}${id}`, rule: 'structure', detail: 'An Alloy is either one file or one folder, not both.' });
+   }
+   const entries = new Map<string, string>(); // id -> entry file
+   for (const id of optionA) entries.set(id, `${ALLOYS}${id}.ts`);
+   for (const id of optionBDirs) if (files[`${ALLOYS}${id}/alloy.ts`]) entries.set(id, `${ALLOYS}${id}/alloy.ts`);
+-  for (const [id, entry] of entries) if (!/export\s+default\s+/.test(files[entry])) v.push({ file: entry, rule: 'structure', detail: `The entry file of ${id} must export default the Alloy.` });
++  for (const [id, entry] of entries) if (!t.pendingEntry.includes(id) && !/export\s+default\s+/.test(files[entry])) v.push({ file: entry, rule: 'structure', detail: `The entry file of ${id} must export default the Alloy.` });
+ 
+   // Registry: every Alloy is imported by src/alloys/index.ts, and nothing else is.
+   const reg = files[`${ALLOYS}index.ts`];
+   if (reg !== undefined) {
+     const imported = new Set(importsOf(reg).map(s => resolveImport(`${ALLOYS}index.ts`, s)).filter((x): x is string => !!x));
+-    for (const [id, entry] of entries) if (![entry.replace(/\.ts$/, ''), `${ALLOYS}${id}`].some(c => imported.has(c))) v.push({ file: `${ALLOYS}index.ts`, rule: 'registry', detail: `Alloy ${id} is not listed in the registry.` });
++    for (const [id, entry] of entries) if (!t.pendingEntry.includes(id) && ![entry.replace(/\.ts$/, ''), `${ALLOYS}${id}`].some(c => imported.has(c))) v.push({ file: `${ALLOYS}index.ts`, rule: 'registry', detail: `Alloy ${id} is not listed in the registry.` });
+   } else if (entries.size) v.push({ file: `${ALLOYS}index.ts`, rule: 'registry', detail: 'Alloys exist but src/alloys/index.ts does not.' });
+ 
+   for (const p of paths) {
+@@ -65,11 +97,11 @@ export function checkAlloys(files: Record<string, string>): Violation[] {
+ 
+       if (own) { // an Alloy file: its own files, the kit, and the canonical types and money helpers
+         const toOwn = alloyOf(`${to}.ts`) === own || alloyOf(`${to}/x.ts`) === own;
+-        const ok = toOwn || target.startsWith(KIT.slice(0, -1)) || LIB_ALLOWED.has(target);
++        const ok = toOwn || target.startsWith(KIT.slice(0, -1)) || LIB_ALLOWED.has(target) || (t.legacyImports[own] ?? []).includes(target);
+         if (!ok) v.push({ file: p, rule: 'alloy-imports', detail: `Alloy ${own} imports ${target}. Allowed: its own files, src/alloykit/*, src/lib/types, src/lib/money.` });
+       } else if (p.startsWith(KIT)) { // the kit sits below the app and the Alloys
+         if (/^src\/(alloyhost|alloys|screens|state|ui)(\/|$)/.test(target) || target === 'App') v.push({ file: p, rule: 'kit-imports', detail: `src/alloykit must not import ${target}.` });
+-      } else if (p !== `${ALLOYS}index.ts`) { // everything else reaches Alloys only through the registry
++      } else if (p !== `${ALLOYS}index.ts` && !t.shims.includes(p)) { // everything else reaches Alloys only through the registry
+         if (target.startsWith('src/alloys/') && target !== 'src/alloys' && target !== 'src/alloys/index') v.push({ file: p, rule: 'registry-only', detail: `Import ${target}: only src/alloys/index.ts may import an Alloy file.` });
+       }
+     }
+diff --git a/src/alloys/shopify/catalogue.ts b/src/alloys/shopify/catalogue.ts
+new file mode 100644
+index 0000000..5453f21
+--- /dev/null
++++ b/src/alloys/shopify/catalogue.ts
+@@ -0,0 +1,191 @@
++// Location: src/lib/shopify/catalogue.ts
++// Catalogue import: bulk operations for the full pull (variants, collections, customers),
++// small paged queries for discounts, and an updated_at delta for stock.
++import { gql, throwUserErrors, ShopifyUserError } from './client';
++import { toCents } from '../../lib/money';
++import { sleep } from '../../lib/ids';
++import { isSellableStatus, parseProductStatus } from '../../lib/productStatus';
++import type { AutoDiscount, Collection, Customer, ManualPreset, Target, Variant } from '../../lib/types';
++
++export async function fetchShop() {
++  const d = await gql(`{ shop { name currencyCode myshopifyDomain } locations(first: 20) { nodes { id name isActive } } }`);
++  return { name: d.shop.name as string, currency: d.shop.currencyCode as string, locations: (d.locations.nodes as any[]).filter(l => l.isActive).map(l => ({ id: l.id as string, name: l.name as string })) };
++}
++
++// ── bulk operations ──────────────────────────────────────────────────────────
++async function runBulk(inner: string, onProgress?: (s: string) => void): Promise<any[]> {
++  const start = async (): Promise<void> => {
++    for (let i = 0; i < 60; i++) {
++      const d = await gql(`mutation($q:String!){ bulkOperationRunQuery(query:$q){ bulkOperation{ id status } userErrors{ field message } } }`, { q: inner });
++      const errs = d.bulkOperationRunQuery.userErrors as any[];
++      if (!errs?.length) return;
++      if (/already in progress|already running/i.test(errs[0].message)) { onProgress?.('Waiting for another bulk job…'); await sleep(3000); continue; }
++      throwUserErrors(errs, 'Bulk import');
++    }
++    throw new ShopifyUserError('Bulk import is busy - try again in a minute.');
++  };
++  await start();
++  for (let i = 0; i < 400; i++) {
++    await sleep(i < 5 ? 1200 : 2500);
++    const d = await gql(`{ currentBulkOperation(type: QUERY) { id status errorCode objectCount url } }`);
++    const op = d.currentBulkOperation;
++    if (!op) continue;
++    onProgress?.(`${op.status.toLowerCase()} · ${op.objectCount ?? 0} records`);
++    if (op.status === 'COMPLETED') {
++      if (!op.url) return [];
++      const text = await (await fetch(op.url)).text();
++      return text.split('\n').filter(Boolean).map(l => JSON.parse(l));
++    }
++    if (op.status === 'FAILED' || op.status === 'CANCELED' || op.status === 'EXPIRED') throw new ShopifyUserError(`Bulk import ${op.status.toLowerCase()} (${op.errorCode ?? 'no code'})`);
++  }
++  throw new ShopifyUserError('Bulk import timed out.');
++}
++
++const img = (u?: string | null) => (u ? `${u}${u.includes('?') ? '&' : '?'}width=400` : undefined);
++
++export async function fetchVariants(locationId: string, onProgress?: (s: string) => void): Promise<Variant[]> {
++  const rows = await runBulk(`{ productVariants { edges { node {
++    id title sku barcode price compareAtPrice updatedAt image { url }
++    inventoryItem { id tracked unitCost { amount } inventoryLevel(locationId: "${locationId}") { quantities(names: ["available"]) { name quantity } } }
++    product { id title status tags featuredMedia { preview { image { url } } } }
++  } } } }`, onProgress);
++  return rows.map((n): Variant => {
++    const q = n.inventoryItem?.inventoryLevel?.quantities?.find((x: any) => x.name === 'available');
++    const tracked = !!n.inventoryItem?.tracked;
++    return {
++      id: n.id, productId: n.product.id, productTitle: n.product.title,
++      variantTitle: n.title === 'Default Title' ? '' : n.title,
++      sku: n.sku || undefined, barcode: n.barcode || undefined,
++      priceCents: toCents(n.price), compareAtCents: n.compareAtPrice ? toCents(n.compareAtPrice) : undefined,
++      costCents: n.inventoryItem?.unitCost ? toCents(n.inventoryItem.unitCost.amount) : undefined,
++      inventoryItemId: n.inventoryItem?.id, tracked, stock: tracked ? (q?.quantity ?? 0) : null,
++      image: img(n.image?.url ?? n.product.featuredMedia?.preview?.image?.url), tags: n.product.tags ?? [],
++      active: isSellableStatus(parseProductStatus(n.product.status)), status: parseProductStatus(n.product.status), updatedAt: n.updatedAt, // Active and Unlisted are sold and shown; Draft and Archived are not
++    };
++  });
++}
++
++export async function fetchCollections(onProgress?: (s: string) => void): Promise<Collection[]> {
++  const rows = await runBulk(`{ collections { edges { node { id title image { url } products { edges { node { id } } } } } } }`, onProgress);
++  const map = new Map<string, Collection>();
++  for (const r of rows) {
++    if (!r.__parentId) map.set(r.id, { id: r.id, title: r.title, image: img(r.image?.url), productIds: [] });
++  }
++  for (const r of rows) if (r.__parentId) map.get(r.__parentId)?.productIds.push(r.id);
++  return [...map.values()];
++}
++
++export async function fetchCustomers(onProgress?: (s: string) => void): Promise<Customer[]> {
++  const rows = await runBulk(`{ customers { edges { node { id displayName email phone numberOfOrders amountSpent { amount } note } } } }`, onProgress);
++  return rows.map((r): Customer => ({
++    id: r.id, name: r.displayName || r.email || r.phone || 'Customer', email: r.email || undefined, phone: r.phone || undefined,
++    orders: Number(r.numberOfOrders ?? 0), spentCents: r.amountSpent ? toCents(r.amountSpent.amount) : 0, note: r.note || undefined,
++  }));
++}
++
++// ── stock delta (multi-register) ─────────────────────────────────────────────
++export async function fetchStockDelta(sinceISO: string, locationId: string): Promise<Record<string, number>> {
++  const out: Record<string, number> = {};
++  let after: string | null = null;
++  for (let page = 0; page < 20; page++) {
++    const d: any = await gql(
++      `query($q:String,$loc:ID!,$after:String){ inventoryItems(first: 100, after:$after, query:$q) { pageInfo { hasNextPage endCursor }
++        nodes { id inventoryLevel(locationId:$loc) { quantities(names:["available"]) { name quantity } } } } }`,
++      { q: `updated_at:>'${sinceISO}'`, loc: locationId, after });
++    for (const n of d.inventoryItems.nodes) {
++      const q = n.inventoryLevel?.quantities?.find((x: any) => x.name === 'available');
++      if (q) out[n.id] = q.quantity;
++    }
++    if (!d.inventoryItems.pageInfo.hasNextPage) break;
++    after = d.inventoryItems.pageInfo.endCursor;
++  }
++  return out;
++}
++
++// ── discounts ────────────────────────────────────────────────────────────────
++const ITEMS = `items { __typename ... on AllDiscountItems { allItems }
++  ... on DiscountProducts { products(first: 40) { nodes { id } pageInfo { hasNextPage } } productVariants(first: 40) { nodes { id } pageInfo { hasNextPage } } }
++  ... on DiscountCollections { collections(first: 20) { nodes { id } pageInfo { hasNextPage } } } }`;
++const VALUE = `value { __typename ... on DiscountPercentage { percentage } ... on DiscountAmount { amount { amount } appliesOnEachItem } }`;
++
++function mapItems(items: any): { target: Target; truncated: boolean } {
++  if (!items) return { target: {}, truncated: false };
++  if (items.__typename === 'AllDiscountItems') return { target: { all: true }, truncated: false };
++  if (items.__typename === 'DiscountProducts') {
++    return {
++      target: { productIds: items.products.nodes.map((n: any) => n.id), variantIds: items.productVariants.nodes.map((n: any) => n.id) },
++      truncated: !!(items.products.pageInfo.hasNextPage || items.productVariants.pageInfo.hasNextPage),
++    };
++  }
++  if (items.__typename === 'DiscountCollections') return { target: { collectionIds: items.collections.nodes.map((n: any) => n.id) }, truncated: !!items.collections.pageInfo.hasNextPage };
++  return { target: {}, truncated: false };
++}
++
++export async function fetchAutoDiscounts(): Promise<AutoDiscount[]> {
++  const out: AutoDiscount[] = [];
++  let after: string | null = null;
++  for (let page = 0; page < 40; page++) {
++    const d: any = await gql(`query($after:String){ automaticDiscountNodes(first: 3, after:$after) { pageInfo { hasNextPage endCursor } nodes { id automaticDiscount { __typename
++      ... on DiscountAutomaticBasic { title status startsAt endsAt
++        minimumRequirement { __typename ... on DiscountMinimumSubtotal { greaterThanOrEqualToSubtotal { amount } } ... on DiscountMinimumQuantity { greaterThanOrEqualToQuantity } }
++        customerGets { ${VALUE} ${ITEMS} } }
++      ... on DiscountAutomaticBxgy { title status startsAt endsAt usesPerOrderLimit
++        customerBuys { value { __typename ... on DiscountQuantity { quantity } ... on DiscountPurchaseAmount { amount } } ${ITEMS} }
++        customerGets { value { __typename ... on DiscountOnQuantity { quantity { quantity } effect { __typename ... on DiscountPercentage { percentage } ... on DiscountAmount { amount { amount } } } } } ${ITEMS} } }
++    } } } }`, { after });
++    for (const n of d.automaticDiscountNodes.nodes) {
++      const a = n.automaticDiscount;
++      if (!a || a.status !== 'ACTIVE') continue;
++      if (a.__typename === 'DiscountAutomaticBasic') {
++        const { target, truncated } = mapItems(a.customerGets.items);
++        const v = a.customerGets.value;
++        const mr = a.minimumRequirement;
++        out.push({
++          id: n.id, title: a.title, kind: 'basic', startsAt: a.startsAt, endsAt: a.endsAt, target, truncated,
++          pct: v.__typename === 'DiscountPercentage' ? v.percentage * 100 : undefined,
++          amtCents: v.__typename === 'DiscountAmount' ? toCents(v.amount.amount) : undefined,
++          eachItem: v.__typename === 'DiscountAmount' ? !!v.appliesOnEachItem : undefined,
++          minSubtotalCents: mr?.__typename === 'DiscountMinimumSubtotal' ? toCents(mr.greaterThanOrEqualToSubtotal.amount) : undefined,
++          minQty: mr?.__typename === 'DiscountMinimumQuantity' ? Number(mr.greaterThanOrEqualToQuantity) : undefined,
++        });
++      } else if (a.__typename === 'DiscountAutomaticBxgy') {
++        const b = mapItems(a.customerBuys.items), g = mapItems(a.customerGets.items);
++        const bv = a.customerBuys.value, gv = a.customerGets.value;
++        if (gv.__typename !== 'DiscountOnQuantity') continue;
++        out.push({
++          id: n.id, title: a.title, kind: 'bxgy', startsAt: a.startsAt, endsAt: a.endsAt, truncated: b.truncated || g.truncated,
++          usesPerOrderLimit: a.usesPerOrderLimit ? Number(a.usesPerOrderLimit) : undefined,
++          buys: { target: b.target, qty: bv.__typename === 'DiscountQuantity' ? Number(bv.quantity) : undefined, amountCents: bv.__typename === 'DiscountPurchaseAmount' ? toCents(bv.amount) : undefined },
++          gets: {
++            target: g.target, qty: Number(gv.quantity.quantity),
++            pct: gv.effect.__typename === 'DiscountPercentage' ? gv.effect.percentage * 100 : undefined,
++            amtCents: gv.effect.__typename === 'DiscountAmount' ? toCents(gv.effect.amount.amount) : undefined,
++          },
++        });
++      }
++    }
++    if (!d.automaticDiscountNodes.pageInfo.hasNextPage) break;
++    after = d.automaticDiscountNodes.pageInfo.endCursor;
++  }
++  return out;
++}
++
++/** Shopify discount CODES become manual presets the cashier can tap. */
++export async function fetchManualPresets(): Promise<ManualPreset[]> {
++  const out: ManualPreset[] = [];
++  let after: string | null = null;
++  for (let page = 0; page < 20; page++) {
++    const d: any = await gql(`query($after:String){ codeDiscountNodes(first: 20, after:$after, query: "status:active") { pageInfo { hasNextPage endCursor } nodes { id codeDiscount { __typename
++      ... on DiscountCodeBasic { title status customerGets { ${VALUE} } } } } } }`, { after });
++    for (const n of d.codeDiscountNodes.nodes) {
++      const c = n.codeDiscount;
++      if (c?.__typename !== 'DiscountCodeBasic' || c.status !== 'ACTIVE') continue;
++      const v = c.customerGets.value;
++      if (v.__typename === 'DiscountPercentage') out.push({ id: n.id, kind: 'pct', value: v.percentage * 100, label: c.title });
++      else if (v.__typename === 'DiscountAmount') out.push({ id: n.id, kind: 'amt', value: toCents(v.amount.amount), label: c.title });
++    }
++    if (!d.codeDiscountNodes.pageInfo.hasNextPage) break;
++    after = d.codeDiscountNodes.pageInfo.endCursor;
++  }
++  return out;
++}
+diff --git a/src/alloys/shopify/client.ts b/src/alloys/shopify/client.ts
+new file mode 100644
+index 0000000..1703d1a
+--- /dev/null
++++ b/src/alloys/shopify/client.ts
+@@ -0,0 +1,131 @@
++// Location: src/lib/shopify/client.ts
++// Direct Shopify Admin GraphQL client (no backend).
++// Auth: Dev Dashboard app → client-credentials grant, token valid 24 h, refreshed automatically.
++// Client secret + token live in the iOS Keychain (expo-secure-store).
++import * as SecureStore from 'expo-secure-store';
++import { TrainingBlockedError, isTraining } from '../../lib/trainingGuard';
++import { sleep } from '../../lib/ids';
++
++export const API_VERSION = '2026-07'; // pin one version, bump quarterly (research doc §4.2)
++
++export type ShopifyCreds = { domain: string; clientId: string; clientSecret: string };
++export class ShopifyNetworkError extends Error { constructor(m: string) { super(m); this.name = 'ShopifyNetworkError'; } }
++export class ShopifyUserError extends Error {
++  details?: any;
++  constructor(m: string, details?: any) { super(m); this.name = 'ShopifyUserError'; this.details = details; }
++}
++export type UserError = { field?: string[] | null; message: string; code?: string };
++
++const K = { domain: 'shopify.domain', id: 'shopify.clientId', secret: 'shopify.clientSecret', token: 'shopify.token', exp: 'shopify.tokenExp', scope: 'shopify.scope' };
++let creds: ShopifyCreds | null = null;
++let token: { value: string; exp: number; scope: string } | null = null;
++let inflight: Promise<string> | null = null;
++
++export function normaliseDomain(s: string): string {
++  let d = s.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
++  if (!d) return '';
++  if (!d.includes('.')) d += '.myshopify.com';
++  return d;
++}
++
++export async function loadCreds(): Promise<ShopifyCreds | null> {
++  try {
++    const [domain, clientId, clientSecret] = await Promise.all([K.domain, K.id, K.secret].map(k => SecureStore.getItemAsync(k)));
++    if (domain && clientId && clientSecret) creds = { domain, clientId, clientSecret };
++    const [tv, te, ts] = await Promise.all([K.token, K.exp, K.scope].map(k => SecureStore.getItemAsync(k)));
++    if (tv && te) token = { value: tv, exp: Number(te), scope: ts ?? '' };
++  } catch { /* keychain unavailable */ }
++  return creds;
++}
++export async function saveCreds(c: ShopifyCreds) {
++  if (isTraining()) throw new TrainingBlockedError('changing the Shopify login');
++  creds = { domain: normaliseDomain(c.domain), clientId: c.clientId.trim(), clientSecret: c.clientSecret.trim() };
++  token = null;
++  await Promise.all([
++    SecureStore.setItemAsync(K.domain, creds.domain), SecureStore.setItemAsync(K.id, creds.clientId), SecureStore.setItemAsync(K.secret, creds.clientSecret),
++    SecureStore.deleteItemAsync(K.token), SecureStore.deleteItemAsync(K.exp),
++  ]);
++}
++export async function clearCreds() {
++  if (isTraining()) throw new TrainingBlockedError('changing the Shopify login');
++  creds = null; token = null;
++  await Promise.all(Object.values(K).map(k => SecureStore.deleteItemAsync(k)));
++}
++export const hasCreds = () => !isTraining() && !!creds; // training: every sync path stops here
++export const shopDomain = () => creds?.domain ?? '';
++export const tokenScopes = () => (token?.scope ? token.scope.split(',') : []);
++
++export async function getToken(force = false): Promise<string> {
++  if (isTraining()) throw new TrainingBlockedError('Shopify');
++  if (!creds) throw new ShopifyUserError('Shopify is not set up - open More ▸ Settings ▸ Shopify.');
++  if (!force && token && token.exp - Date.now() > 5 * 60_000) return token.value;
++  if (inflight) return inflight;
++  const c = creds;
++  inflight = (async () => {
++    let res: Response;
++    try {
++      res = await fetch(`https://${c.domain}/admin/oauth/access_token`, {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
++        body: `grant_type=client_credentials&client_id=${encodeURIComponent(c.clientId)}&client_secret=${encodeURIComponent(c.clientSecret)}`,
++      });
++    } catch (e: any) { throw new ShopifyNetworkError(`Can't reach Shopify: ${e?.message ?? e}`); }
++    if (!res.ok) {
++      const t = await res.text().catch(() => '');
++      if (res.status >= 500) throw new ShopifyNetworkError(`Shopify auth ${res.status}`);
++      throw new ShopifyUserError(`Shopify rejected the client ID/secret (${res.status}). ${t.slice(0, 160)}`);
++    }
++    const j = await res.json();
++    token = { value: j.access_token, exp: Date.now() + (j.expires_in ?? 86399) * 1000, scope: j.scope ?? '' };
++    await Promise.all([
++      SecureStore.setItemAsync(K.token, token.value), SecureStore.setItemAsync(K.exp, String(token.exp)), SecureStore.setItemAsync(K.scope, token.scope),
++    ]).catch(() => {});
++    return token.value;
++  })().finally(() => { inflight = null; });
++  return inflight;
++}
++
++// cost-aware throttle: obey extensions.cost.throttleStatus (research doc §4.10)
++let notBefore = 0;
++
++export async function gql<T = any>(query: string, variables: Record<string, any> = {}): Promise<T> {
++  if (isTraining()) throw new TrainingBlockedError('Shopify');
++  if (!creds) throw new ShopifyUserError('Shopify is not set up - open More ▸ Settings ▸ Shopify.');
++  let authRetried = false;
++  for (let attempt = 0; ; attempt++) {
++    const wait = notBefore - Date.now();
++    if (wait > 0) await sleep(Math.min(wait, 20_000));
++    const tok = await getToken();
++    let res: Response;
++    try {
++      res = await fetch(`https://${creds.domain}/admin/api/${API_VERSION}/graphql.json`, {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': tok },
++        body: JSON.stringify({ query, variables }),
++      });
++    } catch (e: any) {
++      if (attempt < 2) { await sleep(800 * (attempt + 1)); continue; }
++      throw new ShopifyNetworkError(`Can't reach Shopify: ${e?.message ?? e}`);
++    }
++    if (res.status === 401 && !authRetried) { authRetried = true; await getToken(true); continue; }
++    if (res.status === 429 || res.status >= 500) {
++      if (attempt < 3) { await sleep(1000 * 2 ** attempt); continue; }
++      throw new ShopifyNetworkError(`Shopify ${res.status}`);
++    }
++    let json: any;
++    try { json = await res.json(); } catch { throw new ShopifyNetworkError(`Shopify returned a non-JSON reply (${res.status})`); }
++    const ts = json?.extensions?.cost?.throttleStatus;
++    if (ts && ts.currentlyAvailable < 300) notBefore = Date.now() + ((300 - ts.currentlyAvailable) / (ts.restoreRate || 100)) * 1000;
++    if (json.errors?.length) {
++      const throttled = json.errors.some((e: any) => e.extensions?.code === 'THROTTLED');
++      if (throttled && attempt < 5) { notBefore = Date.now() + 1500 * (attempt + 1); continue; }
++      throw new ShopifyUserError(json.errors.map((e: any) => e.message).join('; '), json.errors);
++    }
++    return json.data as T;
++  }
++}
++
++export function throwUserErrors(errs: UserError[] | undefined | null, what: string) {
++  if (errs && errs.length) throw new ShopifyUserError(`${what}: ${errs.map(e => e.message).join('; ')}`, errs);
++}
++export const isNetworkError = (e: unknown) => e instanceof ShopifyNetworkError;
+diff --git a/src/alloys/shopify/customers.ts b/src/alloys/shopify/customers.ts
+new file mode 100644
+index 0000000..28ed578
+--- /dev/null
++++ b/src/alloys/shopify/customers.ts
+@@ -0,0 +1,23 @@
++import { gql, throwUserErrors } from './client';
++import { toCents } from '../../lib/money';
++import type { Customer } from '../../lib/types';
++
++const F = `id displayName email phone numberOfOrders amountSpent { amount } note`;
++const map = (n: any): Customer => ({ id: n.id, name: n.displayName || n.email || n.phone || 'Customer', email: n.email ?? undefined, phone: n.phone ?? undefined, orders: Number(n.numberOfOrders ?? 0), spentCents: n.amountSpent ? toCents(n.amountSpent.amount) : 0, note: n.note ?? undefined });
++
++export async function searchRemote(q: string): Promise<Customer[]> {
++  const d = await gql(`query($q:String){ customers(first: 20, query: $q) { nodes { ${F} } } }`, { q });
++  return d.customers.nodes.map(map);
++}
++export type CustomerInput = { firstName?: string; lastName?: string; email?: string; phone?: string; note?: string };
++const clean = (c: CustomerInput) => Object.fromEntries(Object.entries(c).filter(([, v]) => v !== undefined && v !== ''));
++export async function createCustomer(c: CustomerInput): Promise<Customer> {
++  const d = await gql(`mutation($i: CustomerInput!){ customerCreate(input: $i) { customer { ${F} } userErrors { field message } } }`, { i: clean(c) });
++  throwUserErrors(d.customerCreate.userErrors, 'Creating the customer');
++  return map(d.customerCreate.customer);
++}
++export async function updateCustomer(id: string, c: CustomerInput): Promise<Customer> {
++  const d = await gql(`mutation($i: CustomerInput!){ customerUpdate(input: $i) { customer { ${F} } userErrors { field message } } }`, { i: { id, ...clean(c) } });
++  throwUserErrors(d.customerUpdate.userErrors, 'Updating the customer');
++  return map(d.customerUpdate.customer);
++}
+diff --git a/src/alloys/shopify/giftCardOnce.ts b/src/alloys/shopify/giftCardOnce.ts
+new file mode 100644
+index 0000000..c6f2679
+--- /dev/null
++++ b/src/alloys/shopify/giftCardOnce.ts
+@@ -0,0 +1,18 @@
++// Location: src/lib/shopify/giftCardOnce.ts
++// Shopify's giftCardDebit and giftCardCredit have no idempotency key, so a call whose reply is lost (a dropped connection after Shopify
++// took it) looks like a failure, and a retry would take or give the money twice. The fix is the note: every charge and credit carries a
++// reference that is the same on every retry of the same operation, and before sending one again the gift card's history is read for it.
++// This file is only that decision, with no network, so tests/giftcardonce.test.ts covers it. Shopify returns a debit's amount as a
++// negative number, so amounts are compared by size.
++export type OnceTxn = { cents: number; note?: string; kind: 'credit' | 'debit' };
++
++/** 'done' when a transaction of this kind with this reference already exists for this amount, 'todo' when none does. Throws when the reference exists for another amount. */
++export function onceDecision(history: ReadonlyArray<OnceTxn>, kind: 'credit' | 'debit', cents: number, note: string): 'done' | 'todo' {
++  const found = history.find(t => t.kind === kind && t.note === note);
++  if (!found) return 'todo';
++  if (Math.abs(found.cents) !== Math.abs(cents)) throw new Error(`A gift-card ${kind} with this reference already exists for a different amount. Check the card's history in Shopify before trying again.`);
++  return 'done';
++}
++
++/** The reference for a gift-card payment: the Nth payment of one sale is the same on every retry, even after leaving the Payment screen. */
++export const debitNote = (saleUuid: string, tenderIndex: number): string => `POS sale ${saleUuid.slice(0, 8)} tender ${tenderIndex + 1}`;
+diff --git a/src/alloys/shopify/giftcards.ts b/src/alloys/shopify/giftcards.ts
+new file mode 100644
+index 0000000..17616fb
+--- /dev/null
++++ b/src/alloys/shopify/giftcards.ts
+@@ -0,0 +1,132 @@
++// Location: src/lib/shopify/giftcards.ts
++// Gift cards use Shopify's native GiftCard objects as the balance ledger.
++// Redemption = giftCardDebit (reserves the balance at tender time); refund-to-card = giftCardCredit.
++// NOTE: giftCardCredit/Debit need the write_gift_card_transactions scope (add it to the Dev Dashboard app).
++import * as Crypto from 'expo-crypto';
++import { gql, throwUserErrors } from './client';
++import { CURRENCY, toCents, toDecimal } from '../../lib/money';
++import { onceDecision } from './giftCardOnce';
++import { uid } from '../../lib/ids';
++import { normaliseCode } from '../../lib/giftCode';
++import { createCustomer, searchRemote } from './customers';
++import type { GiftRecipient } from '../../lib/types';
++import { isTraining } from '../../lib/trainingGuard';
++import { practiceDebitGiftCard, practiceGiftCardHistory, practiceLookupGiftCard } from '../../lib/trainingGifts';
++
++export type GiftCardInfo = { id: string; last4: string; balanceCents: number; initialCents: number; enabled: boolean; expiresOn?: string; customerName?: string; verified: boolean };
++
++export { normaliseCode, stripGiftPrefix, giftQrPayload } from '../../lib/giftCode';
++export const newGiftCode = () => uid().replace(/-/g, '').slice(0, 16).toUpperCase();
++const checksum = async (code: string) => (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, normaliseCode(code))).slice(0, 10);
++
++const FIELDS = `id lastCharacters balance { amount } initialValue { amount } enabled expiresOn note customer { displayName }`;
++const mapCard = (n: any, verified: boolean): GiftCardInfo => ({
++  id: n.id, last4: n.lastCharacters, balanceCents: toCents(n.balance.amount), initialCents: toCents(n.initialValue.amount),
++  enabled: !!n.enabled, expiresOn: n.expiresOn ?? undefined, customerName: n.customer?.displayName, verified,
++});
++
++/** Find the recipient's Shopify customer by email, or create one (Shopify needs a customer to deliver the card to). */
++async function resolveRecipientId(r: GiftRecipient): Promise<string> {
++  const email = r.email.trim().toLowerCase();
++  const found = (await searchRemote(`email:${email}`)).find(c => c.email?.toLowerCase() === email);
++  if (found) return found.id;
++  const [firstName, ...rest] = (r.name ?? '').trim().split(/\s+/).filter(Boolean);
++  return (await createCustomer({ email, firstName, lastName: rest.join(' ') || undefined })).id;
++}
++
++export async function createGiftCard(valueCents: number, code: string, saleUuid: string, customerId?: string, recipient?: GiftRecipient): Promise<GiftCardInfo> {
++  const note = `pos|sale:${saleUuid}|chk:${await checksum(code)}`;
++  const recipientId = recipient?.email ? await resolveRecipientId(recipient) : undefined;
++  const recipientAttributes = recipientId ? { id: recipientId, ...(recipient?.name ? { preferredName: recipient.name.slice(0, 100) } : {}), ...(recipient?.message ? { message: recipient.message.slice(0, 200) } : {}) } : undefined;
++  const d = await gql(`mutation($i: GiftCardCreateInput!){ giftCardCreate(input: $i) { giftCard { ${FIELDS} } userErrors { field message code } } }`,
++    { i: { initialValue: toDecimal(valueCents), code: normaliseCode(code), note, ...(customerId ? { customerId } : {}), ...(recipientAttributes ? { recipientAttributes } : {}) } });
++  const errs = d.giftCardCreate.userErrors as any[];
++  if (errs?.length && /taken|already/i.test(`${errs[0].code} ${errs[0].message}`)) {
++    const existing = await lookupGiftCard(code); // a retry after a lost reply - the card already exists
++    if (existing) return existing;
++  }
++  throwUserErrors(errs, 'Creating the gift card');
++  return mapCard(d.giftCardCreate.giftCard, true);
++}
++
++/** Manually (re)send the gift card notification to its recipient. Not used at sale time: Shopify already emails the recipient when a card is
++ *  created with one (A9.6: sending it again made two emails). Kept for a "Resend" action. Never fails a sale: the card exists either way. */
++export async function sendGiftCardEmail(id: string): Promise<boolean> {
++  try {
++    const d = await gql(`mutation($id:ID!){ giftCardSendNotificationToRecipient(id:$id) { userErrors { field message } } }`, { id });
++    return !(d.giftCardSendNotificationToRecipient.userErrors as any[]).length;
++  } catch { return false; }
++}
++
++/** Find a card by its code. Shopify only lets us search by the last characters, so we verify with the note checksum. */
++export async function lookupGiftCard(rawCode: string): Promise<GiftCardInfo | null> {
++  if (isTraining()) return practiceLookupGiftCard(rawCode);
++  const code = normaliseCode(rawCode);
++  if (code.length < 4) return null;
++  const d = await gql(`query($q:String){ giftCards(first: 10, query: $q) { nodes { ${FIELDS} } } }`, { q: `last_characters:${code.slice(-4).toLowerCase()}` });
++  const nodes: any[] = d.giftCards.nodes;
++  if (!nodes.length) return null;
++  const chk = await checksum(code);
++  const verified = nodes.find(n => (n.note ?? '').includes(`chk:${chk}`));
++  if (verified) return mapCard(verified, true);
++  const unmarked = nodes.filter(n => !(n.note ?? '').includes('chk:'));
++  if (unmarked.length === 1 && code.length >= 8) return mapCard(unmarked[0], false); // created outside the POS
++  return null;
++}
++
++export async function debitGiftCard(id: string, cents: number, note: string) {
++  if (isTraining()) { practiceDebitGiftCard(id, cents); return; }
++  const d = await gql(`mutation($id:ID!,$i:GiftCardDebitInput!){ giftCardDebit(id:$id, debitInput:$i) { giftCardDebitTransaction { id } userErrors { field message code } } }`,
++    { id, i: { debitAmount: { amount: toDecimal(cents), currencyCode: CURRENCY }, note } });
++  throwUserErrors(d.giftCardDebit.userErrors, 'Redeeming the gift card');
++}
++export async function creditGiftCard(id: string, cents: number, note: string) {
++  const d = await gql(`mutation($id:ID!,$i:GiftCardCreditInput!){ giftCardCredit(id:$id, creditInput:$i) { giftCardCreditTransaction { id } userErrors { field message code } } }`,
++    { id, i: { creditAmount: { amount: toDecimal(cents), currencyCode: CURRENCY }, note } });
++  throwUserErrors(d.giftCardCredit.userErrors, 'Crediting the gift card');
++}
++
++export type GiftCardTxn = { id: string; cents: number; at: string; note?: string; kind: 'credit' | 'debit' };
++type GiftCardTxnNode = { id: string; __typename: string; note?: string | null; processedAt: string; amount: { amount: string } };
++type GiftCardTxnPage = { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: GiftCardTxnNode[] };
++const mapTransactions = (nodes: GiftCardTxnNode[]): GiftCardTxn[] => nodes.map(n => ({ id: n.id, cents: toCents(n.amount.amount), at: n.processedAt, note: n.note ?? undefined, kind: n.__typename.includes('Debit') ? 'debit' : 'credit' }));
++export async function giftCardHistory(id: string): Promise<GiftCardTxn[]> {
++  if (isTraining()) return practiceGiftCardHistory(id);
++  const d = await gql(`query($id:ID!){ giftCard(id:$id){ transactions(first: 30) { nodes { __typename id note processedAt amount { amount } } } } }`, { id });
++  return mapTransactions(d.giftCard.transactions.nodes);
++}
++
++export async function allGiftCardTransactions(id: string): Promise<GiftCardTxn[]> {
++  let after: string | null = null; const transactions: GiftCardTxn[] = [];
++  for (;;) {
++    const d: { giftCard: { transactions: GiftCardTxnPage } } = await gql(`query($id:ID!,$after:String){ giftCard(id:$id){ transactions(first:250, after:$after) { pageInfo { hasNextPage endCursor } nodes { __typename id note processedAt amount { amount } } } } }`, { id, after });
++    const page: GiftCardTxnPage = d.giftCard.transactions;
++    transactions.push(...mapTransactions(page.nodes));
++    if (!page.pageInfo.hasNextPage) return transactions;
++    if (!page.pageInfo.endCursor) throw new Error('Shopify returned a gift-card transaction page without a cursor.');
++    after = page.pageInfo.endCursor;
++  }
++}
++
++/** Retry-safe credit for a specific operation. The caller's unique note is stored in Shopify's transaction history. */
++export async function creditGiftCardOnce(id: string, cents: number, note: string) {
++  if (onceDecision(await allGiftCardTransactions(id), 'credit', cents, note) === 'done') return;
++  await creditGiftCard(id, cents, note);
++}
++/** Retry-safe charge (0240): if an earlier try with this note went through but its reply was lost, the card is not charged again. */
++export async function debitGiftCardOnce(id: string, cents: number, note: string) {
++  if (isTraining()) { practiceDebitGiftCard(id, cents); return; }
++  if (onceDecision(await allGiftCardTransactions(id), 'debit', cents, note) === 'done') return;
++  await debitGiftCard(id, cents, note);
++}
++
++export async function outstandingBalance(): Promise<{ cards: number; cents: number }> {
++  let after: string | null = null, cards = 0, cents = 0;
++  for (let i = 0; i < 40; i++) {
++    const d: any = await gql(`query($after:String){ giftCards(first: 100, after:$after, query: "status:enabled") { pageInfo { hasNextPage endCursor } nodes { balance { amount } } } }`, { after });
++    for (const n of d.giftCards.nodes) { const b = toCents(n.balance.amount); if (b > 0) { cards++; cents += b; } }
++    if (!d.giftCards.pageInfo.hasNextPage) break;
++    after = d.giftCards.pageInfo.endCursor;
++  }
++  return { cards, cents };
++}
+diff --git a/src/alloys/shopify/inventory.ts b/src/alloys/shopify/inventory.ts
+new file mode 100644
+index 0000000..8bbb2ec
+--- /dev/null
++++ b/src/alloys/shopify/inventory.ts
+@@ -0,0 +1,27 @@
++// Inventory writes. API 2026-04+ makes @idempotent(key:) MANDATORY on these mutations (verified in Shopify changelog).
++import { gql, throwUserErrors } from './client';
++import { uid } from '../../lib/ids';
++
++export type AdjustReason = 'correction' | 'received' | 'cycle_count_available' | 'damaged' | 'shrinkage' | 'restock' | 'other';
++
++export async function adjustStock(inventoryItemId: string, locationId: string, delta: number, reason: AdjustReason = 'correction', key = uid()) {
++  const d = await gql(
++    `mutation($i: InventoryAdjustQuantitiesInput!) { inventoryAdjustQuantities(input: $i) @idempotent(key: "${key}") {
++      inventoryAdjustmentGroup { id } userErrors { field message } } }`,
++    { i: { reason, name: 'available', referenceDocumentUri: `gid://pos/Adjustment/${key}`, changes: [{ delta, inventoryItemId, locationId }] } });
++  throwUserErrors(d.inventoryAdjustQuantities.userErrors, 'Stock adjustment');
++}
++
++export async function setStock(inventoryItemId: string, locationId: string, quantity: number, reason: AdjustReason = 'cycle_count_available', key = uid()) {
++  const d = await gql(
++    `mutation($i: InventorySetQuantitiesInput!) { inventorySetQuantities(input: $i) @idempotent(key: "${key}") {
++      inventoryAdjustmentGroup { id } userErrors { field message } } }`,
++    { i: { reason, name: 'available', ignoreCompareQuantity: true, referenceDocumentUri: `gid://pos/Count/${key}`, quantities: [{ inventoryItemId, locationId, quantity }] } });
++  throwUserErrors(d.inventorySetQuantities.userErrors, 'Stock count');
++}
++
++/** Turn on tracking at the location (new items). */
++export async function activateTracking(inventoryItemId: string) {
++  const d = await gql(`mutation($id: ID!) { inventoryItemUpdate(id: $id, input: { tracked: true }) { userErrors { field message } } }`, { id: inventoryItemId });
++  throwUserErrors(d.inventoryItemUpdate.userErrors, 'Enable tracking');
++}
+diff --git a/src/alloys/shopify/metaobjectBackend.ts b/src/alloys/shopify/metaobjectBackend.ts
+new file mode 100644
+index 0000000..2df6ad1
+--- /dev/null
++++ b/src/alloys/shopify/metaobjectBackend.ts
+@@ -0,0 +1,59 @@
++// Location: src/lib/shopify/metaobjectBackend.ts
++// The Shopify metaobject side of the shared-state seam (CloudKit sync plan, patch 3). It is the one backend that exists
++// today, and it wraps exactly the calls sync.ts used to make by hand, so swapping the seam in changes no behaviour.
++//
++// The CloudKit backend (patch 4) implements the same interface with record types instead of metaobject types. Nothing above
++// this file should import metaobjects directly any more, so a cut-over is one line and a rollback is that line back.
++import * as meta from './metaobjects';
++import { SHARED_TYPES, type BackendListOptions, type BackendPage, type BackendRow, type SharedBackend, type SharedType } from '../../lib/syncBackend';
++
++/** The shop's name for a shared type, mapped onto the metaobject type that stores it. */
++const META_TYPE: Record<SharedType, string> = {
++  cart: meta.TYPES.cart,
++  layout: meta.TYPES.layout,
++  sale: meta.TYPES.sale,
++  rollup: meta.TYPES.rollup,
++  settings: meta.TYPES.settings,
++};
++
++/** The MetaRow the metaobject helpers return, as the backend's own row. They are the same shape, so this is a copy. */
++const asRow = (r: meta.MetaRow): BackendRow => ({ id: r.id, handle: r.handle, updatedAt: r.updatedAt, f: r.f });
++
++/** The metaobject backend: today's transport, behind the seam patch 4 will sit beside. */
++export const metaobjectBackend: SharedBackend = {
++  kind: 'metaobject',
++
++  async ensure(): Promise<void> {
++    // The definition write is the same one Settings ▸ Set up shared storage calls, so a first run and that button do the same thing.
++    await meta.ensureDefinitions();
++  },
++
++  async get(type: SharedType, handle: string): Promise<BackendRow | null> {
++    const row = await meta.getByHandle(META_TYPE[type], handle);
++    return row ? asRow(row) : null;
++  },
++
++  async put(type: SharedType, handle: string, fields: Record<string, string | number | undefined | null>): Promise<BackendRow> {
++    return asRow(await meta.upsert(META_TYPE[type], handle, fields));
++  },
++
++  async list(type: SharedType, options: BackendListOptions = {}): Promise<BackendPage> {
++    const { rows, next } = await meta.list(META_TYPE[type], { first: options.first, after: options.after });
++    return { rows: rows.map(asRow), next };
++  },
++
++  async remove(id: string): Promise<void> {
++    await meta.remove(id);
++  },
++
++  // A sale's `sale_json` field is added to the definition on demand; until it exists the row still uploads without it.
++  async detailReady(type: SharedType): Promise<boolean> {
++    return type === 'sale' ? meta.ensureSaleDetailField() : true;
++  },
++};
++
++/** Every shared type has a metaobject behind it. Exported so a test can prove the map is complete. */
++export const metaTypeFor = (type: SharedType): string => META_TYPE[type];
++
++/** The types this backend covers, in the order the plan lists them. */
++export const metaBackendTypes = (): SharedType[] => [...SHARED_TYPES];
+diff --git a/src/alloys/shopify/metaobjects.ts b/src/alloys/shopify/metaobjects.ts
+new file mode 100644
+index 0000000..f1db665
+--- /dev/null
++++ b/src/alloys/shopify/metaobjects.ts
+@@ -0,0 +1,81 @@
++// Shared state between registers lives in Shopify metaobjects (research doc §5): saved carts, layout, sales log,
++// daily rollups, shared settings. Webhooks need a server, so registers POLL these.
++import { gql, throwUserErrors, ShopifyUserError } from './client';
++
++export const TYPES = { cart: 'pos_saved_cart', layout: 'pos_layout', sale: 'pos_sale', rollup: 'pos_daily_rollup', settings: 'pos_settings' } as const;
++type F = [key: string, name: string, type: string];
++const S = 'single_line_text_field', M = 'multi_line_text_field', J = 'json', I = 'number_integer', T = 'date_time';
++
++const DEFS: { type: string; name: string; display?: string; fields: F[] }[] = [
++  { type: TYPES.cart, name: 'POS saved cart', display: 'name', fields: [['cart_uuid', 'Cart UUID', S], ['name', 'Name', S], ['note', 'Note', M], ['customer_json', 'Customer', J],
++    ['employee', 'Employee', S], ['register_id', 'Register', S], ['status', 'Status', S], ['lines_json', 'Lines', J], ['discount_json', 'Cart discount', J],
++    ['created_at', 'Created', T], ['updated_at', 'Updated', T], ['version', 'Version', I], ['locked_by', 'Locked by', S], ['locked_at', 'Locked at', T]] },
++  { type: TYPES.layout, name: 'POS layout', display: 'layout_key', fields: [['layout_key', 'Key', S], ['layout_json', 'Layout', J], ['version', 'Version', I], ['updated_by', 'Updated by', S], ['updated_at', 'Updated', T]] },
++  { type: TYPES.sale, name: 'POS sale', display: 'sale_uuid', fields: [['sale_uuid', 'Sale UUID', S], ['order_gid', 'Order', S], ['register_id', 'Register', S], ['employee', 'Employee', S],
++    ['ts', 'Time', T], ['entry_type', 'Type', S], ['items_cents', 'Items', I], ['discounts_cents', 'Discounts', I], ['total_cents', 'Total', I], ['cogs_cents', 'COGS', I],
++    ['fees_cents', 'Fees', I], ['rounding_cents', 'Rounding', I], ['refund_of', 'Refund of', S], ['status', 'Status', S], ['tenders_json', 'Tenders', J], ['lines_json', 'Lines', J],
++    ['customer_gid', 'Customer', S], ['receipt_link', 'Receipt link', S], ['sale_json', 'Sale data', J]] },
++  { type: TYPES.rollup, name: 'POS daily rollup', display: 'rollup_key', fields: [['rollup_key', 'Key', S], ['register_id', 'Register', S], ['date', 'Date', S], ['totals_json', 'Totals', J]] },
++  { type: TYPES.settings, name: 'POS settings', display: 'settings_key', fields: [['settings_key', 'Key', S], ['settings_json', 'Settings', J], ['version', 'Version', I]] },
++];
++
++export async function ensureDefinitions(): Promise<void> {
++  for (const d of DEFS) {
++    const res = await gql(`mutation($d: MetaobjectDefinitionCreateInput!){ metaobjectDefinitionCreate(definition: $d) { metaobjectDefinition { id } userErrors { field message code } } }`,
++      { d: { type: d.type, name: d.name, displayNameKey: d.display, fieldDefinitions: d.fields.map(([key, name, type]) => ({ key, name, type })) } });
++    const errs = (res.metaobjectDefinitionCreate.userErrors as any[]) ?? [];
++    const real = errs.filter(e => !/taken|already/i.test(`${e.code} ${e.message}`));
++    if (real.length) throw new ShopifyUserError(`Metaobject setup (${d.type}): ${real[0].message}`, real);
++  }
++  await ensureSaleDetailField(); // an older shop's sale definition gets the field the shop-wide sales view needs
++}
++
++/**
++ * Makes sure the sale definition carries the `sale_json` field another till reads to see this till's sales in full (the shop-wide
++ * assistant view). A definition made before that field existed is updated once; one that already has it does nothing. The answer
++ * is remembered for the rest of the app session, and a failure returns false without throwing, so a sale still uploads (without
++ * the detail) when the field cannot be added.
++ */
++let saleDetailReady: boolean | null = null;
++export async function ensureSaleDetailField(): Promise<boolean> {
++  if (saleDetailReady !== null) return saleDetailReady;
++  try {
++    const d = await gql(`query($t:String!){ metaobjectDefinitionByType(type:$t){ id fieldDefinitions { key } } }`, { t: TYPES.sale });
++    const def = d.metaobjectDefinitionByType as { id: string; fieldDefinitions: { key: string }[] } | null;
++    if (!def) { saleDetailReady = false; return false; }
++    if ((def.fieldDefinitions ?? []).some(f => f.key === 'sale_json')) { saleDetailReady = true; return true; }
++    const res = await gql(`mutation($id:ID!,$d:MetaobjectDefinitionUpdateInput!){ metaobjectDefinitionUpdate(id:$id, definition:$d) { userErrors { field message code } } }`,
++      { id: def.id, d: { fieldDefinitions: [{ create: { key: 'sale_json', name: 'Sale data', type: 'json' } }] } });
++    const errs = (res.metaobjectDefinitionUpdate.userErrors as any[]) ?? [];
++    saleDetailReady = !errs.some(e => !/taken|already/i.test(`${e.code} ${e.message}`));
++  } catch { saleDetailReady = false; }
++  return saleDetailReady;
++}
++
++export type MetaRow = { id: string; handle: string; updatedAt: string; f: Record<string, string> };
++const toRow = (n: any): MetaRow => ({ id: n.id, handle: n.handle, updatedAt: n.updatedAt, f: Object.fromEntries((n.fields as any[]).map(x => [x.key, x.value ?? ''])) });
++
++export const handleOf = (s: string) => s.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 100);
++
++export async function upsert(type: string, handle: string, fields: Record<string, string | number | undefined | null>): Promise<MetaRow> {
++  const d = await gql(`mutation($h: MetaobjectHandleInput!, $m: MetaobjectUpsertInput!){ metaobjectUpsert(handle: $h, metaobject: $m) { metaobject { id handle updatedAt fields { key value } } userErrors { field message code } } }`,
++    { h: { type, handle: handleOf(handle) }, m: { fields: Object.entries(fields).filter(([, v]) => v !== undefined && v !== null).map(([key, v]) => ({ key, value: String(v) })) } });
++  throwUserErrors(d.metaobjectUpsert.userErrors, `Saving ${type}`);
++  return toRow(d.metaobjectUpsert.metaobject);
++}
++
++export async function getByHandle(type: string, handle: string): Promise<MetaRow | null> {
++  const d = await gql(`query($h: MetaobjectHandleInput!){ metaobjectByHandle(handle: $h) { id handle updatedAt fields { key value } } }`, { h: { type, handle: handleOf(handle) } });
++  return d.metaobjectByHandle ? toRow(d.metaobjectByHandle) : null;
++}
++
++export async function list(type: string, o: { first?: number; after?: string | null; reverse?: boolean } = {}): Promise<{ rows: MetaRow[]; next: string | null }> {
++  const d = await gql(`query($t:String!,$n:Int!,$a:String,$r:Boolean){ metaobjects(type:$t, first:$n, after:$a, sortKey:"updated_at", reverse:$r) {
++    pageInfo { hasNextPage endCursor } nodes { id handle updatedAt fields { key value } } } }`, { t: type, n: o.first ?? 50, a: o.after ?? null, r: o.reverse ?? true });
++  return { rows: d.metaobjects.nodes.map(toRow), next: d.metaobjects.pageInfo.hasNextPage ? d.metaobjects.pageInfo.endCursor : null };
++}
++
++export async function remove(id: string) {
++  const d = await gql(`mutation($id:ID!){ metaobjectDelete(id:$id){ deletedId userErrors { field message } } }`, { id });
++  throwUserErrors(d.metaobjectDelete.userErrors, 'Deleting');
++}
+diff --git a/src/alloys/shopify/orderModel.ts b/src/alloys/shopify/orderModel.ts
+new file mode 100644
+index 0000000..099dd02
+--- /dev/null
++++ b/src/alloys/shopify/orderModel.ts
+@@ -0,0 +1,91 @@
++// Location: src/lib/shopify/orderModel.ts
++// Pure order model: builds the orderCreate input and maps Shopify orders. No network, no native modules (unit-tested).
++import { CURRENCY, toCents, toDecimal } from '../../lib/money';
++import { splitLineForOrder } from '../../lib/pricing';
++import { decodeTender, encodeTender } from '../../lib/saleCodec';
++import { decodeAdjustments, encodeAdjustments } from '../../lib/adjustReason';
++import type { SaleAdjustment, SaleRecord, Tender } from '../../lib/types';
++
++const money = (c: number) => ({ shopMoney: { amount: toDecimal(c), currencyCode: CURRENCY } });
++export const GATEWAY: Record<Tender['kind'], string> = { card: 'Zeller', cash: 'Cash', gift_card: 'Gift card', exchange_credit: 'Exchange credit' };
++
++// Shopify order tags are limited to 40 chars; 'pos-' + 32 hex (dashes stripped) = 36.
++export const saleTag = (uuid: string) => `pos-${uuid.replace(/-/g, '')}`.slice(0, 40);
++
++export type OrderCtx = { locationId?: string; markFulfilled: boolean };
++
++export function buildOrderInput(sale: SaleRecord, ctx: OrderCtx) {
++  const lineItems: any[] = [];
++  for (const l of sale.lines) {
++    const props: { name: string; value: string }[] = [];
++    if (l.baseUnitCents !== Math.round(l.netCents / Math.max(1, l.qty))) props.push({ name: '_pos_unit_price', value: toDecimal(l.baseUnitCents) });
++    if (l.discountLabels.length) props.push({ name: '_pos_discount', value: l.discountLabels.join(', ').slice(0, 200) });
++    if (l.costCents) props.push({ name: '_pos_cost', value: toDecimal(Math.round(l.costCents / Math.max(1, l.qty))) }); // PER-UNIT cost (parts of a split line share props)
++    if (l.note) props.push({ name: 'Note', value: l.note.slice(0, 200) });
++    if (l.giftCardCode) props.push({ name: '_pos_gift_card', value: `••••${l.giftCardCode.slice(-4)}` });
++    for (const part of splitLineForOrder(l.netCents, l.qty)) {
++      const base: any = { quantity: part.qty, priceSet: money(part.unitCents), requiresShipping: false, taxable: false };
++      if (props.length) base.properties = props;
++      if (l.variantId) lineItems.push({ ...base, variantId: l.variantId });
++      else lineItems.push({ ...base, title: l.kind === 'gift_card' ? 'Gift card' : l.title });
++    }
++  }
++  const transactions = sale.tenders.map(t => ({
++    kind: 'SALE', status: 'SUCCESS', gateway: GATEWAY[t.kind], amountSet: money(t.amountCents), processedAt: t.card?.timestampLocal ?? t.at ?? sale.ts,
++    ...(t.card?.approvalCode ? { authorizationCode: t.card.approvalCode } : {}),
++    ...(t.card ? { receiptJson: { transactionUuid: t.card.transactionUuid, externalReference: t.card.externalReference, rrn: t.card.rrn, scheme: t.card.scheme, panMasked: t.card.panMasked, cardMedia: t.card.cardMedia, receiptLink: t.card.receiptLink } } : {}),
++  }));
++  const attrs: { key: string; value: string }[] = [
++    { key: 'pos_sale_uuid', value: sale.uuid }, { key: 'pos_register', value: sale.registerName }, { key: 'pos_staff', value: sale.staff ?? '' },
++    { key: 'pos_rounding_cents', value: String(sale.roundingCents) }, { key: 'pos_cogs_cents', value: String(sale.cogsCents) }, { key: 'pos_fees_cents', value: String(sale.feesCents) },
++    { key: 'pos_deals', value: sale.deals.map(d => `${d.label}:${-d.cents}`).join('; ').slice(0, 240) }, { key: 'pos_receipt_link', value: sale.receiptLink ?? '' },
++    ...(sale.adjustments?.length ? [{ key: 'pos_adjustments', value: encodeAdjustments(sale.adjustments) }] : []),
++    ...sale.tenders.map((t, i) => ({ key: `pos_tender_${i + 1}`, value: encodeTender(t) })),
++  ].filter(a => a.value !== '');
++  const order: any = {
++    currency: CURRENCY, sourceName: 'custom-pos', financialStatus: 'PAID', processedAt: sale.ts, test: false,
++    lineItems, transactions, customAttributes: attrs, tags: ['pos', saleTag(sale.uuid)],
++    ...(sale.note ? { note: sale.note } : {}),
++    ...(sale.customer ? { customer: { toAssociate: { id: sale.customer.id } } } : {}),
++    ...(ctx.markFulfilled && ctx.locationId ? { fulfillment: { locationId: ctx.locationId, notifyCustomer: false } } : {}),
++  };
++  const options = { inventoryBehaviour: 'DECREMENT_IGNORING_POLICY', sendReceipt: false, sendFulfillmentReceipt: false };
++  return { order, options };
++}
++
++
++// ── reading orders ───────────────────────────────────────────────────────────
++export type PosOrderLine = { id: string; title: string; variantTitle?: string; qty: number; refundableQty: number; unitCents: number; originalUnitCents: number; variantId?: string; costCents: number; discount?: string };
++export type PosOrder = {
++  id: string; name: string; createdAt: string; financial: string; fulfillment: string; totalCents: number; refundedCents: number;
++  note?: string; tags: string[]; customer?: { id: string; name: string; email?: string; phone?: string };
++  attrs: Record<string, string>; lines: PosOrderLine[]; tenders: Tender[]; saleUuid?: string; receiptLink?: string;
++  transactions: { id: string; kind: string; status: string; gateway: string; amountCents: number }[];
++  registerName?: string; staff?: string; roundingCents: number;
++  /** A16.8: the price adjustments made on the sale, with reasons (read from the pos_adjustments attribute). */
++  adjustments?: SaleAdjustment[];
++};
++
++export function mapOrder(n: any): PosOrder {
++  const attrs: Record<string, string> = {};
++  for (const a of n.customAttributes ?? []) attrs[a.key] = a.value;
++  const tenders = Object.keys(attrs).filter(k => /^pos_tender_\d+$/.test(k)).sort().map(k => decodeTender(attrs[k], n.createdAt)).filter(Boolean) as Tender[];
++  return {
++    id: n.id, name: n.name, createdAt: n.createdAt, financial: n.displayFinancialStatus, fulfillment: n.displayFulfillmentStatus,
++    totalCents: toCents(n.totalPriceSet.shopMoney.amount), refundedCents: toCents(n.totalRefundedSet.shopMoney.amount),
++    note: n.note || undefined, tags: n.tags ?? [], attrs, tenders, saleUuid: attrs.pos_sale_uuid, receiptLink: attrs.pos_receipt_link || tenders.find(t => t.card?.receiptLink)?.card?.receiptLink,
++    customer: n.customer ? { id: n.customer.id, name: n.customer.displayName, email: n.customer.email ?? undefined, phone: n.customer.phone ?? undefined } : undefined,
++    registerName: attrs.pos_register, staff: attrs.pos_staff, roundingCents: Number(attrs.pos_rounding_cents ?? 0), adjustments: decodeAdjustments(attrs.pos_adjustments),
++    lines: n.lineItems.nodes.map((l: any): PosOrderLine => {
++      const props: Record<string, string> = {};
++      for (const p of l.customAttributes ?? []) props[p.key] = p.value;
++      return {
++        id: l.id, title: l.title, variantTitle: l.variantTitle || undefined, qty: l.quantity, refundableQty: l.refundableQuantity,
++        unitCents: toCents(l.discountedUnitPriceSet.shopMoney.amount), originalUnitCents: props._pos_unit_price ? toCents(props._pos_unit_price) : toCents(l.originalUnitPriceSet.shopMoney.amount),
++        variantId: l.variant?.id, costCents: props._pos_cost ? toCents(props._pos_cost) : 0, discount: props._pos_discount,
++      };
++    }),
++    transactions: n.transactions.map((t: any) => ({ id: t.id, kind: t.kind, status: t.status, gateway: t.gateway, amountCents: toCents(t.amountSet.shopMoney.amount) })),
++  };
++}
++
+diff --git a/src/alloys/shopify/orders.ts b/src/alloys/shopify/orders.ts
+new file mode 100644
+index 0000000..a08a134
+--- /dev/null
++++ b/src/alloys/shopify/orders.ts
+@@ -0,0 +1,79 @@
++// Location: src/lib/shopify/orders.ts
++// Orders (Path B, research doc §4.5): priced locally, then created with orderCreate so the Zeller tender is recorded
++// natively (gateway "Zeller", authorizationCode, receiptJson). Discounts are baked into line prices (orderCreate has no
++// line discounts) and itemised in line properties + custom attributes. No tax is collected.
++import { gql, throwUserErrors, type UserError } from './client';
++import { CURRENCY, toDecimal } from '../../lib/money';
++import { uid } from '../../lib/ids';
++import { GATEWAY, buildOrderInput, saleTag, mapOrder, type OrderCtx, type PosOrder } from './orderModel';
++import type { SaleRecord, Tender } from '../../lib/types';
++
++export * from './orderModel';
++
++export async function findOrderBySale(uuid: string): Promise<{ id: string; name: string } | null> {
++  const d = await gql(`query($q:String){ orders(first: 1, query: $q) { nodes { id name } } }`, { q: `tag:${saleTag(uuid)}` });
++  return d.orders.nodes[0] ?? null;
++}
++
++/** Idempotent: looks the sale up by its tag first, so a retry after a lost reply never double-books. */
++export async function createOrderForSale(sale: SaleRecord, ctx: OrderCtx): Promise<{ id: string; name: string }> {
++  const existing = await findOrderBySale(sale.uuid);
++  if (existing) return existing;
++  const run = async (input: ReturnType<typeof buildOrderInput>) => {
++    const d = await gql(`mutation($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) { orderCreate(order: $order, options: $options) { order { id name } userErrors { field message } } }`, input);
++    return d.orderCreate as { order: { id: string; name: string } | null; userErrors: UserError[] };
++  };
++  let input = buildOrderInput(sale, ctx);
++  let res = await run(input);
++  if (!res.order && input.order.fulfillment && res.userErrors.some(e => /fulfil/i.test(e.message) || e.field?.some(f => /fulfil/i.test(f)))) {
++    const { fulfillment, ...rest } = input.order; void fulfillment;
++    input = { ...input, order: rest }; // field unsupported on this API version → retry without it
++    res = await run(input);
++  }
++  throwUserErrors(res.userErrors, 'Creating the Shopify order');
++  if (!res.order) throw new Error('Shopify returned no order');
++  return res.order;
++}
++
++const ORDER_FIELDS = `id name createdAt displayFinancialStatus displayFulfillmentStatus note tags
++  totalPriceSet { shopMoney { amount } } totalRefundedSet { shopMoney { amount } }
++  customer { id displayName email phone } customAttributes { key value }
++  lineItems(first: 25) { nodes { id title variantTitle quantity refundableQuantity variant { id }
++    originalUnitPriceSet { shopMoney { amount } } discountedUnitPriceSet { shopMoney { amount } } customAttributes { key value } } }
++  transactions(first: 6) { id kind status gateway amountSet { shopMoney { amount } } }`;
++
++export async function listOrders(opts: { query?: string; after?: string | null; first?: number } = {}): Promise<{ orders: PosOrder[]; next: string | null }> {
++  const d = await gql(`query($q:String,$after:String,$first:Int!){ orders(first:$first, after:$after, query:$q, sortKey: CREATED_AT, reverse: true) {
++    pageInfo { hasNextPage endCursor } nodes { ${ORDER_FIELDS} } } }`, { q: opts.query || null, after: opts.after ?? null, first: opts.first ?? 10 });
++  return { orders: d.orders.nodes.map(mapOrder), next: d.orders.pageInfo.hasNextPage ? d.orders.pageInfo.endCursor : null };
++}
++export async function getOrder(id: string): Promise<PosOrder> {
++  const d = await gql(`query($id:ID!){ order(id:$id){ ${ORDER_FIELDS} } }`, { id });
++  return mapOrder(d.order);
++}
++
++export async function fulfillOrder(orderId: string) {
++  const d = await gql(`query($id:ID!){ order(id:$id){ fulfillmentOrders(first: 10) { nodes { id status } } } }`, { id: orderId });
++  const open = d.order.fulfillmentOrders.nodes.filter((n: any) => ['OPEN', 'IN_PROGRESS'].includes(n.status));
++  if (!open.length) return;
++  const r = await gql(`mutation($f: FulfillmentInput!){ fulfillmentCreate(fulfillment:$f){ fulfillment { id status } userErrors { field message } } }`,
++    { f: { notifyCustomer: false, lineItemsByFulfillmentOrder: open.map((n: any) => ({ fulfillmentOrderId: n.id })) } });
++  throwUserErrors(r.fulfillmentCreate.userErrors, 'Fulfilling the order');
++}
++
++// ── refunds (card part is refunded via Zeller BEFORE this runs) ──────────────
++export type RefundItem = { lineItemId: string; quantity: number; restock: boolean };
++export async function refundOrderInShopify(o: PosOrder, items: RefundItem[], amounts: Partial<Record<Tender['kind'], number>>, note: string, locationId: string | undefined, key = uid()) {
++  const parent = (g: string) => (o.transactions.find(t => t.kind === 'SALE' && t.status === 'SUCCESS' && t.gateway === g) ?? o.transactions.find(t => t.kind === 'SALE'))?.id;
++  const txs = (Object.entries(amounts) as [Tender['kind'], number][])
++    .filter(([k, c]) => c > 0 && k !== 'exchange_credit')
++    .map(([k, c]) => ({ orderId: o.id, parentId: parent(GATEWAY[k]), kind: 'REFUND', gateway: GATEWAY[k], amount: toDecimal(c) }));
++  const input = {
++    orderId: o.id, notify: false, note, currency: CURRENCY,
++    refundLineItems: items.map(i => ({ lineItemId: i.lineItemId, quantity: i.quantity, restockType: i.restock && locationId ? 'RETURN' : 'NO_RESTOCK', ...(i.restock && locationId ? { locationId } : {}) })),
++    ...(txs.length ? { transactions: txs } : {}),
++  };
++  const d = await gql(`mutation($i: RefundInput!){ refundCreate(input: $i) @idempotent(key: "${key}") { refund { id } userErrors { field message } } }`, { i: input });
++  throwUserErrors(d.refundCreate.userErrors, 'Recording the refund in Shopify');
++  return d.refundCreate.refund?.id as string | undefined;
++}
+diff --git a/src/alloys/shopify/products.ts b/src/alloys/shopify/products.ts
+new file mode 100644
+index 0000000..ff82c28
+--- /dev/null
++++ b/src/alloys/shopify/products.ts
+@@ -0,0 +1,42 @@
++// Item creation/edit (More ▸ Items ▸ Create item). New items are tracked and stocked at the register's location.
++import { gql, throwUserErrors } from './client';
++import { toDecimal } from '../../lib/money';
++import { uid } from '../../lib/ids';
++import { setStock } from './inventory';
++import { parseStartingStock } from '../../lib/startingStock';
++
++export type ItemInput = { title: string; priceCents: number; sku?: string; barcode?: string; costCents?: number; stock?: number; collectionId?: string };
++
++export async function createItem(i: ItemInput, locationId: string): Promise<{ productId: string; variantId: string; inventoryItemId: string }> {
++  if (i.stock !== undefined && (!Number.isSafeInteger(i.stock) || i.stock < 0)) throw new Error('Starting stock must be a whole number of zero or more.');
++  const c = await gql(`mutation($p: ProductCreateInput!){ productCreate(product: $p) { product { id variants(first: 1) { nodes { id inventoryItem { id } } } } userErrors { field message } } }`,
++    { p: { title: i.title, status: 'ACTIVE' } });
++  throwUserErrors(c.productCreate.userErrors, 'Creating the item');
++  const product = c.productCreate.product, v = product.variants.nodes[0];
++  const u = await gql(`mutation($pid: ID!, $v: [ProductVariantsBulkInput!]!){ productVariantsBulkUpdate(productId: $pid, variants: $v) { userErrors { field message } } }`,
++    { pid: product.id, v: [{ id: v.id, price: toDecimal(i.priceCents), barcode: i.barcode || undefined, inventoryItem: { sku: i.sku || undefined, cost: i.costCents !== undefined ? toDecimal(i.costCents) : undefined, tracked: true } }] });
++  throwUserErrors(u.productVariantsBulkUpdate.userErrors, 'Setting the price');
++  const key = uid();
++  const a = await gql(`mutation($id:ID!,$loc:ID!){ inventoryActivate(inventoryItemId:$id, locationId:$loc) @idempotent(key: "${key}") { inventoryLevel { id } userErrors { field message } } }`, { id: v.inventoryItem.id, loc: locationId });
++  throwUserErrors(a.inventoryActivate.userErrors, 'Stocking the item');
++  if (i.stock !== undefined) {
++    try { await setStock(v.inventoryItem.id, locationId, i.stock, 'received'); }
++    catch (error) { throw new Error(`The item was created, but starting stock could not be applied: ${String((error as Error)?.message ?? error)}. Refresh the item before trying again, then set its count in Inventory.`); }
++  }
++  if (i.collectionId) {
++    await gql(`mutation($id:ID!,$p:[ID!]!){ collectionAddProductsV2(id:$id, productIds:$p){ userErrors { field message } } }`, { id: i.collectionId, p: [product.id] }).catch(() => {});
++  }
++  return { productId: product.id, variantId: v.id, inventoryItemId: v.inventoryItem.id };
++}
++
++export async function updateVariant(productId: string, variantId: string, i: { priceCents?: number; sku?: string; barcode?: string; costCents?: number }) {
++  const v: any = { id: variantId };
++  if (i.priceCents !== undefined) v.price = toDecimal(i.priceCents);
++  if (i.barcode !== undefined) v.barcode = i.barcode;
++  const inv: any = {};
++  if (i.sku !== undefined) inv.sku = i.sku;
++  if (i.costCents !== undefined) inv.cost = toDecimal(i.costCents);
++  if (Object.keys(inv).length) v.inventoryItem = inv;
++  const u = await gql(`mutation($pid: ID!, $v: [ProductVariantsBulkInput!]!){ productVariantsBulkUpdate(productId: $pid, variants: $v) { userErrors { field message } } }`, { pid: productId, v: [v] });
++  throwUserErrors(u.productVariantsBulkUpdate.userErrors, 'Updating the item');
++}
+diff --git a/src/alloys/zeller/terminal.ts b/src/alloys/zeller/terminal.ts
+new file mode 100644
+index 0000000..c6314c5
+--- /dev/null
++++ b/src/alloys/zeller/terminal.ts
+@@ -0,0 +1,177 @@
++// Zeller Payments SDK wrapper (research doc §6.8). Errors are RETURNED by the SDK, never thrown.
++// Everything outside this file talks to PaymentResult - never to raw SDK results.
++import { lookupResponse, type Category } from '../../lib/responseCodes';
++import { cardLast4 } from '../../lib/cards';
++import type { CardInfo } from '../../lib/types';
++
++export type ZellerEvent = { type: string; message?: string };
++export type ZellerTxn = {
++  $type?: 'Approved' | 'Declined'; type?: 'PURCHASE' | 'REFUND'; status?: 'APPROVED' | 'DECLINED' | 'FAILED';
++  amount: number; currency?: string; responseCode?: string; responseText?: string; timestampLocal?: string;
++  transactionUuid?: string; approvalCode?: string; cardMedia?: string; externalReference?: string; panMasked?: string;
++  last4?: string;
++  receiptLink?: string; rrn?: string; scheme?: string; tipAmount?: number; surchargeAmount?: number; taxAmount?: number;
++  sessionUuid?: string;
++};
++export type ZellerError = Error & { type: string };
++type Op<T> = Promise<T | ZellerError> & { cancel?: () => void; onEvent?: (cb: (e: ZellerEvent) => void) => unknown };
++
++export interface TerminalLike {
++  initialise(): Op<true>;
++  setup(opts?: Record<string, unknown>): Op<true>;
++  configure(opts: Record<string, unknown>): Op<true>;
++  purchase(o: {
++    amount: number; reference: string; sessionUuid?: string; tipAmount?: number; terminalReceipt?: boolean;
++    terminalReceiptPrint?: boolean; terminalContact?: boolean; terminalNote?: boolean; fullscreen?: boolean;
++    virtualTerminal?: boolean; theme?: string;
++  }): Op<ZellerTxn>;
++  refund(o: { purchase: string; amount: number; reference?: string; sessionUuid?: string; amountAdjustable?: boolean; terminalReceipt?: boolean; terminalReceiptPrint?: boolean }): Op<ZellerTxn>;
++  getTransactions(o?: { reference?: string }): Op<ZellerTxn[]>;
++}
++
++export type NotReadyReason = 'SETUP_REQUIRED' | 'OFFLINE' | 'TERMINAL_UNAVAILABLE' | 'BUSY' | 'INVALID_REQUEST';
++export type PaymentResult =
++  | { kind: 'APPROVED'; txn: ZellerTxn }
++  | { kind: 'DECLINED'; code?: string; text: string; category: Category; retryable: boolean; txn?: ZellerTxn }
++  | { kind: 'CANCELLED' }
++  | { kind: 'UNKNOWN'; reason: string } // must reconcile before ANY retry
++  | { kind: 'NOT_READY'; reason: NotReadyReason; message: string };
++
++export const attemptRef = (saleUuid: string, n: number) => `${saleUuid}-${n}`;
++const isErr = (r: unknown): r is ZellerError => r instanceof Error;
++
++export function describeEvent(e: ZellerEvent): string {
++  switch (e.type) {
++    case 'AWAITING_PAYMENT_METHOD': return 'Tap, insert or swipe card on the terminal';
++    case 'AWAITING_APPLICATION_SELECTION': return 'Customer is choosing the card application';
++    case 'AWAITING_ACCOUNT_SELECTION': return 'Customer is choosing the account';
++    case 'AWAITING_PIN_ENTRY': return 'Customer is entering their PIN';
++    case 'AWAITING_SIGNATURE': return 'Waiting for signature';
++    case 'SIGNATURE_SUBMITTED': return 'Signature received';
++    case 'SIGNATURE_CLEARED': return 'Signature cleared - sign again';
++    case 'RETRYING_PAYMENT_METHOD': return 'Retrying - present the card again';
++    case 'PROCESSING': return 'Processing…';
++    case 'DISPLAYING_PAYMENT_MESSAGE': return e.message || 'Showing result on the terminal';
++    case 'AWAITING_TIP_ENTRY': return 'Customer is choosing a tip';
++    case 'TIP_PROVIDED': return 'Tip chosen';
++    default: return e.message || e.type;
++  }
++}
++
++export function txnToCard(t: ZellerTxn): CardInfo {
++  return {
++    transactionUuid: t.transactionUuid, externalReference: t.externalReference, approvalCode: t.approvalCode,
++    scheme: t.scheme, panMasked: t.panMasked, last4: t.last4 ?? cardLast4(t.panMasked), cardMedia: t.cardMedia, rrn: t.rrn, receiptLink: t.receiptLink,
++    responseCode: t.responseCode, timestampLocal: t.timestampLocal, tipAmount: t.tipAmount, surchargeAmount: t.surchargeAmount,
++  };
++}
++
++type Seen = { any: boolean; processing: boolean };
++
++/** Error | ClientTransaction → PaymentResult. `seen` tells us whether money may already have moved. */
++export function normalise(r: ZellerTxn | ZellerError, seen: Seen): PaymentResult {
++  if (isErr(r)) {
++    const type = (r as ZellerError).type ?? 'Operation Failure';
++    const m = r.message || type;
++    switch (type) {
++      case 'Setup Required': return { kind: 'NOT_READY', reason: 'SETUP_REQUIRED', message: 'Terminal not paired - open Diagnostics ▸ Zeller ▸ Setup.' };
++      case 'Network Failure': return seen.any ? { kind: 'UNKNOWN', reason: 'Network failed during payment' } : { kind: 'NOT_READY', reason: 'OFFLINE', message: 'No internet - card payments need a connection. Cash still works.' };
++      case 'Operation Busy': return { kind: 'NOT_READY', reason: 'BUSY', message: 'Terminal is busy. Please wait and try again.' };
++      case 'Paired Device Busy': return { kind: 'NOT_READY', reason: 'BUSY', message: 'The terminal is serving another register.' };
++      case 'Paired Device Not Available': return { kind: 'NOT_READY', reason: 'TERMINAL_UNAVAILABLE', message: 'Can’t reach the terminal - check its power and Wi‑Fi.' };
++      case 'Connection Failure': return seen.any ? { kind: 'UNKNOWN', reason: 'Connection dropped during payment' } : { kind: 'NOT_READY', reason: 'TERMINAL_UNAVAILABLE', message: 'Couldn’t connect to the terminal.' };
++      case 'Operation Request Invalid': return { kind: 'NOT_READY', reason: 'INVALID_REQUEST', message: m };
++      case 'Cancelled': return { kind: 'CANCELLED' };
++      case 'Inactivity Timeout': return { kind: 'DECLINED', text: 'Customer didn’t respond - try again.', category: 'DECLINED_CUSTOMER_ACTION', retryable: true };
++      case 'Card Declined': case 'Transaction Declined': return { kind: 'DECLINED', text: 'Card declined. Try another card.', category: 'DECLINED_TRY_OTHER_CARD', retryable: true };
++      case 'Card Blocked': return { kind: 'DECLINED', text: 'Card blocked. Try another card.', category: 'DECLINED_TRY_OTHER_CARD', retryable: true };
++      case 'Card Not Supported': return { kind: 'DECLINED', text: 'Card not supported. Try another card.', category: 'DECLINED_TRY_OTHER_CARD', retryable: true };
++      case 'Card Read Failure': return { kind: 'DECLINED', text: 'Card read failed - tap, insert or swipe again.', category: 'DECLINED_CUSTOMER_ACTION', retryable: true };
++      case 'Card Insert Required': return { kind: 'DECLINED', text: 'Please insert the card.', category: 'DECLINED_CUSTOMER_ACTION', retryable: true };
++      default: return { kind: 'UNKNOWN', reason: `${type}: ${m}` }; // incl. Operation Interrupted & Transaction * timeouts
++    }
++  }
++  const approved = r.$type === 'Approved' || r.status === 'APPROVED';
++  if (approved) return { kind: 'APPROVED', txn: r };
++  const info = lookupResponse(r.responseCode, r.responseText);
++  if (info.category === 'CANCELLED') return { kind: 'CANCELLED' };
++  if (info.unknownOutcome) return { kind: 'UNKNOWN', reason: info.message };
++  return { kind: 'DECLINED', code: r.responseCode, text: info.message, category: info.category, retryable: info.retryable, txn: r };
++}
++
++/** Look a payment up by its reference (our `externalReference`). */
++export async function reconcile(terminal: TerminalLike, reference: string): Promise<PaymentResult | { kind: 'NOT_FOUND' }> {
++  const r = await terminal.getTransactions({ reference });
++  if (isErr(r)) return { kind: 'UNKNOWN', reason: `Lookup failed: ${r.type ?? ''} ${r.message}` };
++  const t = r.find(x => x.externalReference === reference) ?? (r.length === 1 ? r[0] : undefined);
++  if (!t) return { kind: 'NOT_FOUND' };
++  return normalise(t, { any: true, processing: true });
++}
++
++export type ChargeOpts = { amountCents: number; reference: string; sessionUuid?: string; terminalReceipt?: boolean };
++export type ChargeHooks = { onStarted?: () => void | Promise<void>; onEvent?: (e: ZellerEvent) => void };
++
++/**
++ * Take a card payment. Persist the attempt BEFORE the SDK call (hooks.onStarted).
++ * If the outcome is anything but a clean decline, reconcile with getTransactions before returning.
++ */
++export function startCharge(terminal: TerminalLike, o: ChargeOpts, hooks: ChargeHooks = {}) {
++  let op: ReturnType<TerminalLike['purchase']> | undefined;
++  let cancelled = false;
++  const promise = (async (): Promise<PaymentResult> => {
++    await hooks.onStarted?.();
++    const seen: Seen = { any: false, processing: false };
++    op = terminal.purchase({
++      amount: o.amountCents, reference: o.reference, sessionUuid: o.sessionUuid,
++      terminalReceipt: o.terminalReceipt ?? false, terminalReceiptPrint: false, // no Zeller eReceipt or print button on the terminal; our own receipts are used
++    });
++    op.onEvent?.(e => {
++      seen.any = true;
++      if (e.type === 'PROCESSING') seen.processing = true;
++      hooks.onEvent?.(e);
++    });
++    const r = await op;
++    let res = normalise(r, seen);
++    if (res.kind === 'CANCELLED' || res.kind === 'UNKNOWN' || (res.kind === 'DECLINED' && seen.processing) || cancelled) {
++      // "Cancel" only ATTEMPTS to cancel - the payment may still have completed.
++      if (res.kind !== 'APPROVED' && (seen.any || res.kind === 'UNKNOWN')) {
++        const rec = await reconcile(terminal, o.reference);
++        if (rec.kind === 'APPROVED') res = rec;
++        else if (rec.kind === 'UNKNOWN' && (seen.processing || res.kind === 'UNKNOWN')) res = { kind: 'UNKNOWN', reason: rec.reason };
++      }
++    }
++    return res;
++  })();
++  return { promise, cancel: () => { cancelled = true; op?.cancel?.(); } };
++}
++
++export type RefundResult =
++  | { kind: 'APPROVED'; txn: ZellerTxn }
++  | { kind: 'FAILED'; text: string }
++  | { kind: 'CANCELLED' }
++  | { kind: 'UNKNOWN'; reason: string };
++
++export function startRefund(terminal: TerminalLike, o: { purchaseRef: string; amountCents: number; reference: string }, hooks: ChargeHooks = {}) {
++  let op: ReturnType<TerminalLike['refund']> | undefined;
++  const promise = (async (): Promise<RefundResult> => {
++    await hooks.onStarted?.();
++    const seen: Seen = { any: false, processing: false };
++    op = terminal.refund({ purchase: o.purchaseRef, amount: o.amountCents, reference: o.reference, terminalReceipt: false, terminalReceiptPrint: false });
++    op.onEvent?.(e => { seen.any = true; if (e.type === 'PROCESSING') seen.processing = true; hooks.onEvent?.(e); });
++    const r = await op;
++    if (isErr(r)) {
++      const type = (r as ZellerError).type;
++      if (type === 'Transaction Not Found') return { kind: 'FAILED', text: 'Zeller can’t find the original payment for this refund.' };
++      if (type === 'Cancelled' && !seen.processing) return { kind: 'CANCELLED' };
++      if (type === 'Setup Required') return { kind: 'FAILED', text: 'Terminal not paired.' };
++      if (type === 'Operation Busy') return { kind: 'FAILED', text: 'Terminal is busy - try again.' };
++      const rec = await reconcile(terminal, o.reference);
++      if (rec.kind === 'APPROVED') return { kind: 'APPROVED', txn: rec.txn };
++      if (rec.kind === 'NOT_FOUND' && !seen.processing) return { kind: 'FAILED', text: r.message || type };
++      return { kind: 'UNKNOWN', reason: `${type}: ${r.message}` };
++    }
++    if (r.$type === 'Approved' || r.status === 'APPROVED') return { kind: 'APPROVED', txn: r };
++    return { kind: 'FAILED', text: lookupResponse(r.responseCode, r.responseText).message };
++  })();
++  return { promise, cancel: () => op?.cancel?.() };
++}
+diff --git a/src/lib/secrets.ts b/src/lib/secrets.ts
+new file mode 100644
+index 0000000..db06f6a
+--- /dev/null
++++ b/src/lib/secrets.ts
+@@ -0,0 +1,17 @@
++// Location: src/lib/secrets.ts
++// The shared secrets for the pass, gift-claim and receipt servers. Keychain only. Alloys P3: these lived at the bottom of the Shopify
++// client but belong to the app's own servers, not to Shopify, so they moved here. src/lib/shopify/client.ts still re-exports them.
++import * as SecureStore from 'expo-secure-store';
++import { isTraining } from './trainingGuard';
++
++// Wallet pass server shared secret (signs pass links). Keychain only.
++export const getPassSecret = async () => { try { return (await SecureStore.getItemAsync('pos.passSecret')) ?? ''; } catch { return ''; } };
++export const setPassSecret = async (v: string) => { if (isTraining()) return; try { if (v) await SecureStore.setItemAsync('pos.passSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.passSecret'); } catch {} };
++
++// Gift card claim page shared secret (signs claim links). Keychain only.
++export const getClaimSecret = async () => { try { return (await SecureStore.getItemAsync('pos.claimSecret')) ?? ''; } catch { return ''; } };
++export const setClaimSecret = async (v: string) => { if (isTraining()) return; try { if (v) await SecureStore.setItemAsync('pos.claimSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.claimSecret'); } catch {} };
++
++// Receipt server shared secret (authorises receipt uploads). Keychain only.
++export const getReceiptSecret = async () => { try { return (await SecureStore.getItemAsync('pos.receiptSecret')) ?? ''; } catch { return ''; } };
++export const setReceiptSecret = async (v: string) => { if (isTraining()) return; try { if (v) await SecureStore.setItemAsync('pos.receiptSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.receiptSecret'); } catch {} };
+diff --git a/src/lib/shopify/catalogue.ts b/src/lib/shopify/catalogue.ts
+index 830e431..b225758 100644
+--- a/src/lib/shopify/catalogue.ts
++++ b/src/lib/shopify/catalogue.ts
+@@ -1,191 +1,3 @@
+ // Location: src/lib/shopify/catalogue.ts
+-// Catalogue import: bulk operations for the full pull (variants, collections, customers),
+-// small paged queries for discounts, and an updated_at delta for stock.
+-import { gql, throwUserErrors, ShopifyUserError } from './client';
+-import { toCents } from '../money';
+-import { sleep } from '../ids';
+-import { isSellableStatus, parseProductStatus } from '../productStatus';
+-import type { AutoDiscount, Collection, Customer, ManualPreset, Target, Variant } from '../types';
+-
+-export async function fetchShop() {
+-  const d = await gql(`{ shop { name currencyCode myshopifyDomain } locations(first: 20) { nodes { id name isActive } } }`);
+-  return { name: d.shop.name as string, currency: d.shop.currencyCode as string, locations: (d.locations.nodes as any[]).filter(l => l.isActive).map(l => ({ id: l.id as string, name: l.name as string })) };
+-}
+-
+-// ── bulk operations ──────────────────────────────────────────────────────────
+-async function runBulk(inner: string, onProgress?: (s: string) => void): Promise<any[]> {
+-  const start = async (): Promise<void> => {
+-    for (let i = 0; i < 60; i++) {
+-      const d = await gql(`mutation($q:String!){ bulkOperationRunQuery(query:$q){ bulkOperation{ id status } userErrors{ field message } } }`, { q: inner });
+-      const errs = d.bulkOperationRunQuery.userErrors as any[];
+-      if (!errs?.length) return;
+-      if (/already in progress|already running/i.test(errs[0].message)) { onProgress?.('Waiting for another bulk job…'); await sleep(3000); continue; }
+-      throwUserErrors(errs, 'Bulk import');
+-    }
+-    throw new ShopifyUserError('Bulk import is busy - try again in a minute.');
+-  };
+-  await start();
+-  for (let i = 0; i < 400; i++) {
+-    await sleep(i < 5 ? 1200 : 2500);
+-    const d = await gql(`{ currentBulkOperation(type: QUERY) { id status errorCode objectCount url } }`);
+-    const op = d.currentBulkOperation;
+-    if (!op) continue;
+-    onProgress?.(`${op.status.toLowerCase()} · ${op.objectCount ?? 0} records`);
+-    if (op.status === 'COMPLETED') {
+-      if (!op.url) return [];
+-      const text = await (await fetch(op.url)).text();
+-      return text.split('\n').filter(Boolean).map(l => JSON.parse(l));
+-    }
+-    if (op.status === 'FAILED' || op.status === 'CANCELED' || op.status === 'EXPIRED') throw new ShopifyUserError(`Bulk import ${op.status.toLowerCase()} (${op.errorCode ?? 'no code'})`);
+-  }
+-  throw new ShopifyUserError('Bulk import timed out.');
+-}
+-
+-const img = (u?: string | null) => (u ? `${u}${u.includes('?') ? '&' : '?'}width=400` : undefined);
+-
+-export async function fetchVariants(locationId: string, onProgress?: (s: string) => void): Promise<Variant[]> {
+-  const rows = await runBulk(`{ productVariants { edges { node {
+-    id title sku barcode price compareAtPrice updatedAt image { url }
+-    inventoryItem { id tracked unitCost { amount } inventoryLevel(locationId: "${locationId}") { quantities(names: ["available"]) { name quantity } } }
+-    product { id title status tags featuredMedia { preview { image { url } } } }
+-  } } } }`, onProgress);
+-  return rows.map((n): Variant => {
+-    const q = n.inventoryItem?.inventoryLevel?.quantities?.find((x: any) => x.name === 'available');
+-    const tracked = !!n.inventoryItem?.tracked;
+-    return {
+-      id: n.id, productId: n.product.id, productTitle: n.product.title,
+-      variantTitle: n.title === 'Default Title' ? '' : n.title,
+-      sku: n.sku || undefined, barcode: n.barcode || undefined,
+-      priceCents: toCents(n.price), compareAtCents: n.compareAtPrice ? toCents(n.compareAtPrice) : undefined,
+-      costCents: n.inventoryItem?.unitCost ? toCents(n.inventoryItem.unitCost.amount) : undefined,
+-      inventoryItemId: n.inventoryItem?.id, tracked, stock: tracked ? (q?.quantity ?? 0) : null,
+-      image: img(n.image?.url ?? n.product.featuredMedia?.preview?.image?.url), tags: n.product.tags ?? [],
+-      active: isSellableStatus(parseProductStatus(n.product.status)), status: parseProductStatus(n.product.status), updatedAt: n.updatedAt, // Active and Unlisted are sold and shown; Draft and Archived are not
+-    };
+-  });
+-}
+-
+-export async function fetchCollections(onProgress?: (s: string) => void): Promise<Collection[]> {
+-  const rows = await runBulk(`{ collections { edges { node { id title image { url } products { edges { node { id } } } } } } }`, onProgress);
+-  const map = new Map<string, Collection>();
+-  for (const r of rows) {
+-    if (!r.__parentId) map.set(r.id, { id: r.id, title: r.title, image: img(r.image?.url), productIds: [] });
+-  }
+-  for (const r of rows) if (r.__parentId) map.get(r.__parentId)?.productIds.push(r.id);
+-  return [...map.values()];
+-}
+-
+-export async function fetchCustomers(onProgress?: (s: string) => void): Promise<Customer[]> {
+-  const rows = await runBulk(`{ customers { edges { node { id displayName email phone numberOfOrders amountSpent { amount } note } } } }`, onProgress);
+-  return rows.map((r): Customer => ({
+-    id: r.id, name: r.displayName || r.email || r.phone || 'Customer', email: r.email || undefined, phone: r.phone || undefined,
+-    orders: Number(r.numberOfOrders ?? 0), spentCents: r.amountSpent ? toCents(r.amountSpent.amount) : 0, note: r.note || undefined,
+-  }));
+-}
+-
+-// ── stock delta (multi-register) ─────────────────────────────────────────────
+-export async function fetchStockDelta(sinceISO: string, locationId: string): Promise<Record<string, number>> {
+-  const out: Record<string, number> = {};
+-  let after: string | null = null;
+-  for (let page = 0; page < 20; page++) {
+-    const d: any = await gql(
+-      `query($q:String,$loc:ID!,$after:String){ inventoryItems(first: 100, after:$after, query:$q) { pageInfo { hasNextPage endCursor }
+-        nodes { id inventoryLevel(locationId:$loc) { quantities(names:["available"]) { name quantity } } } } }`,
+-      { q: `updated_at:>'${sinceISO}'`, loc: locationId, after });
+-    for (const n of d.inventoryItems.nodes) {
+-      const q = n.inventoryLevel?.quantities?.find((x: any) => x.name === 'available');
+-      if (q) out[n.id] = q.quantity;
+-    }
+-    if (!d.inventoryItems.pageInfo.hasNextPage) break;
+-    after = d.inventoryItems.pageInfo.endCursor;
+-  }
+-  return out;
+-}
+-
+-// ── discounts ────────────────────────────────────────────────────────────────
+-const ITEMS = `items { __typename ... on AllDiscountItems { allItems }
+-  ... on DiscountProducts { products(first: 40) { nodes { id } pageInfo { hasNextPage } } productVariants(first: 40) { nodes { id } pageInfo { hasNextPage } } }
+-  ... on DiscountCollections { collections(first: 20) { nodes { id } pageInfo { hasNextPage } } } }`;
+-const VALUE = `value { __typename ... on DiscountPercentage { percentage } ... on DiscountAmount { amount { amount } appliesOnEachItem } }`;
+-
+-function mapItems(items: any): { target: Target; truncated: boolean } {
+-  if (!items) return { target: {}, truncated: false };
+-  if (items.__typename === 'AllDiscountItems') return { target: { all: true }, truncated: false };
+-  if (items.__typename === 'DiscountProducts') {
+-    return {
+-      target: { productIds: items.products.nodes.map((n: any) => n.id), variantIds: items.productVariants.nodes.map((n: any) => n.id) },
+-      truncated: !!(items.products.pageInfo.hasNextPage || items.productVariants.pageInfo.hasNextPage),
+-    };
+-  }
+-  if (items.__typename === 'DiscountCollections') return { target: { collectionIds: items.collections.nodes.map((n: any) => n.id) }, truncated: !!items.collections.pageInfo.hasNextPage };
+-  return { target: {}, truncated: false };
+-}
+-
+-export async function fetchAutoDiscounts(): Promise<AutoDiscount[]> {
+-  const out: AutoDiscount[] = [];
+-  let after: string | null = null;
+-  for (let page = 0; page < 40; page++) {
+-    const d: any = await gql(`query($after:String){ automaticDiscountNodes(first: 3, after:$after) { pageInfo { hasNextPage endCursor } nodes { id automaticDiscount { __typename
+-      ... on DiscountAutomaticBasic { title status startsAt endsAt
+-        minimumRequirement { __typename ... on DiscountMinimumSubtotal { greaterThanOrEqualToSubtotal { amount } } ... on DiscountMinimumQuantity { greaterThanOrEqualToQuantity } }
+-        customerGets { ${VALUE} ${ITEMS} } }
+-      ... on DiscountAutomaticBxgy { title status startsAt endsAt usesPerOrderLimit
+-        customerBuys { value { __typename ... on DiscountQuantity { quantity } ... on DiscountPurchaseAmount { amount } } ${ITEMS} }
+-        customerGets { value { __typename ... on DiscountOnQuantity { quantity { quantity } effect { __typename ... on DiscountPercentage { percentage } ... on DiscountAmount { amount { amount } } } } } ${ITEMS} } }
+-    } } } }`, { after });
+-    for (const n of d.automaticDiscountNodes.nodes) {
+-      const a = n.automaticDiscount;
+-      if (!a || a.status !== 'ACTIVE') continue;
+-      if (a.__typename === 'DiscountAutomaticBasic') {
+-        const { target, truncated } = mapItems(a.customerGets.items);
+-        const v = a.customerGets.value;
+-        const mr = a.minimumRequirement;
+-        out.push({
+-          id: n.id, title: a.title, kind: 'basic', startsAt: a.startsAt, endsAt: a.endsAt, target, truncated,
+-          pct: v.__typename === 'DiscountPercentage' ? v.percentage * 100 : undefined,
+-          amtCents: v.__typename === 'DiscountAmount' ? toCents(v.amount.amount) : undefined,
+-          eachItem: v.__typename === 'DiscountAmount' ? !!v.appliesOnEachItem : undefined,
+-          minSubtotalCents: mr?.__typename === 'DiscountMinimumSubtotal' ? toCents(mr.greaterThanOrEqualToSubtotal.amount) : undefined,
+-          minQty: mr?.__typename === 'DiscountMinimumQuantity' ? Number(mr.greaterThanOrEqualToQuantity) : undefined,
+-        });
+-      } else if (a.__typename === 'DiscountAutomaticBxgy') {
+-        const b = mapItems(a.customerBuys.items), g = mapItems(a.customerGets.items);
+-        const bv = a.customerBuys.value, gv = a.customerGets.value;
+-        if (gv.__typename !== 'DiscountOnQuantity') continue;
+-        out.push({
+-          id: n.id, title: a.title, kind: 'bxgy', startsAt: a.startsAt, endsAt: a.endsAt, truncated: b.truncated || g.truncated,
+-          usesPerOrderLimit: a.usesPerOrderLimit ? Number(a.usesPerOrderLimit) : undefined,
+-          buys: { target: b.target, qty: bv.__typename === 'DiscountQuantity' ? Number(bv.quantity) : undefined, amountCents: bv.__typename === 'DiscountPurchaseAmount' ? toCents(bv.amount) : undefined },
+-          gets: {
+-            target: g.target, qty: Number(gv.quantity.quantity),
+-            pct: gv.effect.__typename === 'DiscountPercentage' ? gv.effect.percentage * 100 : undefined,
+-            amtCents: gv.effect.__typename === 'DiscountAmount' ? toCents(gv.effect.amount.amount) : undefined,
+-          },
+-        });
+-      }
+-    }
+-    if (!d.automaticDiscountNodes.pageInfo.hasNextPage) break;
+-    after = d.automaticDiscountNodes.pageInfo.endCursor;
+-  }
+-  return out;
+-}
+-
+-/** Shopify discount CODES become manual presets the cashier can tap. */
+-export async function fetchManualPresets(): Promise<ManualPreset[]> {
+-  const out: ManualPreset[] = [];
+-  let after: string | null = null;
+-  for (let page = 0; page < 20; page++) {
+-    const d: any = await gql(`query($after:String){ codeDiscountNodes(first: 20, after:$after, query: "status:active") { pageInfo { hasNextPage endCursor } nodes { id codeDiscount { __typename
+-      ... on DiscountCodeBasic { title status customerGets { ${VALUE} } } } } } }`, { after });
+-    for (const n of d.codeDiscountNodes.nodes) {
+-      const c = n.codeDiscount;
+-      if (c?.__typename !== 'DiscountCodeBasic' || c.status !== 'ACTIVE') continue;
+-      const v = c.customerGets.value;
+-      if (v.__typename === 'DiscountPercentage') out.push({ id: n.id, kind: 'pct', value: v.percentage * 100, label: c.title });
+-      else if (v.__typename === 'DiscountAmount') out.push({ id: n.id, kind: 'amt', value: toCents(v.amount.amount), label: c.title });
+-    }
+-    if (!d.codeDiscountNodes.pageInfo.hasNextPage) break;
+-    after = d.codeDiscountNodes.pageInfo.endCursor;
+-  }
+-  return out;
+-}
++// Alloys P3: this file moved to src/alloys/shopify/catalogue.ts. This one-line shim keeps every existing import working until P9 removes it.
++export * from '../../alloys/shopify/catalogue';
+diff --git a/src/lib/shopify/client.ts b/src/lib/shopify/client.ts
+index 755632c..bba0a17 100644
+--- a/src/lib/shopify/client.ts
++++ b/src/lib/shopify/client.ts
+@@ -1,143 +1,4 @@
+ // Location: src/lib/shopify/client.ts
+-// Direct Shopify Admin GraphQL client (no backend).
+-// Auth: Dev Dashboard app → client-credentials grant, token valid 24 h, refreshed automatically.
+-// Client secret + token live in the iOS Keychain (expo-secure-store).
+-import * as SecureStore from 'expo-secure-store';
+-import { TrainingBlockedError, isTraining } from '../trainingGuard';
+-import { sleep } from '../ids';
+-
+-export const API_VERSION = '2026-07'; // pin one version, bump quarterly (research doc §4.2)
+-
+-export type ShopifyCreds = { domain: string; clientId: string; clientSecret: string };
+-export class ShopifyNetworkError extends Error { constructor(m: string) { super(m); this.name = 'ShopifyNetworkError'; } }
+-export class ShopifyUserError extends Error {
+-  details?: any;
+-  constructor(m: string, details?: any) { super(m); this.name = 'ShopifyUserError'; this.details = details; }
+-}
+-export type UserError = { field?: string[] | null; message: string; code?: string };
+-
+-const K = { domain: 'shopify.domain', id: 'shopify.clientId', secret: 'shopify.clientSecret', token: 'shopify.token', exp: 'shopify.tokenExp', scope: 'shopify.scope' };
+-let creds: ShopifyCreds | null = null;
+-let token: { value: string; exp: number; scope: string } | null = null;
+-let inflight: Promise<string> | null = null;
+-
+-export function normaliseDomain(s: string): string {
+-  let d = s.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+-  if (!d) return '';
+-  if (!d.includes('.')) d += '.myshopify.com';
+-  return d;
+-}
+-
+-export async function loadCreds(): Promise<ShopifyCreds | null> {
+-  try {
+-    const [domain, clientId, clientSecret] = await Promise.all([K.domain, K.id, K.secret].map(k => SecureStore.getItemAsync(k)));
+-    if (domain && clientId && clientSecret) creds = { domain, clientId, clientSecret };
+-    const [tv, te, ts] = await Promise.all([K.token, K.exp, K.scope].map(k => SecureStore.getItemAsync(k)));
+-    if (tv && te) token = { value: tv, exp: Number(te), scope: ts ?? '' };
+-  } catch { /* keychain unavailable */ }
+-  return creds;
+-}
+-export async function saveCreds(c: ShopifyCreds) {
+-  if (isTraining()) throw new TrainingBlockedError('changing the Shopify login');
+-  creds = { domain: normaliseDomain(c.domain), clientId: c.clientId.trim(), clientSecret: c.clientSecret.trim() };
+-  token = null;
+-  await Promise.all([
+-    SecureStore.setItemAsync(K.domain, creds.domain), SecureStore.setItemAsync(K.id, creds.clientId), SecureStore.setItemAsync(K.secret, creds.clientSecret),
+-    SecureStore.deleteItemAsync(K.token), SecureStore.deleteItemAsync(K.exp),
+-  ]);
+-}
+-export async function clearCreds() {
+-  if (isTraining()) throw new TrainingBlockedError('changing the Shopify login');
+-  creds = null; token = null;
+-  await Promise.all(Object.values(K).map(k => SecureStore.deleteItemAsync(k)));
+-}
+-export const hasCreds = () => !isTraining() && !!creds; // training: every sync path stops here
+-export const shopDomain = () => creds?.domain ?? '';
+-export const tokenScopes = () => (token?.scope ? token.scope.split(',') : []);
+-
+-export async function getToken(force = false): Promise<string> {
+-  if (isTraining()) throw new TrainingBlockedError('Shopify');
+-  if (!creds) throw new ShopifyUserError('Shopify is not set up - open More ▸ Settings ▸ Shopify.');
+-  if (!force && token && token.exp - Date.now() > 5 * 60_000) return token.value;
+-  if (inflight) return inflight;
+-  const c = creds;
+-  inflight = (async () => {
+-    let res: Response;
+-    try {
+-      res = await fetch(`https://${c.domain}/admin/oauth/access_token`, {
+-        method: 'POST',
+-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+-        body: `grant_type=client_credentials&client_id=${encodeURIComponent(c.clientId)}&client_secret=${encodeURIComponent(c.clientSecret)}`,
+-      });
+-    } catch (e: any) { throw new ShopifyNetworkError(`Can't reach Shopify: ${e?.message ?? e}`); }
+-    if (!res.ok) {
+-      const t = await res.text().catch(() => '');
+-      if (res.status >= 500) throw new ShopifyNetworkError(`Shopify auth ${res.status}`);
+-      throw new ShopifyUserError(`Shopify rejected the client ID/secret (${res.status}). ${t.slice(0, 160)}`);
+-    }
+-    const j = await res.json();
+-    token = { value: j.access_token, exp: Date.now() + (j.expires_in ?? 86399) * 1000, scope: j.scope ?? '' };
+-    await Promise.all([
+-      SecureStore.setItemAsync(K.token, token.value), SecureStore.setItemAsync(K.exp, String(token.exp)), SecureStore.setItemAsync(K.scope, token.scope),
+-    ]).catch(() => {});
+-    return token.value;
+-  })().finally(() => { inflight = null; });
+-  return inflight;
+-}
+-
+-// cost-aware throttle: obey extensions.cost.throttleStatus (research doc §4.10)
+-let notBefore = 0;
+-
+-export async function gql<T = any>(query: string, variables: Record<string, any> = {}): Promise<T> {
+-  if (isTraining()) throw new TrainingBlockedError('Shopify');
+-  if (!creds) throw new ShopifyUserError('Shopify is not set up - open More ▸ Settings ▸ Shopify.');
+-  let authRetried = false;
+-  for (let attempt = 0; ; attempt++) {
+-    const wait = notBefore - Date.now();
+-    if (wait > 0) await sleep(Math.min(wait, 20_000));
+-    const tok = await getToken();
+-    let res: Response;
+-    try {
+-      res = await fetch(`https://${creds.domain}/admin/api/${API_VERSION}/graphql.json`, {
+-        method: 'POST',
+-        headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': tok },
+-        body: JSON.stringify({ query, variables }),
+-      });
+-    } catch (e: any) {
+-      if (attempt < 2) { await sleep(800 * (attempt + 1)); continue; }
+-      throw new ShopifyNetworkError(`Can't reach Shopify: ${e?.message ?? e}`);
+-    }
+-    if (res.status === 401 && !authRetried) { authRetried = true; await getToken(true); continue; }
+-    if (res.status === 429 || res.status >= 500) {
+-      if (attempt < 3) { await sleep(1000 * 2 ** attempt); continue; }
+-      throw new ShopifyNetworkError(`Shopify ${res.status}`);
+-    }
+-    let json: any;
+-    try { json = await res.json(); } catch { throw new ShopifyNetworkError(`Shopify returned a non-JSON reply (${res.status})`); }
+-    const ts = json?.extensions?.cost?.throttleStatus;
+-    if (ts && ts.currentlyAvailable < 300) notBefore = Date.now() + ((300 - ts.currentlyAvailable) / (ts.restoreRate || 100)) * 1000;
+-    if (json.errors?.length) {
+-      const throttled = json.errors.some((e: any) => e.extensions?.code === 'THROTTLED');
+-      if (throttled && attempt < 5) { notBefore = Date.now() + 1500 * (attempt + 1); continue; }
+-      throw new ShopifyUserError(json.errors.map((e: any) => e.message).join('; '), json.errors);
+-    }
+-    return json.data as T;
+-  }
+-}
+-
+-export function throwUserErrors(errs: UserError[] | undefined | null, what: string) {
+-  if (errs && errs.length) throw new ShopifyUserError(`${what}: ${errs.map(e => e.message).join('; ')}`, errs);
+-}
+-export const isNetworkError = (e: unknown) => e instanceof ShopifyNetworkError;
+-
+-// Wallet pass server shared secret (signs pass links). Keychain only.
+-export const getPassSecret = async () => { try { return (await SecureStore.getItemAsync('pos.passSecret')) ?? ''; } catch { return ''; } };
+-export const setPassSecret = async (v: string) => { if (isTraining()) return; try { if (v) await SecureStore.setItemAsync('pos.passSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.passSecret'); } catch {} };
+-
+-// Gift card claim page shared secret (signs claim links). Keychain only.
+-export const getClaimSecret = async () => { try { return (await SecureStore.getItemAsync('pos.claimSecret')) ?? ''; } catch { return ''; } };
+-export const setClaimSecret = async (v: string) => { if (isTraining()) return; try { if (v) await SecureStore.setItemAsync('pos.claimSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.claimSecret'); } catch {} };
+-
+-// Receipt server shared secret (authorises receipt uploads). Keychain only.
+-export const getReceiptSecret = async () => { try { return (await SecureStore.getItemAsync('pos.receiptSecret')) ?? ''; } catch { return ''; } };
+-export const setReceiptSecret = async (v: string) => { if (isTraining()) return; try { if (v) await SecureStore.setItemAsync('pos.receiptSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.receiptSecret'); } catch {} };
++// Alloys P3: the client moved to src/alloys/shopify/client.ts and the shared secrets to src/lib/secrets.ts. This shim keeps every existing import working until P9 removes it.
++export * from '../../alloys/shopify/client';
++export * from '../secrets';
+diff --git a/src/lib/shopify/customers.ts b/src/lib/shopify/customers.ts
+index 5bef2a1..7ec9bb8 100644
+--- a/src/lib/shopify/customers.ts
++++ b/src/lib/shopify/customers.ts
+@@ -1,23 +1,3 @@
+-import { gql, throwUserErrors } from './client';
+-import { toCents } from '../money';
+-import type { Customer } from '../types';
+-
+-const F = `id displayName email phone numberOfOrders amountSpent { amount } note`;
+-const map = (n: any): Customer => ({ id: n.id, name: n.displayName || n.email || n.phone || 'Customer', email: n.email ?? undefined, phone: n.phone ?? undefined, orders: Number(n.numberOfOrders ?? 0), spentCents: n.amountSpent ? toCents(n.amountSpent.amount) : 0, note: n.note ?? undefined });
+-
+-export async function searchRemote(q: string): Promise<Customer[]> {
+-  const d = await gql(`query($q:String){ customers(first: 20, query: $q) { nodes { ${F} } } }`, { q });
+-  return d.customers.nodes.map(map);
+-}
+-export type CustomerInput = { firstName?: string; lastName?: string; email?: string; phone?: string; note?: string };
+-const clean = (c: CustomerInput) => Object.fromEntries(Object.entries(c).filter(([, v]) => v !== undefined && v !== ''));
+-export async function createCustomer(c: CustomerInput): Promise<Customer> {
+-  const d = await gql(`mutation($i: CustomerInput!){ customerCreate(input: $i) { customer { ${F} } userErrors { field message } } }`, { i: clean(c) });
+-  throwUserErrors(d.customerCreate.userErrors, 'Creating the customer');
+-  return map(d.customerCreate.customer);
+-}
+-export async function updateCustomer(id: string, c: CustomerInput): Promise<Customer> {
+-  const d = await gql(`mutation($i: CustomerInput!){ customerUpdate(input: $i) { customer { ${F} } userErrors { field message } } }`, { i: { id, ...clean(c) } });
+-  throwUserErrors(d.customerUpdate.userErrors, 'Updating the customer');
+-  return map(d.customerUpdate.customer);
+-}
++// Location: src/lib/shopify/customers.ts
++// Alloys P3: this file moved to src/alloys/shopify/customers.ts. This one-line shim keeps every existing import working until P9 removes it.
++export * from '../../alloys/shopify/customers';
+diff --git a/src/lib/shopify/giftCardOnce.ts b/src/lib/shopify/giftCardOnce.ts
+index c6f2679..404b4f8 100644
+--- a/src/lib/shopify/giftCardOnce.ts
++++ b/src/lib/shopify/giftCardOnce.ts
+@@ -1,18 +1,3 @@
+ // Location: src/lib/shopify/giftCardOnce.ts
+-// Shopify's giftCardDebit and giftCardCredit have no idempotency key, so a call whose reply is lost (a dropped connection after Shopify
+-// took it) looks like a failure, and a retry would take or give the money twice. The fix is the note: every charge and credit carries a
+-// reference that is the same on every retry of the same operation, and before sending one again the gift card's history is read for it.
+-// This file is only that decision, with no network, so tests/giftcardonce.test.ts covers it. Shopify returns a debit's amount as a
+-// negative number, so amounts are compared by size.
+-export type OnceTxn = { cents: number; note?: string; kind: 'credit' | 'debit' };
+-
+-/** 'done' when a transaction of this kind with this reference already exists for this amount, 'todo' when none does. Throws when the reference exists for another amount. */
+-export function onceDecision(history: ReadonlyArray<OnceTxn>, kind: 'credit' | 'debit', cents: number, note: string): 'done' | 'todo' {
+-  const found = history.find(t => t.kind === kind && t.note === note);
+-  if (!found) return 'todo';
+-  if (Math.abs(found.cents) !== Math.abs(cents)) throw new Error(`A gift-card ${kind} with this reference already exists for a different amount. Check the card's history in Shopify before trying again.`);
+-  return 'done';
+-}
+-
+-/** The reference for a gift-card payment: the Nth payment of one sale is the same on every retry, even after leaving the Payment screen. */
+-export const debitNote = (saleUuid: string, tenderIndex: number): string => `POS sale ${saleUuid.slice(0, 8)} tender ${tenderIndex + 1}`;
++// Alloys P3: this file moved to src/alloys/shopify/giftCardOnce.ts. This one-line shim keeps every existing import working until P9 removes it.
++export * from '../../alloys/shopify/giftCardOnce';
+diff --git a/src/lib/shopify/giftcards.ts b/src/lib/shopify/giftcards.ts
+index d6b086c..8166635 100644
+--- a/src/lib/shopify/giftcards.ts
++++ b/src/lib/shopify/giftcards.ts
+@@ -1,132 +1,3 @@
+ // Location: src/lib/shopify/giftcards.ts
+-// Gift cards use Shopify's native GiftCard objects as the balance ledger.
+-// Redemption = giftCardDebit (reserves the balance at tender time); refund-to-card = giftCardCredit.
+-// NOTE: giftCardCredit/Debit need the write_gift_card_transactions scope (add it to the Dev Dashboard app).
+-import * as Crypto from 'expo-crypto';
+-import { gql, throwUserErrors } from './client';
+-import { CURRENCY, toCents, toDecimal } from '../money';
+-import { onceDecision } from './giftCardOnce';
+-import { uid } from '../ids';
+-import { normaliseCode } from '../giftCode';
+-import { createCustomer, searchRemote } from './customers';
+-import type { GiftRecipient } from '../types';
+-import { isTraining } from '../trainingGuard';
+-import { practiceDebitGiftCard, practiceGiftCardHistory, practiceLookupGiftCard } from '../trainingGifts';
+-
+-export type GiftCardInfo = { id: string; last4: string; balanceCents: number; initialCents: number; enabled: boolean; expiresOn?: string; customerName?: string; verified: boolean };
+-
+-export { normaliseCode, stripGiftPrefix, giftQrPayload } from '../giftCode';
+-export const newGiftCode = () => uid().replace(/-/g, '').slice(0, 16).toUpperCase();
+-const checksum = async (code: string) => (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, normaliseCode(code))).slice(0, 10);
+-
+-const FIELDS = `id lastCharacters balance { amount } initialValue { amount } enabled expiresOn note customer { displayName }`;
+-const mapCard = (n: any, verified: boolean): GiftCardInfo => ({
+-  id: n.id, last4: n.lastCharacters, balanceCents: toCents(n.balance.amount), initialCents: toCents(n.initialValue.amount),
+-  enabled: !!n.enabled, expiresOn: n.expiresOn ?? undefined, customerName: n.customer?.displayName, verified,
+-});
+-
+-/** Find the recipient's Shopify customer by email, or create one (Shopify needs a customer to deliver the card to). */
+-async function resolveRecipientId(r: GiftRecipient): Promise<string> {
+-  const email = r.email.trim().toLowerCase();
+-  const found = (await searchRemote(`email:${email}`)).find(c => c.email?.toLowerCase() === email);
+-  if (found) return found.id;
+-  const [firstName, ...rest] = (r.name ?? '').trim().split(/\s+/).filter(Boolean);
+-  return (await createCustomer({ email, firstName, lastName: rest.join(' ') || undefined })).id;
+-}
+-
+-export async function createGiftCard(valueCents: number, code: string, saleUuid: string, customerId?: string, recipient?: GiftRecipient): Promise<GiftCardInfo> {
+-  const note = `pos|sale:${saleUuid}|chk:${await checksum(code)}`;
+-  const recipientId = recipient?.email ? await resolveRecipientId(recipient) : undefined;
+-  const recipientAttributes = recipientId ? { id: recipientId, ...(recipient?.name ? { preferredName: recipient.name.slice(0, 100) } : {}), ...(recipient?.message ? { message: recipient.message.slice(0, 200) } : {}) } : undefined;
+-  const d = await gql(`mutation($i: GiftCardCreateInput!){ giftCardCreate(input: $i) { giftCard { ${FIELDS} } userErrors { field message code } } }`,
+-    { i: { initialValue: toDecimal(valueCents), code: normaliseCode(code), note, ...(customerId ? { customerId } : {}), ...(recipientAttributes ? { recipientAttributes } : {}) } });
+-  const errs = d.giftCardCreate.userErrors as any[];
+-  if (errs?.length && /taken|already/i.test(`${errs[0].code} ${errs[0].message}`)) {
+-    const existing = await lookupGiftCard(code); // a retry after a lost reply - the card already exists
+-    if (existing) return existing;
+-  }
+-  throwUserErrors(errs, 'Creating the gift card');
+-  return mapCard(d.giftCardCreate.giftCard, true);
+-}
+-
+-/** Manually (re)send the gift card notification to its recipient. Not used at sale time: Shopify already emails the recipient when a card is
+- *  created with one (A9.6: sending it again made two emails). Kept for a "Resend" action. Never fails a sale: the card exists either way. */
+-export async function sendGiftCardEmail(id: string): Promise<boolean> {
+-  try {
+-    const d = await gql(`mutation($id:ID!){ giftCardSendNotificationToRecipient(id:$id) { userErrors { field message } } }`, { id });
+-    return !(d.giftCardSendNotificationToRecipient.userErrors as any[]).length;
+-  } catch { return false; }
+-}
+-
+-/** Find a card by its code. Shopify only lets us search by the last characters, so we verify with the note checksum. */
+-export async function lookupGiftCard(rawCode: string): Promise<GiftCardInfo | null> {
+-  if (isTraining()) return practiceLookupGiftCard(rawCode);
+-  const code = normaliseCode(rawCode);
+-  if (code.length < 4) return null;
+-  const d = await gql(`query($q:String){ giftCards(first: 10, query: $q) { nodes { ${FIELDS} } } }`, { q: `last_characters:${code.slice(-4).toLowerCase()}` });
+-  const nodes: any[] = d.giftCards.nodes;
+-  if (!nodes.length) return null;
+-  const chk = await checksum(code);
+-  const verified = nodes.find(n => (n.note ?? '').includes(`chk:${chk}`));
+-  if (verified) return mapCard(verified, true);
+-  const unmarked = nodes.filter(n => !(n.note ?? '').includes('chk:'));
+-  if (unmarked.length === 1 && code.length >= 8) return mapCard(unmarked[0], false); // created outside the POS
+-  return null;
+-}
+-
+-export async function debitGiftCard(id: string, cents: number, note: string) {
+-  if (isTraining()) { practiceDebitGiftCard(id, cents); return; }
+-  const d = await gql(`mutation($id:ID!,$i:GiftCardDebitInput!){ giftCardDebit(id:$id, debitInput:$i) { giftCardDebitTransaction { id } userErrors { field message code } } }`,
+-    { id, i: { debitAmount: { amount: toDecimal(cents), currencyCode: CURRENCY }, note } });
+-  throwUserErrors(d.giftCardDebit.userErrors, 'Redeeming the gift card');
+-}
+-export async function creditGiftCard(id: string, cents: number, note: string) {
+-  const d = await gql(`mutation($id:ID!,$i:GiftCardCreditInput!){ giftCardCredit(id:$id, creditInput:$i) { giftCardCreditTransaction { id } userErrors { field message code } } }`,
+-    { id, i: { creditAmount: { amount: toDecimal(cents), currencyCode: CURRENCY }, note } });
+-  throwUserErrors(d.giftCardCredit.userErrors, 'Crediting the gift card');
+-}
+-
+-export type GiftCardTxn = { id: string; cents: number; at: string; note?: string; kind: 'credit' | 'debit' };
+-type GiftCardTxnNode = { id: string; __typename: string; note?: string | null; processedAt: string; amount: { amount: string } };
+-type GiftCardTxnPage = { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: GiftCardTxnNode[] };
+-const mapTransactions = (nodes: GiftCardTxnNode[]): GiftCardTxn[] => nodes.map(n => ({ id: n.id, cents: toCents(n.amount.amount), at: n.processedAt, note: n.note ?? undefined, kind: n.__typename.includes('Debit') ? 'debit' : 'credit' }));
+-export async function giftCardHistory(id: string): Promise<GiftCardTxn[]> {
+-  if (isTraining()) return practiceGiftCardHistory(id);
+-  const d = await gql(`query($id:ID!){ giftCard(id:$id){ transactions(first: 30) { nodes { __typename id note processedAt amount { amount } } } } }`, { id });
+-  return mapTransactions(d.giftCard.transactions.nodes);
+-}
+-
+-export async function allGiftCardTransactions(id: string): Promise<GiftCardTxn[]> {
+-  let after: string | null = null; const transactions: GiftCardTxn[] = [];
+-  for (;;) {
+-    const d: { giftCard: { transactions: GiftCardTxnPage } } = await gql(`query($id:ID!,$after:String){ giftCard(id:$id){ transactions(first:250, after:$after) { pageInfo { hasNextPage endCursor } nodes { __typename id note processedAt amount { amount } } } } }`, { id, after });
+-    const page: GiftCardTxnPage = d.giftCard.transactions;
+-    transactions.push(...mapTransactions(page.nodes));
+-    if (!page.pageInfo.hasNextPage) return transactions;
+-    if (!page.pageInfo.endCursor) throw new Error('Shopify returned a gift-card transaction page without a cursor.');
+-    after = page.pageInfo.endCursor;
+-  }
+-}
+-
+-/** Retry-safe credit for a specific operation. The caller's unique note is stored in Shopify's transaction history. */
+-export async function creditGiftCardOnce(id: string, cents: number, note: string) {
+-  if (onceDecision(await allGiftCardTransactions(id), 'credit', cents, note) === 'done') return;
+-  await creditGiftCard(id, cents, note);
+-}
+-/** Retry-safe charge (0240): if an earlier try with this note went through but its reply was lost, the card is not charged again. */
+-export async function debitGiftCardOnce(id: string, cents: number, note: string) {
+-  if (isTraining()) { practiceDebitGiftCard(id, cents); return; }
+-  if (onceDecision(await allGiftCardTransactions(id), 'debit', cents, note) === 'done') return;
+-  await debitGiftCard(id, cents, note);
+-}
+-
+-export async function outstandingBalance(): Promise<{ cards: number; cents: number }> {
+-  let after: string | null = null, cards = 0, cents = 0;
+-  for (let i = 0; i < 40; i++) {
+-    const d: any = await gql(`query($after:String){ giftCards(first: 100, after:$after, query: "status:enabled") { pageInfo { hasNextPage endCursor } nodes { balance { amount } } } }`, { after });
+-    for (const n of d.giftCards.nodes) { const b = toCents(n.balance.amount); if (b > 0) { cards++; cents += b; } }
+-    if (!d.giftCards.pageInfo.hasNextPage) break;
+-    after = d.giftCards.pageInfo.endCursor;
+-  }
+-  return { cards, cents };
+-}
++// Alloys P3: this file moved to src/alloys/shopify/giftcards.ts. This one-line shim keeps every existing import working until P9 removes it.
++export * from '../../alloys/shopify/giftcards';
+diff --git a/src/lib/shopify/inventory.ts b/src/lib/shopify/inventory.ts
+index f7cdf13..1c8b8c5 100644
+--- a/src/lib/shopify/inventory.ts
++++ b/src/lib/shopify/inventory.ts
+@@ -1,27 +1,3 @@
+-// Inventory writes. API 2026-04+ makes @idempotent(key:) MANDATORY on these mutations (verified in Shopify changelog).
+-import { gql, throwUserErrors } from './client';
+-import { uid } from '../ids';
+-
+-export type AdjustReason = 'correction' | 'received' | 'cycle_count_available' | 'damaged' | 'shrinkage' | 'restock' | 'other';
+-
+-export async function adjustStock(inventoryItemId: string, locationId: string, delta: number, reason: AdjustReason = 'correction', key = uid()) {
+-  const d = await gql(
+-    `mutation($i: InventoryAdjustQuantitiesInput!) { inventoryAdjustQuantities(input: $i) @idempotent(key: "${key}") {
+-      inventoryAdjustmentGroup { id } userErrors { field message } } }`,
+-    { i: { reason, name: 'available', referenceDocumentUri: `gid://pos/Adjustment/${key}`, changes: [{ delta, inventoryItemId, locationId }] } });
+-  throwUserErrors(d.inventoryAdjustQuantities.userErrors, 'Stock adjustment');
+-}
+-
+-export async function setStock(inventoryItemId: string, locationId: string, quantity: number, reason: AdjustReason = 'cycle_count_available', key = uid()) {
+-  const d = await gql(
+-    `mutation($i: InventorySetQuantitiesInput!) { inventorySetQuantities(input: $i) @idempotent(key: "${key}") {
+-      inventoryAdjustmentGroup { id } userErrors { field message } } }`,
+-    { i: { reason, name: 'available', ignoreCompareQuantity: true, referenceDocumentUri: `gid://pos/Count/${key}`, quantities: [{ inventoryItemId, locationId, quantity }] } });
+-  throwUserErrors(d.inventorySetQuantities.userErrors, 'Stock count');
+-}
+-
+-/** Turn on tracking at the location (new items). */
+-export async function activateTracking(inventoryItemId: string) {
+-  const d = await gql(`mutation($id: ID!) { inventoryItemUpdate(id: $id, input: { tracked: true }) { userErrors { field message } } }`, { id: inventoryItemId });
+-  throwUserErrors(d.inventoryItemUpdate.userErrors, 'Enable tracking');
+-}
++// Location: src/lib/shopify/inventory.ts
++// Alloys P3: this file moved to src/alloys/shopify/inventory.ts. This one-line shim keeps every existing import working until P9 removes it.
++export * from '../../alloys/shopify/inventory';
+diff --git a/src/lib/shopify/metaobjectBackend.ts b/src/lib/shopify/metaobjectBackend.ts
+index a884466..be0f91e 100644
+--- a/src/lib/shopify/metaobjectBackend.ts
++++ b/src/lib/shopify/metaobjectBackend.ts
+@@ -1,59 +1,3 @@
+ // Location: src/lib/shopify/metaobjectBackend.ts
+-// The Shopify metaobject side of the shared-state seam (CloudKit sync plan, patch 3). It is the one backend that exists
+-// today, and it wraps exactly the calls sync.ts used to make by hand, so swapping the seam in changes no behaviour.
+-//
+-// The CloudKit backend (patch 4) implements the same interface with record types instead of metaobject types. Nothing above
+-// this file should import metaobjects directly any more, so a cut-over is one line and a rollback is that line back.
+-import * as meta from './metaobjects';
+-import { SHARED_TYPES, type BackendListOptions, type BackendPage, type BackendRow, type SharedBackend, type SharedType } from '../syncBackend';
+-
+-/** The shop's name for a shared type, mapped onto the metaobject type that stores it. */
+-const META_TYPE: Record<SharedType, string> = {
+-  cart: meta.TYPES.cart,
+-  layout: meta.TYPES.layout,
+-  sale: meta.TYPES.sale,
+-  rollup: meta.TYPES.rollup,
+-  settings: meta.TYPES.settings,
+-};
+-
+-/** The MetaRow the metaobject helpers return, as the backend's own row. They are the same shape, so this is a copy. */
+-const asRow = (r: meta.MetaRow): BackendRow => ({ id: r.id, handle: r.handle, updatedAt: r.updatedAt, f: r.f });
+-
+-/** The metaobject backend: today's transport, behind the seam patch 4 will sit beside. */
+-export const metaobjectBackend: SharedBackend = {
+-  kind: 'metaobject',
+-
+-  async ensure(): Promise<void> {
+-    // The definition write is the same one Settings ▸ Set up shared storage calls, so a first run and that button do the same thing.
+-    await meta.ensureDefinitions();
+-  },
+-
+-  async get(type: SharedType, handle: string): Promise<BackendRow | null> {
+-    const row = await meta.getByHandle(META_TYPE[type], handle);
+-    return row ? asRow(row) : null;
+-  },
+-
+-  async put(type: SharedType, handle: string, fields: Record<string, string | number | undefined | null>): Promise<BackendRow> {
+-    return asRow(await meta.upsert(META_TYPE[type], handle, fields));
+-  },
+-
+-  async list(type: SharedType, options: BackendListOptions = {}): Promise<BackendPage> {
+-    const { rows, next } = await meta.list(META_TYPE[type], { first: options.first, after: options.after });
+-    return { rows: rows.map(asRow), next };
+-  },
+-
+-  async remove(id: string): Promise<void> {
+-    await meta.remove(id);
+-  },
+-
+-  // A sale's `sale_json` field is added to the definition on demand; until it exists the row still uploads without it.
+-  async detailReady(type: SharedType): Promise<boolean> {
+-    return type === 'sale' ? meta.ensureSaleDetailField() : true;
+-  },
+-};
+-
+-/** Every shared type has a metaobject behind it. Exported so a test can prove the map is complete. */
+-export const metaTypeFor = (type: SharedType): string => META_TYPE[type];
+-
+-/** The types this backend covers, in the order the plan lists them. */
+-export const metaBackendTypes = (): SharedType[] => [...SHARED_TYPES];
++// Alloys P3: this file moved to src/alloys/shopify/metaobjectBackend.ts. This one-line shim keeps every existing import working until P9 removes it.
++export * from '../../alloys/shopify/metaobjectBackend';
+diff --git a/src/lib/shopify/metaobjects.ts b/src/lib/shopify/metaobjects.ts
+index f1db665..bb0bd32 100644
+--- a/src/lib/shopify/metaobjects.ts
++++ b/src/lib/shopify/metaobjects.ts
+@@ -1,81 +1,3 @@
+-// Shared state between registers lives in Shopify metaobjects (research doc §5): saved carts, layout, sales log,
+-// daily rollups, shared settings. Webhooks need a server, so registers POLL these.
+-import { gql, throwUserErrors, ShopifyUserError } from './client';
+-
+-export const TYPES = { cart: 'pos_saved_cart', layout: 'pos_layout', sale: 'pos_sale', rollup: 'pos_daily_rollup', settings: 'pos_settings' } as const;
+-type F = [key: string, name: string, type: string];
+-const S = 'single_line_text_field', M = 'multi_line_text_field', J = 'json', I = 'number_integer', T = 'date_time';
+-
+-const DEFS: { type: string; name: string; display?: string; fields: F[] }[] = [
+-  { type: TYPES.cart, name: 'POS saved cart', display: 'name', fields: [['cart_uuid', 'Cart UUID', S], ['name', 'Name', S], ['note', 'Note', M], ['customer_json', 'Customer', J],
+-    ['employee', 'Employee', S], ['register_id', 'Register', S], ['status', 'Status', S], ['lines_json', 'Lines', J], ['discount_json', 'Cart discount', J],
+-    ['created_at', 'Created', T], ['updated_at', 'Updated', T], ['version', 'Version', I], ['locked_by', 'Locked by', S], ['locked_at', 'Locked at', T]] },
+-  { type: TYPES.layout, name: 'POS layout', display: 'layout_key', fields: [['layout_key', 'Key', S], ['layout_json', 'Layout', J], ['version', 'Version', I], ['updated_by', 'Updated by', S], ['updated_at', 'Updated', T]] },
+-  { type: TYPES.sale, name: 'POS sale', display: 'sale_uuid', fields: [['sale_uuid', 'Sale UUID', S], ['order_gid', 'Order', S], ['register_id', 'Register', S], ['employee', 'Employee', S],
+-    ['ts', 'Time', T], ['entry_type', 'Type', S], ['items_cents', 'Items', I], ['discounts_cents', 'Discounts', I], ['total_cents', 'Total', I], ['cogs_cents', 'COGS', I],
+-    ['fees_cents', 'Fees', I], ['rounding_cents', 'Rounding', I], ['refund_of', 'Refund of', S], ['status', 'Status', S], ['tenders_json', 'Tenders', J], ['lines_json', 'Lines', J],
+-    ['customer_gid', 'Customer', S], ['receipt_link', 'Receipt link', S], ['sale_json', 'Sale data', J]] },
+-  { type: TYPES.rollup, name: 'POS daily rollup', display: 'rollup_key', fields: [['rollup_key', 'Key', S], ['register_id', 'Register', S], ['date', 'Date', S], ['totals_json', 'Totals', J]] },
+-  { type: TYPES.settings, name: 'POS settings', display: 'settings_key', fields: [['settings_key', 'Key', S], ['settings_json', 'Settings', J], ['version', 'Version', I]] },
+-];
+-
+-export async function ensureDefinitions(): Promise<void> {
+-  for (const d of DEFS) {
+-    const res = await gql(`mutation($d: MetaobjectDefinitionCreateInput!){ metaobjectDefinitionCreate(definition: $d) { metaobjectDefinition { id } userErrors { field message code } } }`,
+-      { d: { type: d.type, name: d.name, displayNameKey: d.display, fieldDefinitions: d.fields.map(([key, name, type]) => ({ key, name, type })) } });
+-    const errs = (res.metaobjectDefinitionCreate.userErrors as any[]) ?? [];
+-    const real = errs.filter(e => !/taken|already/i.test(`${e.code} ${e.message}`));
+-    if (real.length) throw new ShopifyUserError(`Metaobject setup (${d.type}): ${real[0].message}`, real);
+-  }
+-  await ensureSaleDetailField(); // an older shop's sale definition gets the field the shop-wide sales view needs
+-}
+-
+-/**
+- * Makes sure the sale definition carries the `sale_json` field another till reads to see this till's sales in full (the shop-wide
+- * assistant view). A definition made before that field existed is updated once; one that already has it does nothing. The answer
+- * is remembered for the rest of the app session, and a failure returns false without throwing, so a sale still uploads (without
+- * the detail) when the field cannot be added.
+- */
+-let saleDetailReady: boolean | null = null;
+-export async function ensureSaleDetailField(): Promise<boolean> {
+-  if (saleDetailReady !== null) return saleDetailReady;
+-  try {
+-    const d = await gql(`query($t:String!){ metaobjectDefinitionByType(type:$t){ id fieldDefinitions { key } } }`, { t: TYPES.sale });
+-    const def = d.metaobjectDefinitionByType as { id: string; fieldDefinitions: { key: string }[] } | null;
+-    if (!def) { saleDetailReady = false; return false; }
+-    if ((def.fieldDefinitions ?? []).some(f => f.key === 'sale_json')) { saleDetailReady = true; return true; }
+-    const res = await gql(`mutation($id:ID!,$d:MetaobjectDefinitionUpdateInput!){ metaobjectDefinitionUpdate(id:$id, definition:$d) { userErrors { field message code } } }`,
+-      { id: def.id, d: { fieldDefinitions: [{ create: { key: 'sale_json', name: 'Sale data', type: 'json' } }] } });
+-    const errs = (res.metaobjectDefinitionUpdate.userErrors as any[]) ?? [];
+-    saleDetailReady = !errs.some(e => !/taken|already/i.test(`${e.code} ${e.message}`));
+-  } catch { saleDetailReady = false; }
+-  return saleDetailReady;
+-}
+-
+-export type MetaRow = { id: string; handle: string; updatedAt: string; f: Record<string, string> };
+-const toRow = (n: any): MetaRow => ({ id: n.id, handle: n.handle, updatedAt: n.updatedAt, f: Object.fromEntries((n.fields as any[]).map(x => [x.key, x.value ?? ''])) });
+-
+-export const handleOf = (s: string) => s.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 100);
+-
+-export async function upsert(type: string, handle: string, fields: Record<string, string | number | undefined | null>): Promise<MetaRow> {
+-  const d = await gql(`mutation($h: MetaobjectHandleInput!, $m: MetaobjectUpsertInput!){ metaobjectUpsert(handle: $h, metaobject: $m) { metaobject { id handle updatedAt fields { key value } } userErrors { field message code } } }`,
+-    { h: { type, handle: handleOf(handle) }, m: { fields: Object.entries(fields).filter(([, v]) => v !== undefined && v !== null).map(([key, v]) => ({ key, value: String(v) })) } });
+-  throwUserErrors(d.metaobjectUpsert.userErrors, `Saving ${type}`);
+-  return toRow(d.metaobjectUpsert.metaobject);
+-}
+-
+-export async function getByHandle(type: string, handle: string): Promise<MetaRow | null> {
+-  const d = await gql(`query($h: MetaobjectHandleInput!){ metaobjectByHandle(handle: $h) { id handle updatedAt fields { key value } } }`, { h: { type, handle: handleOf(handle) } });
+-  return d.metaobjectByHandle ? toRow(d.metaobjectByHandle) : null;
+-}
+-
+-export async function list(type: string, o: { first?: number; after?: string | null; reverse?: boolean } = {}): Promise<{ rows: MetaRow[]; next: string | null }> {
+-  const d = await gql(`query($t:String!,$n:Int!,$a:String,$r:Boolean){ metaobjects(type:$t, first:$n, after:$a, sortKey:"updated_at", reverse:$r) {
+-    pageInfo { hasNextPage endCursor } nodes { id handle updatedAt fields { key value } } } }`, { t: type, n: o.first ?? 50, a: o.after ?? null, r: o.reverse ?? true });
+-  return { rows: d.metaobjects.nodes.map(toRow), next: d.metaobjects.pageInfo.hasNextPage ? d.metaobjects.pageInfo.endCursor : null };
+-}
+-
+-export async function remove(id: string) {
+-  const d = await gql(`mutation($id:ID!){ metaobjectDelete(id:$id){ deletedId userErrors { field message } } }`, { id });
+-  throwUserErrors(d.metaobjectDelete.userErrors, 'Deleting');
+-}
++// Location: src/lib/shopify/metaobjects.ts
++// Alloys P3: this file moved to src/alloys/shopify/metaobjects.ts. This one-line shim keeps every existing import working until P9 removes it.
++export * from '../../alloys/shopify/metaobjects';
+diff --git a/src/lib/shopify/orderModel.ts b/src/lib/shopify/orderModel.ts
+index 2cde08b..83575b0 100644
+--- a/src/lib/shopify/orderModel.ts
++++ b/src/lib/shopify/orderModel.ts
+@@ -1,91 +1,3 @@
+ // Location: src/lib/shopify/orderModel.ts
+-// Pure order model: builds the orderCreate input and maps Shopify orders. No network, no native modules (unit-tested).
+-import { CURRENCY, toCents, toDecimal } from '../money';
+-import { splitLineForOrder } from '../pricing';
+-import { decodeTender, encodeTender } from '../saleCodec';
+-import { decodeAdjustments, encodeAdjustments } from '../adjustReason';
+-import type { SaleAdjustment, SaleRecord, Tender } from '../types';
+-
+-const money = (c: number) => ({ shopMoney: { amount: toDecimal(c), currencyCode: CURRENCY } });
+-export const GATEWAY: Record<Tender['kind'], string> = { card: 'Zeller', cash: 'Cash', gift_card: 'Gift card', exchange_credit: 'Exchange credit' };
+-
+-// Shopify order tags are limited to 40 chars; 'pos-' + 32 hex (dashes stripped) = 36.
+-export const saleTag = (uuid: string) => `pos-${uuid.replace(/-/g, '')}`.slice(0, 40);
+-
+-export type OrderCtx = { locationId?: string; markFulfilled: boolean };
+-
+-export function buildOrderInput(sale: SaleRecord, ctx: OrderCtx) {
+-  const lineItems: any[] = [];
+-  for (const l of sale.lines) {
+-    const props: { name: string; value: string }[] = [];
+-    if (l.baseUnitCents !== Math.round(l.netCents / Math.max(1, l.qty))) props.push({ name: '_pos_unit_price', value: toDecimal(l.baseUnitCents) });
+-    if (l.discountLabels.length) props.push({ name: '_pos_discount', value: l.discountLabels.join(', ').slice(0, 200) });
+-    if (l.costCents) props.push({ name: '_pos_cost', value: toDecimal(Math.round(l.costCents / Math.max(1, l.qty))) }); // PER-UNIT cost (parts of a split line share props)
+-    if (l.note) props.push({ name: 'Note', value: l.note.slice(0, 200) });
+-    if (l.giftCardCode) props.push({ name: '_pos_gift_card', value: `••••${l.giftCardCode.slice(-4)}` });
+-    for (const part of splitLineForOrder(l.netCents, l.qty)) {
+-      const base: any = { quantity: part.qty, priceSet: money(part.unitCents), requiresShipping: false, taxable: false };
+-      if (props.length) base.properties = props;
+-      if (l.variantId) lineItems.push({ ...base, variantId: l.variantId });
+-      else lineItems.push({ ...base, title: l.kind === 'gift_card' ? 'Gift card' : l.title });
+-    }
+-  }
+-  const transactions = sale.tenders.map(t => ({
+-    kind: 'SALE', status: 'SUCCESS', gateway: GATEWAY[t.kind], amountSet: money(t.amountCents), processedAt: t.card?.timestampLocal ?? t.at ?? sale.ts,
+-    ...(t.card?.approvalCode ? { authorizationCode: t.card.approvalCode } : {}),
+-    ...(t.card ? { receiptJson: { transactionUuid: t.card.transactionUuid, externalReference: t.card.externalReference, rrn: t.card.rrn, scheme: t.card.scheme, panMasked: t.card.panMasked, cardMedia: t.card.cardMedia, receiptLink: t.card.receiptLink } } : {}),
+-  }));
+-  const attrs: { key: string; value: string }[] = [
+-    { key: 'pos_sale_uuid', value: sale.uuid }, { key: 'pos_register', value: sale.registerName }, { key: 'pos_staff', value: sale.staff ?? '' },
+-    { key: 'pos_rounding_cents', value: String(sale.roundingCents) }, { key: 'pos_cogs_cents', value: String(sale.cogsCents) }, { key: 'pos_fees_cents', value: String(sale.feesCents) },
+-    { key: 'pos_deals', value: sale.deals.map(d => `${d.label}:${-d.cents}`).join('; ').slice(0, 240) }, { key: 'pos_receipt_link', value: sale.receiptLink ?? '' },
+-    ...(sale.adjustments?.length ? [{ key: 'pos_adjustments', value: encodeAdjustments(sale.adjustments) }] : []),
+-    ...sale.tenders.map((t, i) => ({ key: `pos_tender_${i + 1}`, value: encodeTender(t) })),
+-  ].filter(a => a.value !== '');
+-  const order: any = {
+-    currency: CURRENCY, sourceName: 'custom-pos', financialStatus: 'PAID', processedAt: sale.ts, test: false,
+-    lineItems, transactions, customAttributes: attrs, tags: ['pos', saleTag(sale.uuid)],
+-    ...(sale.note ? { note: sale.note } : {}),
+-    ...(sale.customer ? { customer: { toAssociate: { id: sale.customer.id } } } : {}),
+-    ...(ctx.markFulfilled && ctx.locationId ? { fulfillment: { locationId: ctx.locationId, notifyCustomer: false } } : {}),
+-  };
+-  const options = { inventoryBehaviour: 'DECREMENT_IGNORING_POLICY', sendReceipt: false, sendFulfillmentReceipt: false };
+-  return { order, options };
+-}
+-
+-
+-// ── reading orders ───────────────────────────────────────────────────────────
+-export type PosOrderLine = { id: string; title: string; variantTitle?: string; qty: number; refundableQty: number; unitCents: number; originalUnitCents: number; variantId?: string; costCents: number; discount?: string };
+-export type PosOrder = {
+-  id: string; name: string; createdAt: string; financial: string; fulfillment: string; totalCents: number; refundedCents: number;
+-  note?: string; tags: string[]; customer?: { id: string; name: string; email?: string; phone?: string };
+-  attrs: Record<string, string>; lines: PosOrderLine[]; tenders: Tender[]; saleUuid?: string; receiptLink?: string;
+-  transactions: { id: string; kind: string; status: string; gateway: string; amountCents: number }[];
+-  registerName?: string; staff?: string; roundingCents: number;
+-  /** A16.8: the price adjustments made on the sale, with reasons (read from the pos_adjustments attribute). */
+-  adjustments?: SaleAdjustment[];
+-};
+-
+-export function mapOrder(n: any): PosOrder {
+-  const attrs: Record<string, string> = {};
+-  for (const a of n.customAttributes ?? []) attrs[a.key] = a.value;
+-  const tenders = Object.keys(attrs).filter(k => /^pos_tender_\d+$/.test(k)).sort().map(k => decodeTender(attrs[k], n.createdAt)).filter(Boolean) as Tender[];
+-  return {
+-    id: n.id, name: n.name, createdAt: n.createdAt, financial: n.displayFinancialStatus, fulfillment: n.displayFulfillmentStatus,
+-    totalCents: toCents(n.totalPriceSet.shopMoney.amount), refundedCents: toCents(n.totalRefundedSet.shopMoney.amount),
+-    note: n.note || undefined, tags: n.tags ?? [], attrs, tenders, saleUuid: attrs.pos_sale_uuid, receiptLink: attrs.pos_receipt_link || tenders.find(t => t.card?.receiptLink)?.card?.receiptLink,
+-    customer: n.customer ? { id: n.customer.id, name: n.customer.displayName, email: n.customer.email ?? undefined, phone: n.customer.phone ?? undefined } : undefined,
+-    registerName: attrs.pos_register, staff: attrs.pos_staff, roundingCents: Number(attrs.pos_rounding_cents ?? 0), adjustments: decodeAdjustments(attrs.pos_adjustments),
+-    lines: n.lineItems.nodes.map((l: any): PosOrderLine => {
+-      const props: Record<string, string> = {};
+-      for (const p of l.customAttributes ?? []) props[p.key] = p.value;
+-      return {
+-        id: l.id, title: l.title, variantTitle: l.variantTitle || undefined, qty: l.quantity, refundableQty: l.refundableQuantity,
+-        unitCents: toCents(l.discountedUnitPriceSet.shopMoney.amount), originalUnitCents: props._pos_unit_price ? toCents(props._pos_unit_price) : toCents(l.originalUnitPriceSet.shopMoney.amount),
+-        variantId: l.variant?.id, costCents: props._pos_cost ? toCents(props._pos_cost) : 0, discount: props._pos_discount,
+-      };
+-    }),
+-    transactions: n.transactions.map((t: any) => ({ id: t.id, kind: t.kind, status: t.status, gateway: t.gateway, amountCents: toCents(t.amountSet.shopMoney.amount) })),
+-  };
+-}
+-
++// Alloys P3: this file moved to src/alloys/shopify/orderModel.ts. This one-line shim keeps every existing import working until P9 removes it.
++export * from '../../alloys/shopify/orderModel';
+diff --git a/src/lib/shopify/orders.ts b/src/lib/shopify/orders.ts
+index 8f2cd99..23a39cd 100644
+--- a/src/lib/shopify/orders.ts
++++ b/src/lib/shopify/orders.ts
+@@ -1,79 +1,3 @@
+ // Location: src/lib/shopify/orders.ts
+-// Orders (Path B, research doc §4.5): priced locally, then created with orderCreate so the Zeller tender is recorded
+-// natively (gateway "Zeller", authorizationCode, receiptJson). Discounts are baked into line prices (orderCreate has no
+-// line discounts) and itemised in line properties + custom attributes. No tax is collected.
+-import { gql, throwUserErrors, type UserError } from './client';
+-import { CURRENCY, toDecimal } from '../money';
+-import { uid } from '../ids';
+-import { GATEWAY, buildOrderInput, saleTag, mapOrder, type OrderCtx, type PosOrder } from './orderModel';
+-import type { SaleRecord, Tender } from '../types';
+-
+-export * from './orderModel';
+-
+-export async function findOrderBySale(uuid: string): Promise<{ id: string; name: string } | null> {
+-  const d = await gql(`query($q:String){ orders(first: 1, query: $q) { nodes { id name } } }`, { q: `tag:${saleTag(uuid)}` });
+-  return d.orders.nodes[0] ?? null;
+-}
+-
+-/** Idempotent: looks the sale up by its tag first, so a retry after a lost reply never double-books. */
+-export async function createOrderForSale(sale: SaleRecord, ctx: OrderCtx): Promise<{ id: string; name: string }> {
+-  const existing = await findOrderBySale(sale.uuid);
+-  if (existing) return existing;
+-  const run = async (input: ReturnType<typeof buildOrderInput>) => {
+-    const d = await gql(`mutation($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) { orderCreate(order: $order, options: $options) { order { id name } userErrors { field message } } }`, input);
+-    return d.orderCreate as { order: { id: string; name: string } | null; userErrors: UserError[] };
+-  };
+-  let input = buildOrderInput(sale, ctx);
+-  let res = await run(input);
+-  if (!res.order && input.order.fulfillment && res.userErrors.some(e => /fulfil/i.test(e.message) || e.field?.some(f => /fulfil/i.test(f)))) {
+-    const { fulfillment, ...rest } = input.order; void fulfillment;
+-    input = { ...input, order: rest }; // field unsupported on this API version → retry without it
+-    res = await run(input);
+-  }
+-  throwUserErrors(res.userErrors, 'Creating the Shopify order');
+-  if (!res.order) throw new Error('Shopify returned no order');
+-  return res.order;
+-}
+-
+-const ORDER_FIELDS = `id name createdAt displayFinancialStatus displayFulfillmentStatus note tags
+-  totalPriceSet { shopMoney { amount } } totalRefundedSet { shopMoney { amount } }
+-  customer { id displayName email phone } customAttributes { key value }
+-  lineItems(first: 25) { nodes { id title variantTitle quantity refundableQuantity variant { id }
+-    originalUnitPriceSet { shopMoney { amount } } discountedUnitPriceSet { shopMoney { amount } } customAttributes { key value } } }
+-  transactions(first: 6) { id kind status gateway amountSet { shopMoney { amount } } }`;
+-
+-export async function listOrders(opts: { query?: string; after?: string | null; first?: number } = {}): Promise<{ orders: PosOrder[]; next: string | null }> {
+-  const d = await gql(`query($q:String,$after:String,$first:Int!){ orders(first:$first, after:$after, query:$q, sortKey: CREATED_AT, reverse: true) {
+-    pageInfo { hasNextPage endCursor } nodes { ${ORDER_FIELDS} } } }`, { q: opts.query || null, after: opts.after ?? null, first: opts.first ?? 10 });
+-  return { orders: d.orders.nodes.map(mapOrder), next: d.orders.pageInfo.hasNextPage ? d.orders.pageInfo.endCursor : null };
+-}
+-export async function getOrder(id: string): Promise<PosOrder> {
+-  const d = await gql(`query($id:ID!){ order(id:$id){ ${ORDER_FIELDS} } }`, { id });
+-  return mapOrder(d.order);
+-}
+-
+-export async function fulfillOrder(orderId: string) {
+-  const d = await gql(`query($id:ID!){ order(id:$id){ fulfillmentOrders(first: 10) { nodes { id status } } } }`, { id: orderId });
+-  const open = d.order.fulfillmentOrders.nodes.filter((n: any) => ['OPEN', 'IN_PROGRESS'].includes(n.status));
+-  if (!open.length) return;
+-  const r = await gql(`mutation($f: FulfillmentInput!){ fulfillmentCreate(fulfillment:$f){ fulfillment { id status } userErrors { field message } } }`,
+-    { f: { notifyCustomer: false, lineItemsByFulfillmentOrder: open.map((n: any) => ({ fulfillmentOrderId: n.id })) } });
+-  throwUserErrors(r.fulfillmentCreate.userErrors, 'Fulfilling the order');
+-}
+-
+-// ── refunds (card part is refunded via Zeller BEFORE this runs) ──────────────
+-export type RefundItem = { lineItemId: string; quantity: number; restock: boolean };
+-export async function refundOrderInShopify(o: PosOrder, items: RefundItem[], amounts: Partial<Record<Tender['kind'], number>>, note: string, locationId: string | undefined, key = uid()) {
+-  const parent = (g: string) => (o.transactions.find(t => t.kind === 'SALE' && t.status === 'SUCCESS' && t.gateway === g) ?? o.transactions.find(t => t.kind === 'SALE'))?.id;
+-  const txs = (Object.entries(amounts) as [Tender['kind'], number][])
+-    .filter(([k, c]) => c > 0 && k !== 'exchange_credit')
+-    .map(([k, c]) => ({ orderId: o.id, parentId: parent(GATEWAY[k]), kind: 'REFUND', gateway: GATEWAY[k], amount: toDecimal(c) }));
+-  const input = {
+-    orderId: o.id, notify: false, note, currency: CURRENCY,
+-    refundLineItems: items.map(i => ({ lineItemId: i.lineItemId, quantity: i.quantity, restockType: i.restock && locationId ? 'RETURN' : 'NO_RESTOCK', ...(i.restock && locationId ? { locationId } : {}) })),
+-    ...(txs.length ? { transactions: txs } : {}),
+-  };
+-  const d = await gql(`mutation($i: RefundInput!){ refundCreate(input: $i) @idempotent(key: "${key}") { refund { id } userErrors { field message } } }`, { i: input });
+-  throwUserErrors(d.refundCreate.userErrors, 'Recording the refund in Shopify');
+-  return d.refundCreate.refund?.id as string | undefined;
+-}
++// Alloys P3: this file moved to src/alloys/shopify/orders.ts. This one-line shim keeps every existing import working until P9 removes it.
++export * from '../../alloys/shopify/orders';
+diff --git a/src/lib/shopify/products.ts b/src/lib/shopify/products.ts
+index c03705c..fb4b81d 100644
+--- a/src/lib/shopify/products.ts
++++ b/src/lib/shopify/products.ts
+@@ -1,42 +1,3 @@
+-// Item creation/edit (More ▸ Items ▸ Create item). New items are tracked and stocked at the register's location.
+-import { gql, throwUserErrors } from './client';
+-import { toDecimal } from '../money';
+-import { uid } from '../ids';
+-import { setStock } from './inventory';
+-import { parseStartingStock } from '../startingStock';
+-
+-export type ItemInput = { title: string; priceCents: number; sku?: string; barcode?: string; costCents?: number; stock?: number; collectionId?: string };
+-
+-export async function createItem(i: ItemInput, locationId: string): Promise<{ productId: string; variantId: string; inventoryItemId: string }> {
+-  if (i.stock !== undefined && (!Number.isSafeInteger(i.stock) || i.stock < 0)) throw new Error('Starting stock must be a whole number of zero or more.');
+-  const c = await gql(`mutation($p: ProductCreateInput!){ productCreate(product: $p) { product { id variants(first: 1) { nodes { id inventoryItem { id } } } } userErrors { field message } } }`,
+-    { p: { title: i.title, status: 'ACTIVE' } });
+-  throwUserErrors(c.productCreate.userErrors, 'Creating the item');
+-  const product = c.productCreate.product, v = product.variants.nodes[0];
+-  const u = await gql(`mutation($pid: ID!, $v: [ProductVariantsBulkInput!]!){ productVariantsBulkUpdate(productId: $pid, variants: $v) { userErrors { field message } } }`,
+-    { pid: product.id, v: [{ id: v.id, price: toDecimal(i.priceCents), barcode: i.barcode || undefined, inventoryItem: { sku: i.sku || undefined, cost: i.costCents !== undefined ? toDecimal(i.costCents) : undefined, tracked: true } }] });
+-  throwUserErrors(u.productVariantsBulkUpdate.userErrors, 'Setting the price');
+-  const key = uid();
+-  const a = await gql(`mutation($id:ID!,$loc:ID!){ inventoryActivate(inventoryItemId:$id, locationId:$loc) @idempotent(key: "${key}") { inventoryLevel { id } userErrors { field message } } }`, { id: v.inventoryItem.id, loc: locationId });
+-  throwUserErrors(a.inventoryActivate.userErrors, 'Stocking the item');
+-  if (i.stock !== undefined) {
+-    try { await setStock(v.inventoryItem.id, locationId, i.stock, 'received'); }
+-    catch (error) { throw new Error(`The item was created, but starting stock could not be applied: ${String((error as Error)?.message ?? error)}. Refresh the item before trying again, then set its count in Inventory.`); }
+-  }
+-  if (i.collectionId) {
+-    await gql(`mutation($id:ID!,$p:[ID!]!){ collectionAddProductsV2(id:$id, productIds:$p){ userErrors { field message } } }`, { id: i.collectionId, p: [product.id] }).catch(() => {});
+-  }
+-  return { productId: product.id, variantId: v.id, inventoryItemId: v.inventoryItem.id };
+-}
+-
+-export async function updateVariant(productId: string, variantId: string, i: { priceCents?: number; sku?: string; barcode?: string; costCents?: number }) {
+-  const v: any = { id: variantId };
+-  if (i.priceCents !== undefined) v.price = toDecimal(i.priceCents);
+-  if (i.barcode !== undefined) v.barcode = i.barcode;
+-  const inv: any = {};
+-  if (i.sku !== undefined) inv.sku = i.sku;
+-  if (i.costCents !== undefined) inv.cost = toDecimal(i.costCents);
+-  if (Object.keys(inv).length) v.inventoryItem = inv;
+-  const u = await gql(`mutation($pid: ID!, $v: [ProductVariantsBulkInput!]!){ productVariantsBulkUpdate(productId: $pid, variants: $v) { userErrors { field message } } }`, { pid: productId, v: [v] });
+-  throwUserErrors(u.productVariantsBulkUpdate.userErrors, 'Updating the item');
+-}
++// Location: src/lib/shopify/products.ts
++// Alloys P3: this file moved to src/alloys/shopify/products.ts. This one-line shim keeps every existing import working until P9 removes it.
++export * from '../../alloys/shopify/products';
+diff --git a/src/lib/zeller.ts b/src/lib/zeller.ts
+index 5b61ee9..9e151dd 100644
+--- a/src/lib/zeller.ts
++++ b/src/lib/zeller.ts
+@@ -1,177 +1,3 @@
+-// Zeller Payments SDK wrapper (research doc §6.8). Errors are RETURNED by the SDK, never thrown.
+-// Everything outside this file talks to PaymentResult - never to raw SDK results.
+-import { lookupResponse, type Category } from './responseCodes';
+-import { cardLast4 } from './cards';
+-import type { CardInfo } from './types';
+-
+-export type ZellerEvent = { type: string; message?: string };
+-export type ZellerTxn = {
+-  $type?: 'Approved' | 'Declined'; type?: 'PURCHASE' | 'REFUND'; status?: 'APPROVED' | 'DECLINED' | 'FAILED';
+-  amount: number; currency?: string; responseCode?: string; responseText?: string; timestampLocal?: string;
+-  transactionUuid?: string; approvalCode?: string; cardMedia?: string; externalReference?: string; panMasked?: string;
+-  last4?: string;
+-  receiptLink?: string; rrn?: string; scheme?: string; tipAmount?: number; surchargeAmount?: number; taxAmount?: number;
+-  sessionUuid?: string;
+-};
+-export type ZellerError = Error & { type: string };
+-type Op<T> = Promise<T | ZellerError> & { cancel?: () => void; onEvent?: (cb: (e: ZellerEvent) => void) => unknown };
+-
+-export interface TerminalLike {
+-  initialise(): Op<true>;
+-  setup(opts?: Record<string, unknown>): Op<true>;
+-  configure(opts: Record<string, unknown>): Op<true>;
+-  purchase(o: {
+-    amount: number; reference: string; sessionUuid?: string; tipAmount?: number; terminalReceipt?: boolean;
+-    terminalReceiptPrint?: boolean; terminalContact?: boolean; terminalNote?: boolean; fullscreen?: boolean;
+-    virtualTerminal?: boolean; theme?: string;
+-  }): Op<ZellerTxn>;
+-  refund(o: { purchase: string; amount: number; reference?: string; sessionUuid?: string; amountAdjustable?: boolean; terminalReceipt?: boolean; terminalReceiptPrint?: boolean }): Op<ZellerTxn>;
+-  getTransactions(o?: { reference?: string }): Op<ZellerTxn[]>;
+-}
+-
+-export type NotReadyReason = 'SETUP_REQUIRED' | 'OFFLINE' | 'TERMINAL_UNAVAILABLE' | 'BUSY' | 'INVALID_REQUEST';
+-export type PaymentResult =
+-  | { kind: 'APPROVED'; txn: ZellerTxn }
+-  | { kind: 'DECLINED'; code?: string; text: string; category: Category; retryable: boolean; txn?: ZellerTxn }
+-  | { kind: 'CANCELLED' }
+-  | { kind: 'UNKNOWN'; reason: string } // must reconcile before ANY retry
+-  | { kind: 'NOT_READY'; reason: NotReadyReason; message: string };
+-
+-export const attemptRef = (saleUuid: string, n: number) => `${saleUuid}-${n}`;
+-const isErr = (r: unknown): r is ZellerError => r instanceof Error;
+-
+-export function describeEvent(e: ZellerEvent): string {
+-  switch (e.type) {
+-    case 'AWAITING_PAYMENT_METHOD': return 'Tap, insert or swipe card on the terminal';
+-    case 'AWAITING_APPLICATION_SELECTION': return 'Customer is choosing the card application';
+-    case 'AWAITING_ACCOUNT_SELECTION': return 'Customer is choosing the account';
+-    case 'AWAITING_PIN_ENTRY': return 'Customer is entering their PIN';
+-    case 'AWAITING_SIGNATURE': return 'Waiting for signature';
+-    case 'SIGNATURE_SUBMITTED': return 'Signature received';
+-    case 'SIGNATURE_CLEARED': return 'Signature cleared - sign again';
+-    case 'RETRYING_PAYMENT_METHOD': return 'Retrying - present the card again';
+-    case 'PROCESSING': return 'Processing…';
+-    case 'DISPLAYING_PAYMENT_MESSAGE': return e.message || 'Showing result on the terminal';
+-    case 'AWAITING_TIP_ENTRY': return 'Customer is choosing a tip';
+-    case 'TIP_PROVIDED': return 'Tip chosen';
+-    default: return e.message || e.type;
+-  }
+-}
+-
+-export function txnToCard(t: ZellerTxn): CardInfo {
+-  return {
+-    transactionUuid: t.transactionUuid, externalReference: t.externalReference, approvalCode: t.approvalCode,
+-    scheme: t.scheme, panMasked: t.panMasked, last4: t.last4 ?? cardLast4(t.panMasked), cardMedia: t.cardMedia, rrn: t.rrn, receiptLink: t.receiptLink,
+-    responseCode: t.responseCode, timestampLocal: t.timestampLocal, tipAmount: t.tipAmount, surchargeAmount: t.surchargeAmount,
+-  };
+-}
+-
+-type Seen = { any: boolean; processing: boolean };
+-
+-/** Error | ClientTransaction → PaymentResult. `seen` tells us whether money may already have moved. */
+-export function normalise(r: ZellerTxn | ZellerError, seen: Seen): PaymentResult {
+-  if (isErr(r)) {
+-    const type = (r as ZellerError).type ?? 'Operation Failure';
+-    const m = r.message || type;
+-    switch (type) {
+-      case 'Setup Required': return { kind: 'NOT_READY', reason: 'SETUP_REQUIRED', message: 'Terminal not paired - open Diagnostics ▸ Zeller ▸ Setup.' };
+-      case 'Network Failure': return seen.any ? { kind: 'UNKNOWN', reason: 'Network failed during payment' } : { kind: 'NOT_READY', reason: 'OFFLINE', message: 'No internet - card payments need a connection. Cash still works.' };
+-      case 'Operation Busy': return { kind: 'NOT_READY', reason: 'BUSY', message: 'Terminal is busy. Please wait and try again.' };
+-      case 'Paired Device Busy': return { kind: 'NOT_READY', reason: 'BUSY', message: 'The terminal is serving another register.' };
+-      case 'Paired Device Not Available': return { kind: 'NOT_READY', reason: 'TERMINAL_UNAVAILABLE', message: 'Can’t reach the terminal - check its power and Wi‑Fi.' };
+-      case 'Connection Failure': return seen.any ? { kind: 'UNKNOWN', reason: 'Connection dropped during payment' } : { kind: 'NOT_READY', reason: 'TERMINAL_UNAVAILABLE', message: 'Couldn’t connect to the terminal.' };
+-      case 'Operation Request Invalid': return { kind: 'NOT_READY', reason: 'INVALID_REQUEST', message: m };
+-      case 'Cancelled': return { kind: 'CANCELLED' };
+-      case 'Inactivity Timeout': return { kind: 'DECLINED', text: 'Customer didn’t respond - try again.', category: 'DECLINED_CUSTOMER_ACTION', retryable: true };
+-      case 'Card Declined': case 'Transaction Declined': return { kind: 'DECLINED', text: 'Card declined. Try another card.', category: 'DECLINED_TRY_OTHER_CARD', retryable: true };
+-      case 'Card Blocked': return { kind: 'DECLINED', text: 'Card blocked. Try another card.', category: 'DECLINED_TRY_OTHER_CARD', retryable: true };
+-      case 'Card Not Supported': return { kind: 'DECLINED', text: 'Card not supported. Try another card.', category: 'DECLINED_TRY_OTHER_CARD', retryable: true };
+-      case 'Card Read Failure': return { kind: 'DECLINED', text: 'Card read failed - tap, insert or swipe again.', category: 'DECLINED_CUSTOMER_ACTION', retryable: true };
+-      case 'Card Insert Required': return { kind: 'DECLINED', text: 'Please insert the card.', category: 'DECLINED_CUSTOMER_ACTION', retryable: true };
+-      default: return { kind: 'UNKNOWN', reason: `${type}: ${m}` }; // incl. Operation Interrupted & Transaction * timeouts
+-    }
+-  }
+-  const approved = r.$type === 'Approved' || r.status === 'APPROVED';
+-  if (approved) return { kind: 'APPROVED', txn: r };
+-  const info = lookupResponse(r.responseCode, r.responseText);
+-  if (info.category === 'CANCELLED') return { kind: 'CANCELLED' };
+-  if (info.unknownOutcome) return { kind: 'UNKNOWN', reason: info.message };
+-  return { kind: 'DECLINED', code: r.responseCode, text: info.message, category: info.category, retryable: info.retryable, txn: r };
+-}
+-
+-/** Look a payment up by its reference (our `externalReference`). */
+-export async function reconcile(terminal: TerminalLike, reference: string): Promise<PaymentResult | { kind: 'NOT_FOUND' }> {
+-  const r = await terminal.getTransactions({ reference });
+-  if (isErr(r)) return { kind: 'UNKNOWN', reason: `Lookup failed: ${r.type ?? ''} ${r.message}` };
+-  const t = r.find(x => x.externalReference === reference) ?? (r.length === 1 ? r[0] : undefined);
+-  if (!t) return { kind: 'NOT_FOUND' };
+-  return normalise(t, { any: true, processing: true });
+-}
+-
+-export type ChargeOpts = { amountCents: number; reference: string; sessionUuid?: string; terminalReceipt?: boolean };
+-export type ChargeHooks = { onStarted?: () => void | Promise<void>; onEvent?: (e: ZellerEvent) => void };
+-
+-/**
+- * Take a card payment. Persist the attempt BEFORE the SDK call (hooks.onStarted).
+- * If the outcome is anything but a clean decline, reconcile with getTransactions before returning.
+- */
+-export function startCharge(terminal: TerminalLike, o: ChargeOpts, hooks: ChargeHooks = {}) {
+-  let op: ReturnType<TerminalLike['purchase']> | undefined;
+-  let cancelled = false;
+-  const promise = (async (): Promise<PaymentResult> => {
+-    await hooks.onStarted?.();
+-    const seen: Seen = { any: false, processing: false };
+-    op = terminal.purchase({
+-      amount: o.amountCents, reference: o.reference, sessionUuid: o.sessionUuid,
+-      terminalReceipt: o.terminalReceipt ?? false, terminalReceiptPrint: false, // no Zeller eReceipt or print button on the terminal; our own receipts are used
+-    });
+-    op.onEvent?.(e => {
+-      seen.any = true;
+-      if (e.type === 'PROCESSING') seen.processing = true;
+-      hooks.onEvent?.(e);
+-    });
+-    const r = await op;
+-    let res = normalise(r, seen);
+-    if (res.kind === 'CANCELLED' || res.kind === 'UNKNOWN' || (res.kind === 'DECLINED' && seen.processing) || cancelled) {
+-      // "Cancel" only ATTEMPTS to cancel - the payment may still have completed.
+-      if (res.kind !== 'APPROVED' && (seen.any || res.kind === 'UNKNOWN')) {
+-        const rec = await reconcile(terminal, o.reference);
+-        if (rec.kind === 'APPROVED') res = rec;
+-        else if (rec.kind === 'UNKNOWN' && (seen.processing || res.kind === 'UNKNOWN')) res = { kind: 'UNKNOWN', reason: rec.reason };
+-      }
+-    }
+-    return res;
+-  })();
+-  return { promise, cancel: () => { cancelled = true; op?.cancel?.(); } };
+-}
+-
+-export type RefundResult =
+-  | { kind: 'APPROVED'; txn: ZellerTxn }
+-  | { kind: 'FAILED'; text: string }
+-  | { kind: 'CANCELLED' }
+-  | { kind: 'UNKNOWN'; reason: string };
+-
+-export function startRefund(terminal: TerminalLike, o: { purchaseRef: string; amountCents: number; reference: string }, hooks: ChargeHooks = {}) {
+-  let op: ReturnType<TerminalLike['refund']> | undefined;
+-  const promise = (async (): Promise<RefundResult> => {
+-    await hooks.onStarted?.();
+-    const seen: Seen = { any: false, processing: false };
+-    op = terminal.refund({ purchase: o.purchaseRef, amount: o.amountCents, reference: o.reference, terminalReceipt: false, terminalReceiptPrint: false });
+-    op.onEvent?.(e => { seen.any = true; if (e.type === 'PROCESSING') seen.processing = true; hooks.onEvent?.(e); });
+-    const r = await op;
+-    if (isErr(r)) {
+-      const type = (r as ZellerError).type;
+-      if (type === 'Transaction Not Found') return { kind: 'FAILED', text: 'Zeller can’t find the original payment for this refund.' };
+-      if (type === 'Cancelled' && !seen.processing) return { kind: 'CANCELLED' };
+-      if (type === 'Setup Required') return { kind: 'FAILED', text: 'Terminal not paired.' };
+-      if (type === 'Operation Busy') return { kind: 'FAILED', text: 'Terminal is busy - try again.' };
+-      const rec = await reconcile(terminal, o.reference);
+-      if (rec.kind === 'APPROVED') return { kind: 'APPROVED', txn: rec.txn };
+-      if (rec.kind === 'NOT_FOUND' && !seen.processing) return { kind: 'FAILED', text: r.message || type };
+-      return { kind: 'UNKNOWN', reason: `${type}: ${r.message}` };
+-    }
+-    if (r.$type === 'Approved' || r.status === 'APPROVED') return { kind: 'APPROVED', txn: r };
+-    return { kind: 'FAILED', text: lookupResponse(r.responseCode, r.responseText).message };
+-  })();
+-  return { promise, cancel: () => op?.cancel?.() };
+-}
++// Location: src/lib/zeller.ts
++// Alloys P3: this file moved to src/alloys/zeller/terminal.ts. This one-line shim keeps every existing import working until P9 removes it.
++export * from '../alloys/zeller/terminal';
+diff --git a/tests/alloyboundaries.test.ts b/tests/alloyboundaries.test.ts
+index 1413f5b..d8579f7 100644
+--- a/tests/alloyboundaries.test.ts
++++ b/tests/alloyboundaries.test.ts
+@@ -4,7 +4,7 @@ import test from 'node:test';
+ import assert from 'node:assert/strict';
+ import fs from 'node:fs';
+ import path from 'node:path';
+-import { alloyOf, checkAlloys, importsOf, resolveImport } from '../src/alloykit/boundaries';
++import { TRANSITION, alloyOf, checkAlloys, importsOf, resolveImport, staleTransition } from '../src/alloykit/boundaries';
+ 
+ const ROOT = path.resolve(__dirname, '..');
+ function walk(dir: string, out: Record<string, string>) {
+@@ -18,7 +18,23 @@ const ALLOY = "import type { Alloy } from '../alloykit/types';\nconst alloy = {}
+ const ALLOY_B = "import type { Alloy } from '../../alloykit/types';\nconst alloy = {} as Alloy;\nexport default alloy;\n";
+ const rules = (f: Record<string, string>) => checkAlloys(f).map(v => v.rule);
+ 
+-test('the real src/ folder obeys every rule', () => { assert.deepEqual(checkAlloys(real()), []); });
++test('the real src/ folder obeys every rule (with the listed P3 to P9 exceptions, and only those)', () => {
++  assert.deepEqual(checkAlloys(real(), TRANSITION), []);
++  assert.deepEqual(staleTransition(real(), TRANSITION), [], 'an exception nothing uses any more must be deleted from TRANSITION');
++});
++
++test('without the exceptions the moved Shopify and Zeller code is flagged, so they are doing real work', () => {
++  const rs = new Set(checkAlloys(real()).map(x => x.rule));
++  assert.ok(rs.has('alloy-imports') && rs.has('structure') && rs.has('registry-only'));
++});
++
++test('every shim is exactly a header comment and `export *` lines, so no logic hides at an old path', () => {
++  const f = real();
++  for (const sh of TRANSITION.shims) {
++    const code = f[sh].split('\n').filter(l => l.trim() && !l.trim().startsWith('//'));
++    assert.ok(code.length >= 1 && code.every(l => /^export \* from '[^']+';$/.test(l)), `${sh} must hold only export * lines`);
++  }
++});
+ 
+ test('imports are read and resolved', () => {
+   assert.deepEqual(importsOf("import a from './a';\nimport type { B } from \"../b\";\nconst c = require('c');\nconst d = await import('./d');\nexport * from './e';"), ['./a', '../b', 'c', './d', './e']);
+diff --git a/tests/demoguard.test.ts b/tests/demoguard.test.ts
+index d235c8f..9c4a918 100644
+--- a/tests/demoguard.test.ts
++++ b/tests/demoguard.test.ts
+@@ -25,7 +25,7 @@ const EFFECTS: Record<string, RegExp> = {
+ /** Files that send or write something and do not check the guard themselves, each with what was checked about it. */
+ const EXEMPT: Record<string, string> = {
+   'src/lib/exportCollect.ts': 'the Export wizard writes one new file in the cache folder for the person to share. Nothing that already exists is changed, and it holds only data the till already shows.',
+-  'src/lib/shopify/catalogue.ts': 'downloads the result of a bulk query from the URL gql() handed back. gql() stops on the guard, so there is never a URL to fetch.',
++  'src/alloys/shopify/catalogue.ts': 'downloads the result of a bulk query from the URL gql() handed back. gql() stops on the guard, so there is never a URL to fetch.',
+   'src/screens/Settings.tsx': 'Backup & transfer writes one new file in the cache folder to share. The export itself (collectBackup) and the restore (applyBackup) are guarded in backupIO.ts.',
+   'src/screens/StaffPass.tsx': 'writes one new file in the cache folder to share. The request to the pass server (requestStaffPass) is guarded, and the pass server address is blank in Demo mode.',
+ };
+diff --git a/tests/giftcardonce.test.ts b/tests/giftcardonce.test.ts
+index c465901..94b15c4 100644
+--- a/tests/giftcardonce.test.ts
++++ b/tests/giftcardonce.test.ts
+@@ -30,7 +30,7 @@ test('the Payment screen charges through the retry-safe call, with that referenc
+   const pay = readFileSync('src/screens/Pay.tsx', 'utf8');
+   assert.match(pay, /await debitGiftCardOnce\(info\.id, amt, debitNote\(uuid, tenders\.length\)\)/);
+   assert.doesNotMatch(pay, /await debitGiftCard\(/);
+-  const g = readFileSync('src/lib/shopify/giftcards.ts', 'utf8');
++  const g = readFileSync('src/alloys/shopify/giftcards.ts', 'utf8');
+   assert.match(g, /export async function debitGiftCardOnce[\s\S]*?onceDecision\([\s\S]*?'debit'/);
+   assert.match(g, /export async function creditGiftCardOnce[\s\S]*?onceDecision\([\s\S]*?'credit'/);
+ });
+-- 
+2.43.0
+

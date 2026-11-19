@@ -1,0 +1,369 @@
+From 76dbb32dfb263dee3619ef358c6288640e68e580 Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Wed, 18 Nov 2026 13:40:56 +1100
+Subject: [PATCH] Alloys P4a: Ctx builder, router and in-memory store (not yet
+ called by the app)
+
+---
+ dev_docs/PROGRESS.md      |   1 +
+ dev_docs/QUEUE.md         |   2 +-
+ dev_docs/TO_DO.md         |   2 +-
+ src/alloyhost/ctx.ts      |  58 ++++++++++++++++++
+ src/alloyhost/router.ts   |  88 +++++++++++++++++++++++++++
+ src/alloyhost/store.ts    |  16 +++++
+ tests/alloyrouter.test.ts | 122 ++++++++++++++++++++++++++++++++++++++
+ 7 files changed, 287 insertions(+), 2 deletions(-)
+ create mode 100644 src/alloyhost/ctx.ts
+ create mode 100644 src/alloyhost/router.ts
+ create mode 100644 src/alloyhost/store.ts
+ create mode 100644 tests/alloyrouter.test.ts
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 6535d4e..e195ceb 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -212,6 +212,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0250 | 2026-11-17 | Alloys phase P1: the scaffold (your "next!"). **Nothing in the app calls any of it**, so it changes no behaviour. New `src/alloykit/`: `types.ts` (the Alloy format and the nine Element APIs in the app's own types, the `Ctx` an Alloy is handed, `Selection`), `elements.ts` (names, which are required, what a shop loses when one is Off), `selection.ts` (pure rules: `validateSelection` for the setup warning, `legacySelection` for what an install that never chose reads as, `featuresOf` from the functions an Element really has, `diffSelection` for the Smelter, `applyPolicy`), `policy.ts` (`ALLOY_POLICY.icloudCustomers`, `'allowed'` or `'disabled'`), `errors.ts` (`AlloyNetworkError`, `AlloyUserError`) and `boundaries.ts` (the `ALLOYS.md` structure and import rules as a pure checker). New `src/alloys/index.ts`, the registry, empty until P4. `tests/alloyboundaries.test.ts` (runs the rules over the real `src/` and over made-up folders that break each one), `tests/alloyselection.test.ts`. Also corrected the branch docs: patches on `tillium-dev` go in `patches/` and are applied with `bash ./scripts/apply-patches.sh`, as on main (the workflow only runs for `main`). `tsc` clean in the new files. |
+ | 0251 | 2026-11-18 | Alloys phase P2: characterisation tests. **No app code changed**, so it changes no behaviour. These pin what the Shopify and Zeller code does today, so the later moves (P3 onwards) can be proved to change nothing. New `tests/helpers/fakeShopify.ts`, a fake Shopify (stands in for the Keychain, the SHA-256 helper and `fetch`, records every call, plays back queued replies). New `tests/characterise_shopify_client.test.ts` (sign-in, token reuse and refresh, 401 and 429 retries, throttling, user errors, practice mode, the receipt, claim and pass secrets), `characterise_shopify_catalogue.test.ts` (shop and locations, the three bulk imports, the stock delta, automatic discounts and discount codes), `characterise_shopify_writes.test.ts` (stock adjust and count with their idempotency keys, item create and update, customers, order create with its lookup-by-tag retry, listing, fulfilment, refunds), `characterise_shopify_state.test.ts` (gift cards, the once-only debit and credit, the five shared-state metaobject types and the backend over them) and `characterise_zeller.test.ts` (the exact terminal calls, reconcile, the refund error branches, cancel, events). 73 tests; the full suite is 2092 passing. If one fails after a later move, the move changed behaviour: fix the move, not the test. |
+ | 0252 | 2026-11-18 | Alloys phase P3: the Shopify and Zeller code moves into `src/alloys/`, with the old paths kept working. **The app behaves the same**: nothing was rewritten, only moved with `git mv`. `src/lib/shopify/*.ts` is now `src/alloys/shopify/*.ts` and `src/lib/zeller.ts` is `src/alloys/zeller/terminal.ts`. Each old path is now a one-line shim (`export * from ...`), so the 66 files that import them are untouched. The wallet-pass, gift-claim and receipt secrets, which sat at the bottom of the Shopify client but belong to your own servers, moved to `src/lib/secrets.ts`; the client shim re-exports them. The moved code still reaches a few app files (the practice-mode guard, id helpers, price and sale codecs) and has no `alloy.ts` yet, which the Alloy rules forbid, so `src/alloykit/boundaries.ts` now has a `TRANSITION` list naming exactly those exceptions. The boundary test fails if an exception is unused (so the list can only shrink), if a shim holds anything but `export *`, or if the rules stop flagging the moved code without the list. Also fixed the paths in `demoguard.test.ts`, `giftcardonce.test.ts` and `scripts/package-zeller-sdk.sh`. The 73 characterisation tests from 0251 pass unchanged through the shims. Full suite 2094 passing. |
++| 0253 | 2026-11-18 | Alloys phase P4a: the app-side plumbing that reaches an Alloy. **Nothing in the app calls it yet**, so it changes no behaviour (P5 moves the callers over one Element per patch). New `src/alloyhost/ctx.ts` builds the `Ctx` an Alloy is given: each Alloy sees only its own secrets and settings, and one `http.json` helper treats a network failure or 5xx as a retryable `AlloyNetworkError` and a 4xx as an `AlloyUserError`. New `src/alloyhost/store.ts` is an in-memory `LocalStore` (the persistent one for Pure Tillium is P7). New `src/alloyhost/router.ts`: `createRouter` looks up the Alloy selected for an Element and returns its functions with the Ctx already applied (`api`, `need`, `has(element, fn)` for optional features, `missingRequired`). An install that never chose reads as today's behaviour (`legacySelection`); a saved choice of an unknown Alloy, one that cannot do the Element, or one the build policy removed reads as Off rather than crashing. In practice mode the write functions (`createItem`, `adjust`, `record`, `refund`, `debit` and so on, listed per Element in `WRITES`) refuse with `PracticeBlockedError` before reaching the Alloy, and reads still run. 12 new tests in `tests/alloyrouter.test.ts`. P4b (the Shopify, Zeller and iCloud `alloy.ts` adapters and the registry entries) is next. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index 8619e7f..defc161 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only
+ 
+ ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+ 
+-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). Next: P4, the Element contracts, `alloy.ts` adapters, the router and the legacy default selection; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
++Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4a is done (0253, Ctx builder and router). Next: P4b, the Shopify, Zeller and iCloud `alloy.ts` adapters; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index 52ff821..e293a7f 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -100,7 +100,7 @@ Everything here is built and unit tested. What is left on each is your device te
+ Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+ decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
+ the boundary test, with nothing calling them). P2 is built (0251: tests that pin what the Shopify and Zeller code does now).
+-P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). Next is P4: the Element contracts, the Shopify, Zeller and iCloud `alloy.ts` adapters, the router and the legacy default selection. Later: users deploy their own Cloudflare workers (section 8 of the plan).
++P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4a is built (0253: the Ctx builder, the router, the in-memory store). Next is P4b: the Shopify, Zeller and iCloud `alloy.ts` adapters and their registry entries. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/src/alloyhost/ctx.ts b/src/alloyhost/ctx.ts
+new file mode 100644
+index 0000000..272b086
+--- /dev/null
++++ b/src/alloyhost/ctx.ts
+@@ -0,0 +1,58 @@
++// Location: src/alloyhost/ctx.ts
++// Alloys P4a: builds the `Ctx` the app hands to an Alloy. The Alloy never sees fetch, the Keychain or settings directly, only this.
++// Secrets are read ahead of time into a plain object (the Keychain is async, `ctx.secret` is not), and each Alloy sees only its own.
++import { AlloyNetworkError, AlloyUserError } from '../alloykit/errors';
++import type { Ctx, Http, LocalStore } from '../alloykit/types';
++
++export type CtxDeps = {
++  /** Secrets and settings by Alloy id, then key. Missing means empty text, never undefined. */
++  secrets: Record<string, Record<string, string>>;
++  settings: Record<string, Record<string, string>>;
++  store: LocalStore;
++  uid: () => string;
++  log?: (alloyId: string, message: string) => void;
++  fetchImpl?: typeof fetch;
++};
++
++/**
++ * One HTTP helper. A network failure, a timeout-style error or a 5xx is an AlloyNetworkError (retryable, the sale stays queued);
++ * a 4xx is an AlloyUserError (the service refused, retrying will not help). The body is sent as JSON when it is an object.
++ */
++export function makeHttp(fetchImpl: typeof fetch = fetch): Http {
++  return {
++    async json<T>(url: string, init: { method?: string; headers?: Record<string, string>; body?: unknown; query?: Record<string, string | undefined> } = {}): Promise<T> {
++      let full = url;
++      if (init.query) {
++        const q = Object.entries(init.query).filter(([, v]) => v !== undefined).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v as string)}`).join('&');
++        if (q) full += (url.includes('?') ? '&' : '?') + q;
++      }
++      const headers: Record<string, string> = { ...(init.headers ?? {}) };
++      let body: string | undefined;
++      if (init.body !== undefined) {
++        if (typeof init.body === 'string') body = init.body;
++        else { body = JSON.stringify(init.body); if (!Object.keys(headers).some(h => h.toLowerCase() === 'content-type')) headers['Content-Type'] = 'application/json'; }
++      }
++      let res: Response;
++      try { res = await fetchImpl(full, { method: init.method ?? (body === undefined ? 'GET' : 'POST'), headers, body }); }
++      catch (e) { throw new AlloyNetworkError(`Could not reach ${new URL(full).host}`, e); }
++      if (res.status >= 500) throw new AlloyNetworkError(`${new URL(full).host} answered ${res.status}`);
++      let text = ''; try { text = await res.text(); } catch { /* an empty body is fine */ }
++      if (!res.ok) throw new AlloyUserError(`${new URL(full).host} refused the request (${res.status})${text ? `: ${text.slice(0, 200)}` : ''}`);
++      if (!text) return undefined as T;
++      try { return JSON.parse(text) as T; } catch (e) { throw new AlloyNetworkError(`${new URL(full).host} sent a reply that was not JSON`, e); }
++    },
++  };
++}
++
++/** The Ctx for one Alloy. Each call to `idempotencyKey` is new; the app passes its own stable keys where a retry must repeat one. */
++export function makeCtx(alloyId: string, d: CtxDeps): Ctx {
++  const http = makeHttp(d.fetchImpl);
++  return {
++    http,
++    secret: key => d.secrets[alloyId]?.[key] ?? '',
++    setting: key => d.settings[alloyId]?.[key] ?? '',
++    store: d.store,
++    idempotencyKey: d.uid,
++    log: m => d.log?.(alloyId, m),
++  };
++}
+diff --git a/src/alloyhost/router.ts b/src/alloyhost/router.ts
+new file mode 100644
+index 0000000..6f9f37e
+--- /dev/null
++++ b/src/alloyhost/router.ts
+@@ -0,0 +1,88 @@
++// Location: src/alloyhost/router.ts
++// Alloys P4a: how the app reaches an Element. The app asks the router for "the catalogue", the router looks up which Alloy is selected,
++// gives it that Alloy's Ctx and returns the Element's functions with the Ctx already applied. Nothing in the app calls this yet (P5 moves
++// the callers over one Element per patch), so adding it changes nothing at runtime.
++import { ELEMENTS, REQUIRED_ELEMENTS } from '../alloykit/elements';
++import type { AlloyPolicy } from '../alloykit/policy';
++import { applyPolicy, alloyFor, legacySelection, type LegacyFacts } from '../alloykit/selection';
++import { OFF, type Alloy, type Ctx, type ElementApi, type ElementId, type Selection } from '../alloykit/types';
++
++/** An Element's functions with the leading Ctx argument already supplied. */
++export type Bound<A> = { [K in keyof A]: NonNullable<A[K]> extends (ctx: Ctx, ...a: infer P) => infer R ? (...a: P) => R : A[K] };
++
++/** The functions that change something outside the till, per Element. In practice mode these refuse instead of running. Reads are not listed. */
++export const WRITES: { [E in ElementId]: string[] } = {
++  catalogue: ['createItem', 'updateItem'],
++  stock: ['adjust', 'set'],
++  discounts: [],
++  customers: ['create', 'update'],
++  orders: ['record', 'fulfil', 'refund'],
++  giftCards: ['create', 'debit', 'credit'],
++  sharedState: [],   // the shared backend has its own guard (BackendBlockedError); the router does not wrap it
++  cardTerminal: [],  // practice mode swaps the terminal itself (trainingTerminal), also outside the router
++  tapToPay: [],
++};
++
++export class ElementOffError extends Error {
++  constructor(readonly element: ElementId) { super(`${element} is switched off or has no Alloy selected.`); this.name = 'ElementOffError'; }
++}
++export class PracticeBlockedError extends Error {
++  constructor(readonly element: ElementId, readonly fn: string) { super(`Practice mode: ${element}.${fn} would change something outside the till, so it was not sent.`); this.name = 'PracticeBlockedError'; }
++}
++
++export type RouterDeps = {
++  alloys: Alloy[];
++  /** The saved selection, or undefined for an install that has never chosen (it then reads as today's behaviour). */
++  selection: () => Selection | undefined;
++  legacyFacts: () => LegacyFacts;
++  ctxFor: (alloyId: string) => Ctx;
++  isTraining: () => boolean;
++  /** The build's policy; defaults to ALLOY_POLICY. Tests pass their own. */
++  policy?: AlloyPolicy;
++};
++
++export type Router = {
++  /** The selection in force and where it came from. */
++  current(): { selection: Selection; source: 'saved' | 'legacy' };
++  /** The Alloy id that handles an Element, or null when Off or unset. */
++  alloyId(element: ElementId): string | null;
++  /** Whether an Element is on, and (with `fn`) whether the selected Alloy implements an optional function of it. */
++  has(element: ElementId, fn?: string): boolean;
++  /** The Element's bound functions, or null when it is Off, unset, or the selected Alloy cannot do it. */
++  api<E extends ElementId>(element: E): Bound<ElementApi[E]> | null;
++  /** As `api`, but throws ElementOffError instead of returning null. */
++  need<E extends ElementId>(element: E): Bound<ElementApi[E]>;
++  /** Required Elements with no working choice (the app must not run sales until this is empty). */
++  missingRequired(): ElementId[];
++};
++
++export function createRouter(d: RouterDeps): Router {
++  const alloys = () => applyPolicy(d.alloys, d.policy);
++  const current = () => { const saved = d.selection(); return saved ? { selection: saved, source: 'saved' as const } : { selection: legacySelection(d.legacyFacts()), source: 'legacy' as const }; };
++  const impl = (element: ElementId) => {
++    const v = current().selection[element]; if (!v || v === OFF) return null;
++    const a = alloyFor(alloys(), v); const e = a?.elements[element];
++    return a && e ? { alloy: a, api: e.api as unknown as Record<string, unknown> } : null;
++  };
++  const router: Router = {
++    current,
++    alloyId: element => impl(element)?.alloy.id ?? null,
++    has: (element, fn) => { const i = impl(element); return !!i && (!fn || typeof i.api[fn] === 'function'); },
++    api<E extends ElementId>(element: E) {
++      const i = impl(element); if (!i) return null;
++      const ctx = d.ctxFor(i.alloy.id); const bound: Record<string, unknown> = {};
++      for (const k of Object.keys(i.api)) {
++        const f = i.api[k]; if (typeof f !== 'function') { bound[k] = f; continue; }
++        if (WRITES[element].includes(k)) bound[k] = (...a: unknown[]) => { if (d.isTraining()) return Promise.reject(new PracticeBlockedError(element, k)); return (f as (...x: unknown[]) => unknown)(ctx, ...a); };
++        else bound[k] = (...a: unknown[]) => (f as (...x: unknown[]) => unknown)(ctx, ...a);
++      }
++      return bound as Bound<ElementApi[E]>;
++    },
++    need<E extends ElementId>(element: E) { const a = router.api(element); if (!a) throw new ElementOffError(element); return a; },
++    missingRequired: () => REQUIRED_ELEMENTS.filter(e => !impl(e)),
++  };
++  return router;
++}
++
++/** Every Element id, for screens that list them. Re-exported so the app side needs only this file. */
++export const ALL_ELEMENTS = ELEMENTS;
+diff --git a/src/alloyhost/store.ts b/src/alloyhost/store.ts
+new file mode 100644
+index 0000000..a200f2f
+--- /dev/null
++++ b/src/alloyhost/store.ts
+@@ -0,0 +1,16 @@
++// Location: src/alloyhost/store.ts
++// Alloys P4a: a LocalStore (typed collections) held in memory. Tests use it, and so does anything that must not persist (practice mode).
++// The persistent one for Pure Tillium (AsyncStorage) arrives with P7 behind the same type.
++import type { LocalStore } from '../alloykit/types';
++
++export function memoryStore(): LocalStore {
++  const data = new Map<string, Map<string, string>>();
++  const coll = (c: string) => { let m = data.get(c); if (!m) { m = new Map(); data.set(c, m); } return m; };
++  // Values are stored as JSON so a caller can never mutate what is "saved" by keeping a reference, the same as a real store.
++  return {
++    async get<T>(c: string, id: string) { const v = coll(c).get(id); return v === undefined ? null : JSON.parse(v) as T; },
++    async put<T>(c: string, id: string, value: T) { coll(c).set(id, JSON.stringify(value)); },
++    async remove(c: string, id: string) { coll(c).delete(id); },
++    async list<T>(c: string) { return [...coll(c).values()].map(v => JSON.parse(v) as T); },
++  };
++}
+diff --git a/tests/alloyrouter.test.ts b/tests/alloyrouter.test.ts
+new file mode 100644
+index 0000000..8d379d6
+--- /dev/null
++++ b/tests/alloyrouter.test.ts
+@@ -0,0 +1,122 @@
++// Location: tests/alloyrouter.test.ts
++// Alloys P4a: the Ctx builder and the router, with made-up Alloys. Nothing in the app calls them yet.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { makeCtx, makeHttp } from '../src/alloyhost/ctx';
++import { memoryStore } from '../src/alloyhost/store';
++import { createRouter, ElementOffError, PracticeBlockedError, WRITES } from '../src/alloyhost/router';
++import { ALLOY_CONTRACT, OFF, type Alloy, type Ctx, type Selection } from '../src/alloykit/types';
++import { isAlloyNetworkError, isAlloyUserError } from '../src/alloykit/errors';
++import { ELEMENTS } from '../src/alloykit/elements';
++
++const res = (status: number, body: string) => ({ ok: status < 400, status, text: async () => body }) as unknown as Response;
++const FACTS = { shopifyConnected: true, sharedBackend: 'metaobject' as const, zellerPaired: true };
++
++test('http: query is appended and encoded, undefined values dropped, object bodies sent as JSON with a content type', async () => {
++  const seen: any[] = [];
++  const http = makeHttp((async (url: any, init: any) => { seen.push([String(url), init]); return res(200, '{"a":1}'); }) as any);
++  assert.deepEqual(await http.json('https://x.test/p?z=1', { query: { q: 'a b', skip: undefined, n: '2' } }), { a: 1 });
++  assert.equal(seen[0][0], 'https://x.test/p?z=1&q=a%20b&n=2'); assert.equal(seen[0][1].method, 'GET');
++  await http.json('https://x.test/p', { body: { k: 1 } });
++  assert.equal(seen[1][1].method, 'POST'); assert.equal(seen[1][1].body, '{"k":1}'); assert.equal(seen[1][1].headers['Content-Type'], 'application/json');
++  await http.json('https://x.test/p', { method: 'PUT', body: 'raw', headers: { 'content-type': 'text/plain' } });
++  assert.equal(seen[2][1].body, 'raw'); assert.equal(seen[2][1].headers['Content-Type'], undefined);
++});
++
++test('http: network failure and 5xx are retryable network errors; 4xx is a user error carrying the reply; empty body is undefined; non-JSON is a network error', async () => {
++  const mk = (f: () => Promise<Response>) => makeHttp((async () => f()) as any);
++  await assert.rejects(() => mk(async () => { throw new Error('offline'); }).json('https://x.test/'), (e: any) => isAlloyNetworkError(e) && /Could not reach x\.test/.test(e.message));
++  await assert.rejects(() => mk(async () => res(503, '')).json('https://x.test/'), (e: any) => isAlloyNetworkError(e) && /503/.test(e.message));
++  await assert.rejects(() => mk(async () => res(401, 'bad key')).json('https://x.test/'), (e: any) => isAlloyUserError(e) && /\(401\): bad key/.test(e.message));
++  assert.equal(await mk(async () => res(204, '')).json('https://x.test/'), undefined);
++  await assert.rejects(() => mk(async () => res(200, '<html>')).json('https://x.test/'), isAlloyNetworkError);
++});
++
++test('ctx: each Alloy sees only its own secrets and settings; missing is empty text; keys come from the app; log is tagged', () => {
++  const logs: string[] = []; let n = 0;
++  const deps = { secrets: { a: { token: 'T' }, b: { token: 'OTHER' } }, settings: { a: { loc: 'L1' } }, store: memoryStore(), uid: () => `k${++n}`, log: (id: string, m: string) => logs.push(`${id}:${m}`) };
++  const a = makeCtx('a', deps), b = makeCtx('b', deps);
++  assert.equal(a.secret('token'), 'T'); assert.equal(b.secret('token'), 'OTHER'); assert.equal(a.secret('nope'), ''); assert.equal(b.setting('loc'), '');
++  assert.equal(a.setting('loc'), 'L1'); assert.equal(a.idempotencyKey(), 'k1'); assert.equal(b.idempotencyKey(), 'k2');
++  a.log('hi'); assert.deepEqual(logs, ['a:hi']);
++});
++
++test('memoryStore: typed collections that copy what they hold', async () => {
++  const s = memoryStore(); const v = { n: 1 };
++  await s.put('c', 'x', v); v.n = 2;
++  assert.deepEqual(await s.get('c', 'x'), { n: 1 }); assert.equal(await s.get('c', 'nope'), null); assert.equal(await s.get('other', 'x'), null);
++  await s.put('c', 'y', { n: 3 }); assert.deepEqual(await s.list('c'), [{ n: 1 }, { n: 3 }]);
++  await s.remove('c', 'x'); assert.deepEqual(await s.list('c'), [{ n: 3 }]);
++});
++
++// ── router ──
++const calls: any[] = [];
++const alloy = (id: string, extra: Partial<Alloy['elements']> = {}): Alloy => ({
++  id, name: id, blurb: '', contract: ALLOY_CONTRACT, settings: [], connect: async () => ({ ok: true }),
++  elements: {
++    catalogue: { api: { listItems: async (c: Ctx, p: any) => { calls.push([id, 'listItems', c.setting('who'), p]); return { rows: [], next: null }; }, listCollections: async () => ({ rows: [], next: null }), createItem: async (c: Ctx, i: any) => { calls.push([id, 'createItem', i]); return {} as any; } } },
++    orders: { api: { record: async (c: Ctx, s: any, o: any) => { calls.push([id, 'record', o.key]); return { id: 'O' }; } } },
++    sharedState: { api: { backend: () => ({ kind: 'metaobject' }) as any } },
++    ...extra,
++  },
++});
++const mkRouter = (over: { sel?: Selection | undefined; training?: boolean; alloys?: Alloy[]; policy?: { icloudCustomers: 'allowed' | 'disabled' } } = {}) => createRouter({
++  alloys: over.alloys ?? [alloy('shopify'), alloy('tillium')],
++  selection: () => ('sel' in over ? over.sel : undefined), legacyFacts: () => FACTS,
++  ctxFor: id => makeCtx(id, { secrets: {}, settings: { shopify: { who: 'S' }, tillium: { who: 'T' } }, store: memoryStore(), uid: () => 'key' }),
++  isTraining: () => !!over.training, policy: over.policy,
++});
++
++test('router: an install that never chose reads as today (Shopify for shop Elements, Shopify shared state, Zeller terminal) and says so', () => {
++  const r = mkRouter();
++  assert.equal(r.current().source, 'legacy'); assert.equal(r.alloyId('catalogue'), 'shopify'); assert.equal(r.alloyId('sharedState'), 'shopify');
++  assert.equal(r.alloyId('cardTerminal'), null, 'zeller is not in this test registry, so the choice is unsupported and reads as off');
++});
++
++test('router: a saved selection wins; Off and unset are both "no Element"; api() is null for them and need() throws', () => {
++  const r = mkRouter({ sel: { catalogue: 'tillium', orders: OFF, sharedState: 'shopify' } });
++  assert.equal(r.current().source, 'saved'); assert.equal(r.alloyId('catalogue'), 'tillium');
++  assert.equal(r.api('orders'), null); assert.equal(r.api('stock'), null); assert.equal(r.has('orders'), false);
++  assert.throws(() => r.need('orders'), (e: any) => e instanceof ElementOffError && e.element === 'orders');
++  assert.deepEqual(r.missingRequired(), ['orders']);
++  assert.deepEqual(mkRouter({ sel: { catalogue: 'tillium', orders: 'tillium', sharedState: 'shopify' } }).missingRequired(), []);
++});
++
++test('router: a saved choice of an unknown Alloy, or one that cannot do the Element, is off (never a crash)', () => {
++  const r = mkRouter({ sel: { catalogue: 'ghost', stock: 'tillium', orders: 'shopify', sharedState: 'shopify' } });
++  assert.equal(r.api('catalogue'), null); assert.equal(r.api('stock'), null); assert.deepEqual(r.missingRequired(), ['catalogue']);
++});
++
++test('router: functions come back with the selected Alloy\'s Ctx already applied, and arguments pass through', async () => {
++  calls.length = 0;
++  const r = mkRouter({ sel: { catalogue: 'tillium', orders: 'shopify', sharedState: 'shopify' } });
++  await r.need('catalogue').listItems({ limit: 5 });
++  await r.need('orders').record({} as any, { key: 'k9' });
++  assert.deepEqual(calls, [['tillium', 'listItems', 'T', { limit: 5 }], ['shopify', 'record', 'k9']]);
++});
++
++test('router: has(element, fn) reads optional functions, which is how the app knows a feature exists', () => {
++  const r = mkRouter({ sel: { catalogue: 'tillium', orders: 'shopify', sharedState: 'shopify' } });
++  assert.equal(r.has('catalogue', 'createItem'), true); assert.equal(r.has('catalogue', 'updateItem'), false); assert.equal(r.has('orders', 'refund'), false);
++});
++
++test('router, practice mode: write functions refuse before reaching the Alloy; reads still run', async () => {
++  calls.length = 0;
++  const r = mkRouter({ training: true, sel: { catalogue: 'shopify', orders: 'shopify', sharedState: 'shopify' } });
++  await assert.rejects(() => r.need('catalogue').createItem!({ title: 'x', priceCents: 1 }), (e: any) => e instanceof PracticeBlockedError && e.fn === 'createItem');
++  await assert.rejects(() => r.need('orders').record({} as any, { key: 'k' }), PracticeBlockedError);
++  await r.need('catalogue').listItems({});
++  assert.deepEqual(calls.map(c => c[1]), ['listItems']);
++});
++
++test('router, policy: with iCloud customers disabled the router treats a saved icloud customers choice as off', () => {
++  const icloud = alloy('icloud', { customers: { api: { search: async () => [] } } });
++  const base = { sel: { catalogue: 'shopify', orders: 'shopify', sharedState: 'shopify', customers: 'icloud' } as Selection, alloys: [alloy('shopify'), icloud] };
++  assert.equal(mkRouter({ ...base, policy: { icloudCustomers: 'allowed' } }).alloyId('customers'), 'icloud');
++  const off = mkRouter({ ...base, policy: { icloudCustomers: 'disabled' } });
++  assert.equal(off.alloyId('customers'), null); assert.equal(off.api('customers'), null); assert.equal(off.api('catalogue') !== null, true);
++});
++
++test('WRITES has an entry for every Element (a new Element must decide which of its functions are writes)', () => {
++  assert.deepEqual(Object.keys(WRITES).sort(), ELEMENTS.map(e => e.id).sort());
++});
+-- 
+2.43.0
+

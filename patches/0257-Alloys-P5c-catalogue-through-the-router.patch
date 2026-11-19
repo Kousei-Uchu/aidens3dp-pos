@@ -1,0 +1,330 @@
+From 2597262b4d3a289afcf7cfcda6fe6d0a7fbe43e1 Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Wed, 18 Nov 2026 20:22:33 +1100
+Subject: [PATCH] Alloys P5c: catalogue through the router
+
+---
+ dev_docs/PROGRESS.md           |  1 +
+ dev_docs/QUEUE.md              |  2 +-
+ dev_docs/TO_DO.md              |  2 +-
+ src/alloyhost/catalogue.ts     | 33 ++++++++++++
+ src/alloykit/elements.ts       |  2 +-
+ src/alloykit/types.ts          |  4 +-
+ src/alloys/shopify/alloy.ts    |  7 +--
+ src/lib/sync.ts                |  9 ++--
+ src/screens/Items.tsx          |  6 +--
+ tests/alloyp5catalogue.test.ts | 92 ++++++++++++++++++++++++++++++++++
+ 10 files changed, 144 insertions(+), 14 deletions(-)
+ create mode 100644 src/alloyhost/catalogue.ts
+ create mode 100644 tests/alloyp5catalogue.test.ts
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 5c9eb30..99099c5 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -216,6 +216,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0254 | 2026-11-18 | Alloys phase P4b: the Shopify, Zeller and iCloud Alloys, as adapters over the code that is already there. **Nothing in the app calls them yet**, so behaviour is unchanged (P5 moves the callers over, one Element per patch). `src/alloys/shopify/alloy.ts` presents catalogue, stock, discounts, customers, orders, gift cards and shared state through the Element contracts; Shopify's own errors become the two Alloy errors (anything else, such as practice mode, passes through); the location comes from the Alloy's settings; `connect` lists the locations and names which Elements lack permissions; `changesSince` stamps its cursor before the call as the poll does today. `src/alloys/zeller/alloy.ts` is the card terminal over the existing `TerminalLike`, with the native reader code loaded only when asked for. `src/alloys/icloud.ts` is shared state over CloudKit (no iCloud Customers Element is built yet; the policy switch for it already exists). `src/alloys/index.ts` now registers all three. Four small fixes to the contract where the real functions carry more than the first draft showed: creating an item returns its three ids, updating one takes the product id too, refunds are per way paid with an optional restock flag, and gift cards have once-only debit and credit. `ELEMENT_FUNCTIONS` in `alloykit/elements.ts` lists the required and optional functions of each Element, and the new `tests/alloyconformance.test.ts` holds every registered Alloy to it, then runs the Shopify Alloy against the fake Shopify (19 tests). The `pendingEntry` boundary exception is gone; the other `TRANSITION` exceptions stay until P5. Full suite 2124 passing. |
+ | 0255 | 2026-11-18 | Alloys phase P5a: the first caller moves onto the router, **Discounts**. The import and the half-hourly refresh in `sync.ts` used to call Shopify for automatic discounts and manual presets themselves; they now call `loadDiscounts()` (new `src/alloyhost/discounts.ts`), which asks the router for the Discounts Element. With the legacy default selection that is the Shopify Alloy while a Shopify login exists, which makes the same two calls in the same order, so nothing changes for you. If the Element is off, or there is no login (or practice mode, which reads as no login), discounts read as empty and nothing is sent. New `src/alloyhost/appRouter.ts` is the one router the app uses: built from the registry, reading the live location and login each time, with the selection fixed at the legacy default until the picker (P6) saves a choice. 5 new tests in `tests/alloyp5discounts.test.ts` pin that the router result equals calling Shopify directly, the call order, the empty cases, and that `sync.ts` has no direct discount calls left. Full suite 2129 passing. |
+ | 0256 | 2026-11-18 | Alloys phase P5b: **Customers** moves onto the router. The Customers screen (search, create, edit) and the customer sheet in the cart (remote search, create) no longer import the Shopify customer file; they ask for the function through `needFeature('customers', ...)` (new `src/alloyhost/need.ts`). With the legacy default that reaches the same Shopify calls with the same inputs, and the screens show the same words when Shopify is not there: the old "Shopify is not set up - open More ▸ Settings ▸ Shopify." without a login, and the old practice-mode message in practice. Once a person has chosen their own setup, the message names the Element instead, and an Alloy that lacks a function (say, no "edit customer") gives a plain "cannot do that" error. One contract change: the customer input carries first and last name separately, as the till asks for them, rather than one name that the Alloy would have to split. The practice-mode branches in the screens are untouched. 5 new tests in `tests/alloyp5customers.test.ts`; full suite 2134 passing. |
++| 0257 | 2026-11-18 | Alloys phase P5c: **Catalogue** moves onto the router. The full import and the half-hourly refresh in `sync.ts` read items, collections and the customer list through `listAllItems`, `listAllCollections` and `listAllCustomers` (new `src/alloyhost/catalogue.ts`), and the Items screen creates and edits items through `needFeature('catalogue', 'createItem' / 'updateItem')`. Against Shopify these make the same calls with the same inputs in the same order (tests compare each against calling Shopify directly, including the stock-count and collection steps of creating an item), and the screens show the same words when Shopify is missing or in practice mode. An Alloy may return a long list in pages: `readAllPages` reads every page and stops with an error if a cursor repeats, so a faulty Alloy cannot loop; Shopify returns each list as one page. The local customer list is optional: with Customers off, or an Alloy that cannot list them all (new optional `listAll`), the till just stores none. The contract gained `onProgress` on a page request (the import's progress line) and `listAll` on Customers. `fetchShop` in Settings is left alone: it is the connection step, which the setup picker (P6) takes over through the Alloy's `connect`. 6 new tests in `tests/alloyp5catalogue.test.ts`; full suite 2140 passing. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index 8115c93..4ba2660 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only
+ 
+ ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+ 
+-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256). Next: the remaining callers onto the router one Element per patch (catalogue, stock, gift cards, orders, shared state, card terminal); each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
++Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257). Next: the remaining callers onto the router one Element per patch (stock, gift cards, orders, shared state, card terminal); each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index 47ccae3..1faf521 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -100,7 +100,7 @@ Everything here is built and unit tested. What is left on each is your device te
+ Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+ decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
+ the boundary test, with nothing calling them). P2 is built (0251: tests that pin what the Shopify and Zeller code does now).
+-P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255) and customers (0256) are on the router. Next in P5, one Element per patch: catalogue, stock, gift cards, orders, shared state, card terminal. Later: users deploy their own Cloudflare workers (section 8 of the plan).
++P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255), customers (0256) and catalogue (0257) are on the router. Next in P5, one Element per patch: stock, gift cards, orders, shared state, card terminal. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/src/alloyhost/catalogue.ts b/src/alloyhost/catalogue.ts
+new file mode 100644
+index 0000000..272bfbe
+--- /dev/null
++++ b/src/alloyhost/catalogue.ts
+@@ -0,0 +1,33 @@
++// Location: src/alloyhost/catalogue.ts
++// Alloys P5c: how the app reads the whole catalogue (items, collections, customers) through the router. An Alloy may hand a long list
++// back in pages; these read every page, one after the other. Shopify returns each list as a single page (it is one bulk job), so against
++// Shopify this makes exactly the calls the import has always made. A cursor that does not advance is an error, never an endless loop.
++import type { Collection, Customer, Variant } from '../lib/types';
++import type { Page, PageReq } from '../alloykit/types';
++import { needFeature } from './need';
++import type { Router } from './router';
++import { appRouter } from './appRouter';
++
++export async function readAllPages<T>(read: (req: PageReq) => Promise<Page<T>>, onProgress?: (s: string) => void): Promise<T[]> {
++  const rows: T[] = []; let after: string | null = null; const seen = new Set<string>();
++  for (;;) {
++    const p = await read({ after, onProgress }); rows.push(...p.rows);
++    if (p.next === null) return rows;
++    if (seen.has(p.next)) throw new Error('The service sent the same page cursor twice, so the list was stopped.');
++    seen.add(p.next); after = p.next;
++  }
++}
++
++export const listAllItems = async (onProgress?: (s: string) => void, router: Router = appRouter): Promise<Variant[]> =>
++  readAllPages(needFeature('catalogue', 'listItems', 'Shopify', router), onProgress);
++export const listAllCollections = async (onProgress?: (s: string) => void, router: Router = appRouter): Promise<Collection[]> =>
++  readAllPages(needFeature('catalogue', 'listCollections', 'Shopify', router), onProgress);
++
++/** The local customer list is optional: with Customers off, or an Alloy that cannot list them all, the till simply has none stored. */
++export async function listAllCustomers(onProgress?: (s: string) => void, router: Router = appRouter): Promise<Customer[]> {
++  if (!router.has('customers', 'listAll')) {
++    // Same words as before when the login is missing: the import fails at the first step anyway, so this is only reached when it is on purpose.
++    return [];
++  }
++  return router.api('customers')!.listAll!({ onProgress });
++}
+diff --git a/src/alloykit/elements.ts b/src/alloykit/elements.ts
+index c6131a4..1d74539 100644
+--- a/src/alloykit/elements.ts
++++ b/src/alloykit/elements.ts
+@@ -28,7 +28,7 @@ export const ELEMENT_FUNCTIONS: Record<ElementId, { required: string[]; optional
+   catalogue: { required: ['listItems', 'listCollections'], optional: ['createItem', 'updateItem'] },
+   stock: { required: ['changesSince', 'adjust'], optional: ['set'] },
+   discounts: { required: ['listAutomatic', 'listPresets'], optional: [] },
+-  customers: { required: ['search'], optional: ['create', 'update'] },
++  customers: { required: ['search'], optional: ['listAll', 'create', 'update'] },
+   orders: { required: ['record'], optional: ['find', 'list', 'fulfil', 'refund'] },
+   giftCards: { required: ['lookup', 'create', 'debit', 'credit'], optional: ['debitOnce', 'creditOnce', 'history'] },
+   sharedState: { required: ['backend'], optional: [] },
+diff --git a/src/alloykit/types.ts b/src/alloykit/types.ts
+index 468034b..84a6f9b 100644
+--- a/src/alloykit/types.ts
++++ b/src/alloykit/types.ts
+@@ -32,7 +32,7 @@ export type Ctx = {
+   log(message: string): void;
+ };
+ 
+-export type PageReq = { after?: string | null; limit?: number };
++export type PageReq = { after?: string | null; limit?: number; /** Shown to the person while a long read runs ("completed · 300 records"). An Alloy may ignore it. */ onProgress?: (s: string) => void };
+ export type Page<T> = { rows: T[]; next: string | null };
+ 
+ // ── The Elements' APIs. An optional function is a feature: the picker reads what an Alloy can do from which functions exist. ──
+@@ -63,6 +63,8 @@ export type DiscountsApi = {
+ export type CustomerInput = { firstName?: string; lastName?: string; email?: string; phone?: string; note?: string };
+ export type CustomersApi = {
+   search(ctx: Ctx, query: string): Promise<Customer[]>;
++  /** Every customer, for the local copy the till searches. Optional: without it the till only searches the service live. */
++  listAll?(ctx: Ctx, p: { onProgress?: (s: string) => void }): Promise<Customer[]>;
+   create?(ctx: Ctx, c: CustomerInput): Promise<Customer>;
+   update?(ctx: Ctx, id: string, c: CustomerInput): Promise<Customer>;
+ };
+diff --git a/src/alloys/shopify/alloy.ts b/src/alloys/shopify/alloy.ts
+index 9d031b5..88c7a02 100644
+--- a/src/alloys/shopify/alloy.ts
++++ b/src/alloys/shopify/alloy.ts
+@@ -4,7 +4,7 @@
+ // later step, so this adapter ignores `ctx` for the network and uses it only for settings (the location). Nothing calls it before P5.
+ import { AlloyNetworkError, AlloyUserError } from '../../alloykit/errors';
+ import type { Alloy, ConnectReport, Ctx, ElementId, GiftCard, OrderRef } from '../../alloykit/types';
+-import { fetchAutoDiscounts, fetchCollections, fetchManualPresets, fetchShop, fetchStockDelta, fetchVariants } from './catalogue';
++import { fetchAutoDiscounts, fetchCollections, fetchCustomers, fetchManualPresets, fetchShop, fetchStockDelta, fetchVariants } from './catalogue';
+ import { ShopifyNetworkError, ShopifyUserError, hasCreds, tokenScopes } from './client';
+ import { createCustomer, searchRemote, updateCustomer } from './customers';
+ import { createGiftCard, creditGiftCard, creditGiftCardOnce, debitGiftCard, debitGiftCardOnce, giftCardHistory, lookupGiftCard, type GiftCardInfo } from './giftcards';
+@@ -67,8 +67,8 @@ const alloy: Alloy = {
+       needs: NEEDS.catalogue,
+       api: {
+         // The import is one bulk job, so it comes back as a single page.
+-        listItems: (ctx) => translate(async () => ({ rows: await fetchVariants(loc(ctx)), next: null })),
+-        listCollections: () => translate(async () => ({ rows: await fetchCollections(), next: null })),
++        listItems: (ctx, p) => translate(async () => ({ rows: await fetchVariants(loc(ctx), p.onProgress), next: null })),
++        listCollections: (_ctx, p) => translate(async () => ({ rows: await fetchCollections(p.onProgress), next: null })),
+         createItem: (ctx, input) => translate(() => createItem(input, loc(ctx))),
+         updateItem: (_ctx, item, patch) => translate(() => updateVariant(item.productId, item.variantId, patch)),
+       },
+@@ -91,6 +91,7 @@ const alloy: Alloy = {
+       needs: NEEDS.customers,
+       api: {
+         search: (_ctx, q) => translate(() => searchRemote(q)),
++        listAll: (_ctx, p) => translate(() => fetchCustomers(p.onProgress)),
+         create: (_ctx, c) => translate(() => createCustomer(c)),
+         update: (_ctx, id, c) => translate(() => updateCustomer(id, c)),
+       },
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index ff23fac..34a1e1e 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -17,6 +17,7 @@ import { isTraining } from './trainingGuard';
+ import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
+ import * as shop from './shopify/catalogue';
+ import { loadDiscounts } from '../alloyhost/discounts';
++import { listAllCollections, listAllCustomers, listAllItems } from '../alloyhost/catalogue';
+ import { activeBackendKind, getShared, listShared, putShared, detailReadyShared, type BackendRow } from './syncBackend';
+ import { applyPulled, baseOf, mergeSaved, parseSavedRow } from './savedMerge';
+ import { refreshDue, CATALOGUE_REFRESH_MS } from './catalogueRefresh';
+@@ -362,9 +363,9 @@ export const retryBlocked = (id: string) => { patchItem(id, o => ({ ...o, blocke
+ export async function importFromShopify(onProgress: (s: string) => void) {
+   const s = st();
+   if (!s.settings.locationId) throw new Error('Pick a location first (Settings ▸ Shopify).');
+-  onProgress('Products & stock…'); const vs = await shop.fetchVariants(s.settings.locationId, onProgress);
+-  onProgress('Collections…'); const collections = await shop.fetchCollections(onProgress);
+-  onProgress('Customers…'); const customers = await shop.fetchCustomers(onProgress);
++  onProgress('Products & stock…'); const vs = await listAllItems(onProgress);
++  onProgress('Collections…'); const collections = await listAllCollections(onProgress);
++  onProgress('Customers…'); const customers = await listAllCustomers(onProgress);
+   onProgress('Discounts…'); const { autos, presets } = await loadDiscounts();
+   s.patchData({ variants: Object.fromEntries(vs.map(v => [v.id, v])), collections, customers, autos, presets, catalogueAt: new Date().toISOString(), stockSince: new Date().toISOString(), catalogueLoc: s.settings.locationId });
+   return { variants: vs.length, collections: collections.length, customers: customers.length, discounts: autos.length + presets.length };
+@@ -380,7 +381,7 @@ export { CATALOGUE_REFRESH_MS, refreshDue };
+ const refreshOnce = singleFlight(async () => {
+   const s = st(); const loc = s.settings.locationId; if (!loc) return;
+   const stamp = new Date().toISOString(); // taken before reading, so a change made during the read is picked up next poll
+-  const vs = await shop.fetchVariants(loc); const collections = await shop.fetchCollections(() => {});
++  const vs = await listAllItems(); const collections = await listAllCollections();
+   const { autos, presets } = await loadDiscounts();
+   s.patchData({ variants: Object.fromEntries(vs.map(v => [v.id, v])), collections, autos, presets, catalogueAt: stamp, stockSince: stamp, catalogueLoc: loc });
+ });
+diff --git a/src/screens/Items.tsx b/src/screens/Items.tsx
+index 2612a78..bd711e6 100644
+--- a/src/screens/Items.tsx
++++ b/src/screens/Items.tsx
+@@ -6,7 +6,7 @@ import { Spot } from '../ui/Spot';
+ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
+ import { useCatalogue } from '../state/selectors';
+-import { createItem, updateVariant } from '../lib/shopify/products';
++import { needFeature } from '../alloyhost/need';
+ import { importFromShopify } from '../lib/sync';
+ import { isTraining } from '../lib/trainingGuard';
+ import { SPOT, itemsRowSpot } from '../lib/trainingSpots';
+@@ -43,7 +43,7 @@ export function CreateItem() {
+     }
+     if (!loc) return alertMsg('Pick a location first', 'Settings ▸ Shopify', 'settings/shopify');
+     setBusy(true);
+-    try { await createItem({ title: f.title.trim(), priceCents: price, sku: f.sku.trim() || undefined, barcode: f.barcode.trim() || undefined, costCents: money(f.cost), stock: stock.quantity, collectionId: col }, loc); await importFromShopify(() => {}); nav.pop(); }
++    try { await needFeature('catalogue', 'createItem')({ title: f.title.trim(), priceCents: price, sku: f.sku.trim() || undefined, barcode: f.barcode.trim() || undefined, costCents: money(f.cost), stock: stock.quantity, collectionId: col }); await importFromShopify(() => {}); nav.pop(); }
+     catch (e: any) { alertMsg('Could not create item', e.message, 'stock/items'); }
+     setBusy(false);
+   };
+@@ -74,7 +74,7 @@ export function EditItem({ id }: { id: string }) {
+       useApp.getState().patchData({ variants: { ...useApp.getState().data.variants, [v.id]: next } }); nav.pop(); return;
+     }
+     setBusy(true);
+-    try { await updateVariant(v.productId, v.id, { priceCents: p, sku, barcode, costCents });
++    try { await needFeature('catalogue', 'updateItem')({ productId: v.productId, variantId: v.id }, { priceCents: p, sku, barcode, costCents });
+       const next: Variant = { ...v, priceCents: p ?? v.priceCents, sku, barcode, costCents: costCents ?? v.costCents }; useApp.getState().patchData({ variants: { ...useApp.getState().data.variants, [v.id]: next } }); nav.pop(); }
+     catch (e: any) { alertMsg('Could not save', e.message, 'stock/items'); }
+     setBusy(false);
+diff --git a/tests/alloyp5catalogue.test.ts b/tests/alloyp5catalogue.test.ts
+new file mode 100644
+index 0000000..35b28db
+--- /dev/null
++++ b/tests/alloyp5catalogue.test.ts
+@@ -0,0 +1,92 @@
++// Location: tests/alloyp5catalogue.test.ts
++// Alloys P5c: the catalogue import, the half-hourly refresh and the Items screen reach Shopify through the router. Pins that the Shopify
++// calls and results are the same as calling Shopify directly, that paging is read to the end and cannot loop, and that the callers moved.
++import './helpers/fakeShopify';
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import * as fake from './helpers/fakeShopify';
++import { setTrainingGuard } from '../src/lib/trainingGuard';
++
++import { useApp } from '../src/state/store';
++useApp.getState().patchSettings({ locationId: 'L1' }); // the one Shopify location every call here is made at
++
++const bulk = (rows: unknown[]) => {
++  const url = `https://bulk.example/${fake.calls.length}-${Math.random().toString(36).slice(2)}`;
++  fake.bulkFiles.set(url, rows.map(r => JSON.stringify(r)).join('\n'));
++  fake.on('bulkOperationRunQuery', fake.data({ bulkOperationRunQuery: { bulkOperation: { id: 'B1', status: 'CREATED' }, userErrors: [] } }));
++  fake.on('currentBulkOperation', fake.data({ currentBulkOperation: { id: 'B1', status: 'COMPLETED', objectCount: rows.length, url } }));
++};
++const VARIANTS = [{ id: 'V1', title: 'Default Title', price: '12.50', inventoryItem: { id: 'I1', tracked: true, inventoryLevel: { quantities: [{ name: 'available', quantity: 7 }] } }, product: { id: 'P1', title: 'Cow', status: 'ACTIVE', tags: [] } }];
++const COLLECTIONS = [{ id: 'C1', title: 'Animals' }, { id: 'P1', __parentId: 'C1' }];
++const CUSTOMERS = [{ id: 'U1', displayName: 'Ann', email: 'a@x.com', numberOfOrders: 1 }];
++
++test('the import reads items, collections and customers through the router with the same Shopify calls and results as direct', async () => {
++  const run = async (viaRouter: boolean) => {
++    fake.install(); await fake.signIn(); bulk(VARIANTS); bulk(COLLECTIONS); bulk(CUSTOMERS);
++    const seen: string[] = [];
++    let r;
++    if (viaRouter) { const c = await import('../src/alloyhost/catalogue'); r = [await c.listAllItems(s => seen.push(s)), await c.listAllCollections(s => seen.push(s)), await c.listAllCustomers(s => seen.push(s))]; }
++    else { const s = await import('../src/lib/shopify/catalogue'); r = [await s.fetchVariants('L1', x => seen.push(x)), await s.fetchCollections(x => seen.push(x)), await s.fetchCustomers(x => seen.push(x))]; }
++    return { r, seen, queries: fake.gqlCalls().map(c => [c.query.slice(0, 60), JSON.stringify(c.variables)]) };
++  };
++  const a = await run(true), b = await run(false);
++  assert.deepEqual(a.r, b.r); assert.deepEqual(a.seen, b.seen); assert.equal(a.r[0].length, 1); assert.equal(a.r[1].length, 1); assert.equal(a.r[2].length, 1);
++  assert.deepEqual(a.queries, b.queries);
++});
++
++test('with no Shopify login the import fails at the first step with the old words; in practice mode with the old practice words', async () => {
++  fake.install(); const client = await import('../src/lib/shopify/client'); await client.clearCreds();
++  const c = await import('../src/alloyhost/catalogue');
++  await assert.rejects(() => c.listAllItems(), /^Error: Shopify is not set up - open More ▸ Settings ▸ Shopify\.$/);
++  await fake.signIn(); setTrainingGuard(true);
++  try { await assert.rejects(() => c.listAllCollections(), /^Error: Training mode: Shopify is switched off\.$/); } finally { setTrainingGuard(false); }
++  assert.equal(fake.calls.length, 0);
++});
++
++test('readAllPages reads to the end passing each cursor, and stops with an error on a cursor that repeats', async () => {
++  const { readAllPages } = await import('../src/alloyhost/catalogue');
++  const reqs: any[] = [];
++  const pages = [{ rows: [1, 2], next: 'a' }, { rows: [3], next: 'b' }, { rows: [4], next: null }];
++  const rows = await readAllPages<number>(async r => { reqs.push(r.after); return pages[reqs.length - 1]; });
++  assert.deepEqual(rows, [1, 2, 3, 4]); assert.deepEqual(reqs, [null, 'a', 'b']);
++  await assert.rejects(() => readAllPages<number>(async () => ({ rows: [1], next: 'same' })), /same page cursor twice/);
++});
++
++test('customers are left out (an empty list) when the Customers Element is off or cannot list them', async () => {
++  fake.install(); await fake.signIn();
++  const { createRouter } = await import('../src/alloyhost/router'); const { ALLOYS } = await import('../src/alloys');
++  const { makeCtx } = await import('../src/alloyhost/ctx'); const { memoryStore } = await import('../src/alloyhost/store'); const { listAllCustomers } = await import('../src/alloyhost/catalogue');
++  const base = { catalogue: 'shopify', orders: 'shopify', sharedState: 'shopify' };
++  const mk = (sel: any) => createRouter({ alloys: ALLOYS, selection: () => sel, legacyFacts: () => ({ shopifyConnected: true, sharedBackend: 'metaobject', zellerPaired: true }), ctxFor: id => makeCtx(id, { secrets: {}, settings: {}, store: memoryStore(), uid: () => 'k' }), isTraining: () => false });
++  assert.deepEqual(await listAllCustomers(undefined, mk(base)), []); assert.equal(fake.calls.length, 0);
++});
++
++test('createItem and updateItem through the router make the same Shopify calls as the Items screen used to', async () => {
++  fake.install(); await fake.signIn();
++  const { needFeature } = await import('../src/alloyhost/need');
++  const created = () => fake.on('productCreate', fake.data({ productCreate: { product: { id: 'P1', variants: { nodes: [{ id: 'V1', inventoryItem: { id: 'I1' } }] } }, userErrors: [] } }));
++  const okf = (f: string) => fake.on(f, fake.data({ [f]: { userErrors: [] } }));
++  const chain = () => { created(); okf('productVariantsBulkUpdate'); okf('inventoryActivate'); okf('inventorySetQuantities'); okf('collectionAddProductsV2'); };
++  const input = { title: 'Dragon', priceCents: 2550, sku: 'D', costCents: 800, stock: 4, collectionId: 'C1' };
++  chain();
++  const ref = await needFeature('catalogue', 'createItem')(input);
++  const norm = (calls: any[]) => JSON.stringify(calls.map(c => [c.query.replace(/@idempotent\(key: "[^"]+"\)/g, '@idempotent'), c.variables])).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, 'KEY'); // the generated retry keys differ run to run
++  const viaRouter = norm(fake.gqlCalls());
++  fake.install(); await fake.signIn(); chain();
++  const direct = await (await import('../src/lib/shopify/products')).createItem(input, useApp.getState().settings.locationId ?? '');
++  assert.deepEqual(ref, direct);
++  assert.equal(viaRouter, norm(fake.gqlCalls()));
++  okf('productVariantsBulkUpdate');
++  await needFeature('catalogue', 'updateItem')({ productId: 'P1', variantId: 'V1' }, { priceCents: 999, sku: 'X' });
++  assert.deepEqual(fake.lastCall().variables, { pid: 'P1', v: [{ id: 'V1', price: '9.99', inventoryItem: { sku: 'X' } }] });
++});
++
++test('sync.ts, Items.tsx no longer call the Shopify catalogue or product files for these reads and writes', () => {
++  const sync = readFileSync('src/lib/sync.ts', 'utf8');
++  assert.equal(/shop\.(fetchVariants|fetchCollections|fetchCustomers)/.test(sync), false);
++  assert.equal((sync.match(/listAllItems\(/g) ?? []).length, 2); assert.equal((sync.match(/listAllCollections\(/g) ?? []).length, 2); assert.equal((sync.match(/listAllCustomers\(/g) ?? []).length, 1);
++  const items = readFileSync('src/screens/Items.tsx', 'utf8');
++  assert.equal(/shopify\/products/.test(items), false); assert.ok(items.includes("needFeature('catalogue', 'createItem')") && items.includes("needFeature('catalogue', 'updateItem')"));
++  assert.equal(/\b(createItem|updateVariant)\(/.test(items), false);
++});
+-- 
+2.43.0
+

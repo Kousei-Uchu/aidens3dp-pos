@@ -1,0 +1,286 @@
+From 4b6934404f812fa2ceecc346fadb22f0ebad6656 Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Wed, 18 Nov 2026 19:43:36 +1100
+Subject: [PATCH] Alloys P5b: customers through the router
+
+---
+ dev_docs/PROGRESS.md           |  1 +
+ dev_docs/QUEUE.md              |  2 +-
+ dev_docs/TO_DO.md              |  2 +-
+ src/alloyhost/need.ts          | 25 +++++++++++++
+ src/alloykit/types.ts          |  3 +-
+ src/alloys/shopify/alloy.ts    |  5 ++-
+ src/screens/Customers.tsx      |  6 ++--
+ src/screens/sheets.tsx         |  6 ++--
+ tests/alloyconformance.test.ts |  6 ++--
+ tests/alloyp5customers.test.ts | 65 ++++++++++++++++++++++++++++++++++
+ 10 files changed, 106 insertions(+), 15 deletions(-)
+ create mode 100644 src/alloyhost/need.ts
+ create mode 100644 tests/alloyp5customers.test.ts
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 696bef1..5c9eb30 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -215,6 +215,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0253 | 2026-11-18 | Alloys phase P4a: the app-side plumbing that reaches an Alloy. **Nothing in the app calls it yet**, so it changes no behaviour (P5 moves the callers over one Element per patch). New `src/alloyhost/ctx.ts` builds the `Ctx` an Alloy is given: each Alloy sees only its own secrets and settings, and one `http.json` helper treats a network failure or 5xx as a retryable `AlloyNetworkError` and a 4xx as an `AlloyUserError`. New `src/alloyhost/store.ts` is an in-memory `LocalStore` (the persistent one for Pure Tillium is P7). New `src/alloyhost/router.ts`: `createRouter` looks up the Alloy selected for an Element and returns its functions with the Ctx already applied (`api`, `need`, `has(element, fn)` for optional features, `missingRequired`). An install that never chose reads as today's behaviour (`legacySelection`); a saved choice of an unknown Alloy, one that cannot do the Element, or one the build policy removed reads as Off rather than crashing. In practice mode the write functions (`createItem`, `adjust`, `record`, `refund`, `debit` and so on, listed per Element in `WRITES`) refuse with `PracticeBlockedError` before reaching the Alloy, and reads still run. 12 new tests in `tests/alloyrouter.test.ts`. P4b (the Shopify, Zeller and iCloud `alloy.ts` adapters and the registry entries) is next. |
+ | 0254 | 2026-11-18 | Alloys phase P4b: the Shopify, Zeller and iCloud Alloys, as adapters over the code that is already there. **Nothing in the app calls them yet**, so behaviour is unchanged (P5 moves the callers over, one Element per patch). `src/alloys/shopify/alloy.ts` presents catalogue, stock, discounts, customers, orders, gift cards and shared state through the Element contracts; Shopify's own errors become the two Alloy errors (anything else, such as practice mode, passes through); the location comes from the Alloy's settings; `connect` lists the locations and names which Elements lack permissions; `changesSince` stamps its cursor before the call as the poll does today. `src/alloys/zeller/alloy.ts` is the card terminal over the existing `TerminalLike`, with the native reader code loaded only when asked for. `src/alloys/icloud.ts` is shared state over CloudKit (no iCloud Customers Element is built yet; the policy switch for it already exists). `src/alloys/index.ts` now registers all three. Four small fixes to the contract where the real functions carry more than the first draft showed: creating an item returns its three ids, updating one takes the product id too, refunds are per way paid with an optional restock flag, and gift cards have once-only debit and credit. `ELEMENT_FUNCTIONS` in `alloykit/elements.ts` lists the required and optional functions of each Element, and the new `tests/alloyconformance.test.ts` holds every registered Alloy to it, then runs the Shopify Alloy against the fake Shopify (19 tests). The `pendingEntry` boundary exception is gone; the other `TRANSITION` exceptions stay until P5. Full suite 2124 passing. |
+ | 0255 | 2026-11-18 | Alloys phase P5a: the first caller moves onto the router, **Discounts**. The import and the half-hourly refresh in `sync.ts` used to call Shopify for automatic discounts and manual presets themselves; they now call `loadDiscounts()` (new `src/alloyhost/discounts.ts`), which asks the router for the Discounts Element. With the legacy default selection that is the Shopify Alloy while a Shopify login exists, which makes the same two calls in the same order, so nothing changes for you. If the Element is off, or there is no login (or practice mode, which reads as no login), discounts read as empty and nothing is sent. New `src/alloyhost/appRouter.ts` is the one router the app uses: built from the registry, reading the live location and login each time, with the selection fixed at the legacy default until the picker (P6) saves a choice. 5 new tests in `tests/alloyp5discounts.test.ts` pin that the router result equals calling Shopify directly, the call order, the empty cases, and that `sync.ts` has no direct discount calls left. Full suite 2129 passing. |
++| 0256 | 2026-11-18 | Alloys phase P5b: **Customers** moves onto the router. The Customers screen (search, create, edit) and the customer sheet in the cart (remote search, create) no longer import the Shopify customer file; they ask for the function through `needFeature('customers', ...)` (new `src/alloyhost/need.ts`). With the legacy default that reaches the same Shopify calls with the same inputs, and the screens show the same words when Shopify is not there: the old "Shopify is not set up - open More ▸ Settings ▸ Shopify." without a login, and the old practice-mode message in practice. Once a person has chosen their own setup, the message names the Element instead, and an Alloy that lacks a function (say, no "edit customer") gives a plain "cannot do that" error. One contract change: the customer input carries first and last name separately, as the till asks for them, rather than one name that the Alloy would have to split. The practice-mode branches in the screens are untouched. 5 new tests in `tests/alloyp5customers.test.ts`; full suite 2134 passing. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index d5c8e29..8115c93 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only
+ 
+ ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+ 
+-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts done, 0255). Next: the remaining callers onto the router one Element per patch (customers, catalogue, stock, gift cards, orders, shared state, card terminal); each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
++Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256). Next: the remaining callers onto the router one Element per patch (catalogue, stock, gift cards, orders, shared state, card terminal); each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index a9c86e3..47ccae3 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -100,7 +100,7 @@ Everything here is built and unit tested. What is left on each is your device te
+ Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+ decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
+ the boundary test, with nothing calling them). P2 is built (0251: tests that pin what the Shopify and Zeller code does now).
+-P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts are on the router (0255). Next in P5, one Element per patch: customers, then catalogue, stock, gift cards, orders, shared state, card terminal. Later: users deploy their own Cloudflare workers (section 8 of the plan).
++P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255) and customers (0256) are on the router. Next in P5, one Element per patch: catalogue, stock, gift cards, orders, shared state, card terminal. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/src/alloyhost/need.ts b/src/alloyhost/need.ts
+new file mode 100644
+index 0000000..5775ae2
+--- /dev/null
++++ b/src/alloyhost/need.ts
+@@ -0,0 +1,25 @@
++// Location: src/alloyhost/need.ts
++// Alloys P5b: how a screen asks for an Element's function and gets a plain error when it is not there. When the app is still on the legacy
++// selection the words are exactly what the Shopify code said before the router existed (not set up, or the practice-mode message), so a
++// screen that shows `e.message` shows the same text. Once someone has chosen their own setup, the message names the Element instead.
++import { ElementOffError, type Bound, type Router } from './router';
++import { appRouter } from './appRouter';
++import { isTraining } from '../lib/trainingGuard';
++import type { ElementApi, ElementId } from '../alloykit/types';
++
++export const NOT_SET_UP = 'Shopify is not set up - open More ▸ Settings ▸ Shopify.';
++export class NoSuchFeatureError extends Error { constructor(readonly element: ElementId, readonly fn: string) { super(`The connection chosen for ${element} cannot do that (${fn}).`); this.name = 'NoSuchFeatureError'; } }
++
++/** `label` is the service named in the legacy messages ("Shopify"). */
++export function needFeature<E extends ElementId, K extends keyof Bound<ElementApi[E]>>(
++  element: E, fn: K, label = 'Shopify', router: Router = appRouter, training: () => boolean = isTraining,
++): NonNullable<Bound<ElementApi[E]>[K]> {
++  const api = router.api(element);
++  if (!api) {
++    if (router.current().source === 'legacy') throw new Error(training() ? `Training mode: ${label} is switched off.` : NOT_SET_UP);
++    throw new ElementOffError(element);
++  }
++  const f = api[fn];
++  if (typeof f !== 'function') throw new NoSuchFeatureError(element, String(fn));
++  return f as NonNullable<Bound<ElementApi[E]>[K]>;
++}
+diff --git a/src/alloykit/types.ts b/src/alloykit/types.ts
+index 4ddee95..468034b 100644
+--- a/src/alloykit/types.ts
++++ b/src/alloykit/types.ts
+@@ -59,7 +59,8 @@ export type DiscountsApi = {
+   listAutomatic(ctx: Ctx): Promise<AutoDiscount[]>;
+   listPresets(ctx: Ctx): Promise<ManualPreset[]>;
+ };
+-export type CustomerInput = { name: string; email?: string; phone?: string; note?: string };
++/** First and last name are separate because the till asks for them separately; an Alloy with one name field joins them with a space. */
++export type CustomerInput = { firstName?: string; lastName?: string; email?: string; phone?: string; note?: string };
+ export type CustomersApi = {
+   search(ctx: Ctx, query: string): Promise<Customer[]>;
+   create?(ctx: Ctx, c: CustomerInput): Promise<Customer>;
+diff --git a/src/alloys/shopify/alloy.ts b/src/alloys/shopify/alloy.ts
+index fdc42de..9d031b5 100644
+--- a/src/alloys/shopify/alloy.ts
++++ b/src/alloys/shopify/alloy.ts
+@@ -27,7 +27,6 @@ const loc = (ctx: Ctx): string => {
+   if (!id) throw new AlloyUserError('Choose the Shopify location for this shop first.', 'locationId');
+   return id;
+ };
+-const splitName = (name: string) => { const [first, ...rest] = name.trim().split(/\s+/); return { firstName: first || undefined, lastName: rest.join(' ') || undefined }; };
+ const toCard = (g: GiftCardInfo): GiftCard => g;
+ 
+ /** Scopes each Element needs from the Shopify app. `write_x` also satisfies `read_x`. */
+@@ -92,8 +91,8 @@ const alloy: Alloy = {
+       needs: NEEDS.customers,
+       api: {
+         search: (_ctx, q) => translate(() => searchRemote(q)),
+-        create: (_ctx, c) => translate(() => createCustomer({ ...splitName(c.name), email: c.email, phone: c.phone, note: c.note })),
+-        update: (_ctx, id, c) => translate(() => updateCustomer(id, { ...splitName(c.name), email: c.email, phone: c.phone, note: c.note })),
++        create: (_ctx, c) => translate(() => createCustomer(c)),
++        update: (_ctx, id, c) => translate(() => updateCustomer(id, c)),
+       },
+     },
+     orders: {
+diff --git a/src/screens/Customers.tsx b/src/screens/Customers.tsx
+index 40020ea..fad135f 100644
+--- a/src/screens/Customers.tsx
++++ b/src/screens/Customers.tsx
+@@ -4,7 +4,7 @@ import { Btn, Empty, Field, IconBtn, Money, Page, Row, Sheet, Txt, alertMsg } fr
+ import { Spot } from '../ui/Spot';
+ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
+-import { createCustomer, updateCustomer, searchRemote } from '../lib/shopify/customers';
++import { needFeature } from '../alloyhost/need';
+ import { isTraining } from '../lib/trainingGuard';
+ import { SPOT, customersRowSpot } from '../lib/trainingSpots';
+ import { setCustomersDraftProbe } from '../lib/trainingProbe';
+@@ -25,7 +25,7 @@ export default function Customers() {
+         ? (form.id
+           ? { ...(list.find(x => x.id === form.id) ?? { id: form.id, name, orders: 0, spentCents: 0 }), id: form.id, name, email: form.email.trim() || undefined, phone: form.phone.trim() || undefined, note: form.note.trim() || undefined }
+           : { id: `train-cu-new-${Date.now()}`, name, email: form.email.trim() || undefined, phone: form.phone.trim() || undefined, note: form.note.trim() || undefined, orders: 0, spentCents: 0 })
+-        : form.id ? await updateCustomer(form.id, input) : await createCustomer(input);
++        : form.id ? await needFeature('customers', 'update')(form.id, input) : await needFeature('customers', 'create')(input);
+       const all = useApp.getState().data.customers; useApp.getState().patchData({ customers: [c, ...all.filter(x => x.id !== c.id)] }); setForm(null); setSel(c); }
+     catch (e: any) { alertMsg('Could not save customer', e.message, 'sales/customers'); }
+     setBusy(false);
+@@ -33,7 +33,7 @@ export default function Customers() {
+   const startSale = (c: Customer) => { useApp.getState().setCart(cc => ({ ...cc, customer: { id: c.id, name: c.name, email: c.email, phone: c.phone } })); setSel(null); nav.setTab('checkout'); };
+   return (
+     <Page title="Customers" onBack={nav.pop} helpId="sales/customers" scroll={false} right={<IconBtn icon="person-add-outline" label="New customer" spot={SPOT.customersNew} onPress={() => setForm({ first: '', last: '', email: '', phone: '', note: '' })} />}>
+-      <View style={{ padding: 12 }}><Spot id={SPOT.customersSearch}><Field kind="search" placeholder="Search name, email or phone" value={q} onChangeText={setQ} onSubmitEditing={async () => { try { setRemote(await searchRemote(q.trim())); } catch {} }} style={{ marginBottom: 0 }} /></Spot></View>
++      <View style={{ padding: 12 }}><Spot id={SPOT.customersSearch}><Field kind="search" placeholder="Search name, email or phone" value={q} onChangeText={setQ} onSubmitEditing={async () => { try { setRemote(await needFeature('customers', 'search')(q.trim())); } catch {} }} style={{ marginBottom: 0 }} /></Spot></View>
+       <FlatList data={shown} keyExtractor={c => c.id} ListEmptyComponent={<Empty icon="people-outline" title="No customers" />} renderItem={({ item: c }) => <Row spot={customersRowSpot(c.id)} title={c.name || c.email || c.phone || 'Customer'} sub={[c.email, c.phone].filter(Boolean).join(' · ') || undefined} onPress={() => setSel(c)} />} />
+       <Sheet visible={!!sel && !form} onClose={() => setSel(null)} title={sel?.name || 'Customer'}>
+         <Txt sub>{[sel?.email, sel?.phone].filter(Boolean).join(' · ')}</Txt>
+diff --git a/src/screens/sheets.tsx b/src/screens/sheets.tsx
+index 034f0f3..e931215 100644
+--- a/src/screens/sheets.tsx
++++ b/src/screens/sheets.tsx
+@@ -20,7 +20,7 @@ import { flaggedDeniedHint } from '../lib/adjustPerms';
+ import { checkAdjustAllowed, gateAdjust, useAdjustAllowed } from '../ui/adjustGate';
+ import { saveCartLocal } from '../lib/sync';
+ import { uid } from '../lib/ids';
+-import { searchRemote, createCustomer } from '../lib/shopify/customers';
++import { needFeature } from '../alloyhost/need';
+ import { lookupGiftCard, newGiftCode, type GiftCardInfo } from '../lib/shopify/giftcards';
+ import { stripGiftPrefix, normaliseCode } from '../lib/giftCode';
+ import { CameraScanner } from './Scanner';
+@@ -82,7 +82,7 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
+   React.useEffect(() => { if (visible) setCreating(startCreating); }, [visible, startCreating]);
+   React.useEffect(() => { setCustomerQuery(visible && !creating ? q : ''); return () => setCustomerQuery(''); }, [visible, creating, q]); // training reads what is typed
+   const hits = useMemo(() => { const t = q.trim().toLowerCase(); if (!t) return local.slice(0, 30); return local.filter(c => `${c.name} ${c.email ?? ''} ${c.phone ?? ''}`.toLowerCase().includes(t)).slice(0, 40); }, [q, local]);
+-  const search = async () => { if (!q.trim()) return; setBusy(true); try { setRemote(await searchRemote(q.trim())); } catch (e: any) { alertMsg('Search failed', e.message, 'sales/customers'); } setBusy(false); };
++  const search = async () => { if (!q.trim()) return; setBusy(true); try { setRemote(await needFeature('customers', 'search')(q.trim())); } catch (e: any) { alertMsg('Search failed', e.message, 'sales/customers'); } setBusy(false); };
+   const shown = [...hits, ...remote.filter(r => !hits.some(h => h.id === r.id))];
+   useEffect(() => { setCustomerDraftProbe(creating ? f : undefined); return () => setCustomerDraftProbe(undefined); }, [creating, f]); // training reads what is typed
+   const create = async () => {
+@@ -94,7 +94,7 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
+     }
+     if (!(await requireStepUp('shopify'))) { setBusy(false); return; }
+     try {
+-      const c = await createCustomer({ firstName: f.first.trim() || undefined, lastName: f.last.trim() || undefined, email: f.email.trim() || undefined, phone: f.phone.trim() || undefined });
++      const c = await needFeature('customers', 'create')({ firstName: f.first.trim() || undefined, lastName: f.last.trim() || undefined, email: f.email.trim() || undefined, phone: f.phone.trim() || undefined });
+       useApp.getState().patchData({ customers: [c, ...useApp.getState().data.customers] }); setCreating(false); setF({ first: '', last: '', email: '', phone: '' }); onPick(c); onClose();
+     } catch (e: any) { alertMsg('Could not create customer', e.message, 'sales/customers'); } setBusy(false);
+   };
+diff --git a/tests/alloyconformance.test.ts b/tests/alloyconformance.test.ts
+index 5a82ae5..9ad55fe 100644
+--- a/tests/alloyconformance.test.ts
++++ b/tests/alloyconformance.test.ts
+@@ -91,7 +91,7 @@ test('shopify: Shopify errors become the two Alloy errors, and anything else pas
+   await assert.rejects(() => api.catalogue!.api.createItem!(ctx(), { title: 'x', priceCents: 1, stock: -1 }), (e: any) => e instanceof Error && !isAlloyUserError(e) && /whole number/.test(e.message));
+ });
+ 
+-test('shopify: items, customers and discounts reach the same calls; names are split first and last', async () => {
++test('shopify: items, customers and discounts reach the same calls; first and last names pass through as they are', async () => {
+   fake.install(); await fake.signIn();
+   fake.on('productCreate', ok('productCreate', { product: { id: 'P1', variants: { nodes: [{ id: 'V1', inventoryItem: { id: 'I1' } }] } } }));
+   fake.on('productVariantsBulkUpdate', ok('productVariantsBulkUpdate')); fake.on('inventoryActivate', ok('inventoryActivate'));
+@@ -100,8 +100,8 @@ test('shopify: items, customers and discounts reach the same calls; names are sp
+   await api.catalogue!.api.updateItem!(ctx(), { productId: 'P1', variantId: 'V1' }, { priceCents: 250 });
+   assert.deepEqual(fake.lastCall().variables, { pid: 'P1', v: [{ id: 'V1', price: '2.50' }] });
+   fake.on('customerCreate', ok('customerCreate', { customer: { id: 'U1', displayName: 'Ann Lee Smith' } }));
+-  await api.customers!.api.create!(ctx(), { name: 'Ann Lee Smith', email: 'a@x.com' });
+-  assert.deepEqual(fake.lastCall().variables, { i: { firstName: 'Ann', lastName: 'Lee Smith', email: 'a@x.com' } });
++  await api.customers!.api.create!(ctx(), { firstName: 'Ann Lee', lastName: 'Smith', email: 'a@x.com' });
++  assert.deepEqual(fake.lastCall().variables, { i: { firstName: 'Ann Lee', lastName: 'Smith', email: 'a@x.com' } });
+   fake.on('codeDiscountNodes', fake.data({ codeDiscountNodes: { pageInfo: { hasNextPage: false }, nodes: [] } }));
+   assert.deepEqual(await api.discounts!.api.listPresets(ctx()), []);
+ });
+diff --git a/tests/alloyp5customers.test.ts b/tests/alloyp5customers.test.ts
+new file mode 100644
+index 0000000..edffa17
+--- /dev/null
++++ b/tests/alloyp5customers.test.ts
+@@ -0,0 +1,65 @@
++// Location: tests/alloyp5customers.test.ts
++// Alloys P5b: the customer screens reach Shopify through the router. Pins that the Shopify calls are the same as before, that the messages
++// a screen shows when Shopify is not there are the old words, and that no screen imports the Shopify customer file any more.
++import './helpers/fakeShopify';
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import * as fake from './helpers/fakeShopify';
++import { setTrainingGuard } from '../src/lib/trainingGuard';
++import { OFF } from '../src/alloykit/types';
++
++const node = { id: 'U1', displayName: 'Ann Lee', email: 'a@x.com', phone: null, numberOfOrders: '2', amountSpent: { amount: '10.00' }, note: null };
++const ok = (field: string, extra: Record<string, unknown> = {}) => fake.data({ [field]: { ...extra, userErrors: [] } });
++
++test('search, create and update through the router make the same Shopify calls as the screens used to, and return the same customers', async () => {
++  fake.install(); await fake.signIn();
++  const { needFeature } = await import('../src/alloyhost/need'); const direct = await import('../src/lib/shopify/customers');
++  fake.on('customers(first: 20', fake.data({ customers: { nodes: [node] } }));
++  const viaRouter = await needFeature('customers', 'search')('ann');
++  const searchCall = fake.lastCall();
++  fake.on('customers(first: 20', fake.data({ customers: { nodes: [node] } }));
++  assert.deepEqual(viaRouter, await direct.searchRemote('ann')); assert.deepEqual(searchCall.variables, fake.lastCall().variables);
++  fake.on('customerCreate', ok('customerCreate', { customer: node }));
++  const created = await needFeature('customers', 'create')({ firstName: 'Ann', lastName: 'Lee', email: 'a@x.com', phone: undefined, note: undefined });
++  assert.deepEqual(fake.lastCall().variables, { i: { firstName: 'Ann', lastName: 'Lee', email: 'a@x.com' } }); assert.equal(created.id, 'U1');
++  fake.on('customerUpdate', ok('customerUpdate', { customer: node }));
++  await needFeature('customers', 'update')('U1', { firstName: 'Ann', note: 'vip' });
++  assert.deepEqual(fake.lastCall().variables, { i: { id: 'U1', firstName: 'Ann', note: 'vip' } });
++});
++
++test('Shopify errors reach the screen with the same message, as an Alloy user error', async () => {
++  fake.install(); await fake.signIn();
++  const { needFeature } = await import('../src/alloyhost/need');
++  fake.on('customerCreate', fake.data({ customerCreate: { customer: null, userErrors: [{ message: 'Email taken' }] } }));
++  await assert.rejects(() => needFeature('customers', 'create')({ email: 'a@x.com' }), (e: any) => e.name === 'AlloyUserError' && e.message === 'Creating the customer: Email taken');
++});
++
++test('no login on the legacy selection: the screen gets the old "not set up" words, and in practice mode the old practice words', async () => {
++  fake.install(); const client = await import('../src/lib/shopify/client'); await client.clearCreds();
++  const { needFeature, NOT_SET_UP } = await import('../src/alloyhost/need');
++  assert.throws(() => needFeature('customers', 'search'), (e: any) => e.message === NOT_SET_UP);
++  assert.equal(NOT_SET_UP, 'Shopify is not set up - open More ▸ Settings ▸ Shopify.');
++  await fake.signIn(); setTrainingGuard(true);
++  try { assert.throws(() => needFeature('customers', 'search'), (e: any) => e.message === 'Training mode: Shopify is switched off.'); } finally { setTrainingGuard(false); }
++  assert.equal(fake.calls.length, 0);
++});
++
++test('a chosen setup with Customers off says so by Element; an Alloy without the function says it cannot do that', async () => {
++  fake.install(); await fake.signIn();
++  const { createRouter } = await import('../src/alloyhost/router'); const { ALLOYS } = await import('../src/alloys');
++  const { makeCtx } = await import('../src/alloyhost/ctx'); const { memoryStore } = await import('../src/alloyhost/store'); const { needFeature, NoSuchFeatureError } = await import('../src/alloyhost/need');
++  const mk = (sel: any, alloys = ALLOYS) => createRouter({ alloys, selection: () => sel, legacyFacts: () => ({ shopifyConnected: true, sharedBackend: 'metaobject', zellerPaired: true }), ctxFor: id => makeCtx(id, { secrets: {}, settings: {}, store: memoryStore(), uid: () => 'k' }), isTraining: () => false });
++  const base = { catalogue: 'shopify', orders: 'shopify', sharedState: 'shopify' };
++  assert.throws(() => needFeature('customers', 'search', 'Shopify', mk({ ...base, customers: OFF })), (e: any) => e.name === 'ElementOffError');
++  const slim = ALLOYS.map(a => a.id === 'shopify' ? { ...a, elements: { ...a.elements, customers: { api: { search: a.elements.customers!.api.search } } } } : a);
++  assert.throws(() => needFeature('customers', 'create', 'Shopify', mk({ ...base, customers: 'shopify' }, slim as any)), (e: any) => e instanceof NoSuchFeatureError);
++});
++
++test('no screen imports the Shopify customer file; they use needFeature', () => {
++  for (const f of ['src/screens/Customers.tsx', 'src/screens/sheets.tsx']) {
++    const src = readFileSync(f, 'utf8');
++    assert.equal(/shopify\/customers/.test(src), false, f); assert.ok(src.includes("needFeature('customers'"), f);
++    assert.equal(/\b(searchRemote|createCustomer|updateCustomer)\(/.test(src), false, f);
++  }
++});
+-- 
+2.43.0
+

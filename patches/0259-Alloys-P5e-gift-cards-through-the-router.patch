@@ -1,0 +1,514 @@
+From c8d6e689dd51d0fe0d62a7daddd42c7e179ac113 Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Thu, 19 Nov 2026 11:05:23 +1100
+Subject: [PATCH] Alloys P5e: gift cards through the router
+
+---
+ dev_docs/PROGRESS.md            |  1 +
+ dev_docs/QUEUE.md               |  2 +-
+ dev_docs/TO_DO.md               |  2 +-
+ src/alloyhost/router.ts         |  2 +-
+ src/alloykit/elements.ts        |  2 +-
+ src/alloykit/types.ts           |  8 +++-
+ src/alloys/shopify/alloy.ts     |  4 +-
+ src/alloys/shopify/giftcards.ts |  3 +-
+ src/lib/giftCode.ts             |  5 ++
+ src/lib/refundFlow.ts           |  9 ++--
+ src/lib/sync.ts                 |  7 +--
+ src/lib/trainingGifts.ts        |  2 +-
+ src/screens/CartPane.tsx        |  5 +-
+ src/screens/GiftCards.tsx       |  6 +--
+ src/screens/Pay.tsx             | 10 ++--
+ src/screens/Reports.tsx         |  4 +-
+ src/screens/sheets.tsx          |  5 +-
+ tests/alloyp5giftcards.test.ts  | 85 +++++++++++++++++++++++++++++++++
+ tests/giftcardonce.test.ts      |  2 +-
+ tests/trainingrefund.test.ts    |  2 +-
+ 20 files changed, 133 insertions(+), 33 deletions(-)
+ create mode 100644 tests/alloyp5giftcards.test.ts
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 3b15ee8..708056b 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -218,6 +218,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0256 | 2026-11-18 | Alloys phase P5b: **Customers** moves onto the router. The Customers screen (search, create, edit) and the customer sheet in the cart (remote search, create) no longer import the Shopify customer file; they ask for the function through `needFeature('customers', ...)` (new `src/alloyhost/need.ts`). With the legacy default that reaches the same Shopify calls with the same inputs, and the screens show the same words when Shopify is not there: the old "Shopify is not set up - open More ▸ Settings ▸ Shopify." without a login, and the old practice-mode message in practice. Once a person has chosen their own setup, the message names the Element instead, and an Alloy that lacks a function (say, no "edit customer") gives a plain "cannot do that" error. One contract change: the customer input carries first and last name separately, as the till asks for them, rather than one name that the Alloy would have to split. The practice-mode branches in the screens are untouched. 5 new tests in `tests/alloyp5customers.test.ts`; full suite 2134 passing. |
+ | 0257 | 2026-11-18 | Alloys phase P5c: **Catalogue** moves onto the router. The full import and the half-hourly refresh in `sync.ts` read items, collections and the customer list through `listAllItems`, `listAllCollections` and `listAllCustomers` (new `src/alloyhost/catalogue.ts`), and the Items screen creates and edits items through `needFeature('catalogue', 'createItem' / 'updateItem')`. Against Shopify these make the same calls with the same inputs in the same order (tests compare each against calling Shopify directly, including the stock-count and collection steps of creating an item), and the screens show the same words when Shopify is missing or in practice mode. An Alloy may return a long list in pages: `readAllPages` reads every page and stops with an error if a cursor repeats, so a faulty Alloy cannot loop; Shopify returns each list as one page. The local customer list is optional: with Customers off, or an Alloy that cannot list them all (new optional `listAll`), the till just stores none. The contract gained `onProgress` on a page request (the import's progress line) and `listAll` on Customers. `fetchShop` in Settings is left alone: it is the connection step, which the setup picker (P6) takes over through the Alloy's `connect`. 6 new tests in `tests/alloyp5catalogue.test.ts`; full suite 2140 passing. |
+ | 0258 | 2026-11-19 | Alloys phase P5d: **Stock** moves onto the router, **and a gap from 0255 and 0257 is fixed**. Stock: the half-hourly poll asks what changed through `stockChanges` (new `src/alloyhost/stock.ts`, same query, same guards, the cursor now comes back from the Alloy), and Receive, Adjust and Count in Inventory and the Scan stock panel go through `needFeature('stock', 'adjust' / 'set')`, keeping the panel's retry key (Inventory makes a fresh key per tap, as before). On the legacy selection a missing login fails with the old words; with Stock switched off on a chosen setup the poll just skips the step. **The gap:** Shopify network errors are translated to `AlloyNetworkError` at the Alloy boundary, but the app's `isNetworkError` only recognised the Shopify class, so a dropped connection on a routed call (discounts, catalogue) would have set the poll to "error" instead of "offline", and the stock screens' "No connection" branch would have been missed. `isNetworkError` now recognises both, which also covers every later Element. The Shopify-specific `instanceof ShopifyUserError` in the order outbox (`sync.ts`) is not affected yet and is on the list for the Orders step. `AdjustReason` now comes from `alloykit/types` (the old export stays). 7 new tests in `tests/alloyp5stock.test.ts` (including one that a dropped connection reads as a network error through discounts and stock), and the practice-mode pin in `traininginventory.test.ts` follows the new call text. Full suite 2147 passing. |
++| 0259 | 2026-11-19 | Alloys phase P5e: **Gift cards** move onto the router. Every place that touched a gift card in Shopify now asks for it through `needFeature('giftCards', ...)`: Pay (charge and cancel-credit), the cart scan box, the Gift cards screen (balance and history), the new-card sheet, Reports (outstanding liability), the refund flow (original-card credits, which read the whole history first, and refunds to a new card) and the order outbox (cards bought in a sale). Against Shopify the calls and their inputs are identical (tests compare each against calling Shopify directly), including the once-only debit and credit that skip what is already on the card and refuse a different amount, and the recipient on a new card. With no login the screens say the same "not set up" words, and in practice mode the same practice words. **Outbox:** a Shopify refusal now arrives as an Alloy user error, so the check that marks a queued sale "needs attention" (rather than retrying forever) now accepts both kinds. Contract: two optional functions added (`allHistory`, `outstanding`), `verified` and the transaction `id` are required, and the router counts the once-only debit and credit as writes in practice mode. `newGiftCode` (a plain 16-character code maker) moved to `src/lib/giftCode.ts`, with the old export kept; the card type and transaction type now come from `alloykit/types`. The `debitNote` helper in the Shopify folder is still imported by Pay and is on the P9 list with the other plain helpers. 7 new tests in `tests/alloyp5giftcards.test.ts`; two source pins (`giftcardonce`, `trainingrefund`) follow the new call text. Full suite 2154 passing. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index 8996b6e..f4aa820 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only
+ 
+ ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+ 
+-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258). Next: the remaining callers onto the router one Element per patch (gift cards, orders, shared state, card terminal); each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
++Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259). Next: the remaining callers onto the router one Element per patch (orders, shared state, card terminal); each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index 5cc2cc0..365768d 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -100,7 +100,7 @@ Everything here is built and unit tested. What is left on each is your device te
+ Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+ decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
+ the boundary test, with nothing calling them). P2 is built (0251: tests that pin what the Shopify and Zeller code does now).
+-P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255), customers (0256), catalogue (0257) and stock (0258) are on the router. Next in P5, one Element per patch: gift cards, orders (also move the outbox's `instanceof ShopifyUserError` check to cover `AlloyUserError`), shared state, card terminal. Later: users deploy their own Cloudflare workers (section 8 of the plan).
++P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258) and gift cards (0259) are on the router. Next in P5, one Element per patch: orders, shared state, card terminal. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/src/alloyhost/router.ts b/src/alloyhost/router.ts
+index 6f9f37e..a8eb49a 100644
+--- a/src/alloyhost/router.ts
++++ b/src/alloyhost/router.ts
+@@ -17,7 +17,7 @@ export const WRITES: { [E in ElementId]: string[] } = {
+   discounts: [],
+   customers: ['create', 'update'],
+   orders: ['record', 'fulfil', 'refund'],
+-  giftCards: ['create', 'debit', 'credit'],
++  giftCards: ['create', 'debit', 'credit', 'debitOnce', 'creditOnce'],
+   sharedState: [],   // the shared backend has its own guard (BackendBlockedError); the router does not wrap it
+   cardTerminal: [],  // practice mode swaps the terminal itself (trainingTerminal), also outside the router
+   tapToPay: [],
+diff --git a/src/alloykit/elements.ts b/src/alloykit/elements.ts
+index 1d74539..3f0e85b 100644
+--- a/src/alloykit/elements.ts
++++ b/src/alloykit/elements.ts
+@@ -30,7 +30,7 @@ export const ELEMENT_FUNCTIONS: Record<ElementId, { required: string[]; optional
+   discounts: { required: ['listAutomatic', 'listPresets'], optional: [] },
+   customers: { required: ['search'], optional: ['listAll', 'create', 'update'] },
+   orders: { required: ['record'], optional: ['find', 'list', 'fulfil', 'refund'] },
+-  giftCards: { required: ['lookup', 'create', 'debit', 'credit'], optional: ['debitOnce', 'creditOnce', 'history'] },
++  giftCards: { required: ['lookup', 'create', 'debit', 'credit'], optional: ['debitOnce', 'creditOnce', 'history', 'allHistory', 'outstanding'] },
+   sharedState: { required: ['backend'], optional: [] },
+   cardTerminal: { required: ['terminal'], optional: [] },
+   tapToPay: { required: ['terminal'], optional: [] },
+diff --git a/src/alloykit/types.ts b/src/alloykit/types.ts
+index 84a6f9b..7de6889 100644
+--- a/src/alloykit/types.ts
++++ b/src/alloykit/types.ts
+@@ -80,8 +80,8 @@ export type OrdersApi = {
+   /** `amounts` is the money returned per way it was paid (card, cash, gift card, exchange credit); `restock` defaults to true. Returns the service's refund id when it has one. */
+   refund?(ctx: Ctx, ref: OrderRef, items: RefundItem[], o: { amounts: Partial<Record<TenderKind, number>>; note: string; key: string; restock?: boolean }): Promise<{ id?: string }>;
+ };
+-export type GiftCard = { id: string; last4: string; balanceCents: number; initialCents: number; enabled: boolean; expiresOn?: string; customerName?: string; verified?: boolean };
+-export type GiftCardTxn = { id?: string; at: string; cents: number; kind: 'credit' | 'debit'; note?: string };
++export type GiftCard = { id: string; last4: string; balanceCents: number; initialCents: number; enabled: boolean; expiresOn?: string; customerName?: string; verified: boolean };
++export type GiftCardTxn = { id: string; at: string; cents: number; kind: 'credit' | 'debit'; note?: string };
+ export type GiftCardsApi = {
+   lookup(ctx: Ctx, code: string): Promise<GiftCard | null>;
+   create(ctx: Ctx, a: { valueCents: number; code: string; saleUuid: string; customerId?: string; recipient?: { email: string; name?: string; message?: string } }): Promise<GiftCard>;
+@@ -91,6 +91,10 @@ export type GiftCardsApi = {
+   debitOnce?(ctx: Ctx, id: string, cents: number, note: string): Promise<void>;
+   creditOnce?(ctx: Ctx, id: string, cents: number, note: string): Promise<void>;
+   history?(ctx: Ctx, id: string): Promise<GiftCardTxn[]>;
++  /** Every transaction on the card, following pages to the end (the refund flow needs the whole history to avoid crediting twice). */
++  allHistory?(ctx: Ctx, id: string): Promise<GiftCardTxn[]>;
++  /** Money still owed on live cards, for the Reports liability figure. */
++  outstanding?(ctx: Ctx): Promise<{ cards: number; cents: number }>;
+ };
+ /** Shared state is the app's existing `SharedBackend` (records by type and handle), so today's two backends already fit it. */
+ export type SharedStateApi = { backend(ctx: Ctx): SharedBackend };
+diff --git a/src/alloys/shopify/alloy.ts b/src/alloys/shopify/alloy.ts
+index 88c7a02..9b59768 100644
+--- a/src/alloys/shopify/alloy.ts
++++ b/src/alloys/shopify/alloy.ts
+@@ -7,7 +7,7 @@ import type { Alloy, ConnectReport, Ctx, ElementId, GiftCard, OrderRef } from '.
+ import { fetchAutoDiscounts, fetchCollections, fetchCustomers, fetchManualPresets, fetchShop, fetchStockDelta, fetchVariants } from './catalogue';
+ import { ShopifyNetworkError, ShopifyUserError, hasCreds, tokenScopes } from './client';
+ import { createCustomer, searchRemote, updateCustomer } from './customers';
+-import { createGiftCard, creditGiftCard, creditGiftCardOnce, debitGiftCard, debitGiftCardOnce, giftCardHistory, lookupGiftCard, type GiftCardInfo } from './giftcards';
++import { allGiftCardTransactions, createGiftCard, creditGiftCard, creditGiftCardOnce, debitGiftCard, debitGiftCardOnce, giftCardHistory, lookupGiftCard, outstandingBalance, type GiftCardInfo } from './giftcards';
+ import { adjustStock, setStock } from './inventory';
+ import { metaobjectBackend } from './metaobjectBackend';
+ import { createOrderForSale, findOrderBySale, fulfillOrder, getOrder, listOrders, refundOrderInShopify } from './orders';
+@@ -124,6 +124,8 @@ const alloy: Alloy = {
+         debitOnce: (_ctx, id, cents, note) => translate(() => debitGiftCardOnce(id, cents, note)),
+         creditOnce: (_ctx, id, cents, note) => translate(() => creditGiftCardOnce(id, cents, note)),
+         history: (_ctx, id) => translate(() => giftCardHistory(id)),
++        allHistory: (_ctx, id) => translate(() => allGiftCardTransactions(id)),
++        outstanding: () => translate(() => outstandingBalance()),
+       },
+     },
+     sharedState: { needs: NEEDS.sharedState, api: { backend: () => metaobjectBackend } },
+diff --git a/src/alloys/shopify/giftcards.ts b/src/alloys/shopify/giftcards.ts
+index 17616fb..333d652 100644
+--- a/src/alloys/shopify/giftcards.ts
++++ b/src/alloys/shopify/giftcards.ts
+@@ -15,8 +15,7 @@ import { practiceDebitGiftCard, practiceGiftCardHistory, practiceLookupGiftCard
+ 
+ export type GiftCardInfo = { id: string; last4: string; balanceCents: number; initialCents: number; enabled: boolean; expiresOn?: string; customerName?: string; verified: boolean };
+ 
+-export { normaliseCode, stripGiftPrefix, giftQrPayload } from '../../lib/giftCode';
+-export const newGiftCode = () => uid().replace(/-/g, '').slice(0, 16).toUpperCase();
++export { normaliseCode, stripGiftPrefix, giftQrPayload, newGiftCode } from '../../lib/giftCode';
+ const checksum = async (code: string) => (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, normaliseCode(code))).slice(0, 10);
+ 
+ const FIELDS = `id lastCharacters balance { amount } initialValue { amount } enabled expiresOn note customer { displayName }`;
+diff --git a/src/lib/giftCode.ts b/src/lib/giftCode.ts
+index 887453c..72a098f 100644
+--- a/src/lib/giftCode.ts
++++ b/src/lib/giftCode.ts
+@@ -2,6 +2,11 @@
+ // A9.5: gift card QR codes carry a prefix like `shopify-giftcard-v1-CODE`. Anything that types, pastes or scans a code goes through here,
+ // so the prefix is stripped in one place. Pure (no native imports) so it can be unit tested.
+ 
++import { uid } from './ids';
++
++/** A fresh code for a gift card made at the till: 16 letters and digits. */
++export const newGiftCode = (): string => uid().replace(/-/g, '').slice(0, 16).toUpperCase();
++
+ /** Anchored to the known prefix on purpose: a looser "everything before the last hyphen" would cut any code that contains a hyphen. */
+ const PREFIX = /^shopify-giftcard-v\d+-/i;
+ 
+diff --git a/src/lib/refundFlow.ts b/src/lib/refundFlow.ts
+index 15a9959..9a4dc48 100644
+--- a/src/lib/refundFlow.ts
++++ b/src/lib/refundFlow.ts
+@@ -6,7 +6,8 @@ import { uid } from './ids';
+ import { planRefund, refundableByGateway, splitAcrossCards, splitAcrossGiftCards, type RefundMethod } from './returns';
+ import { startRefund, type TerminalLike } from './zeller';
+ import { refundOrderInShopify, type PosOrder } from './shopify/orders';
+-import { allGiftCardTransactions, creditGiftCardOnce, createGiftCard, newGiftCode } from './shopify/giftcards';
++import { needFeature } from '../alloyhost/need';
++import { newGiftCode } from './giftCode';
+ import { refundOperationKey } from './refundKey';
+ import { isTraining } from './trainingGuard';
+ import { applyPracticeRefund } from './trainingOrders';
+@@ -56,7 +57,7 @@ export async function executeRefund(a: {
+         const giftTenderRows = order.tenders.filter(t => t.kind === 'gift_card');
+         const giftTenders = giftTenderRows.filter(identifiedGiftTender);
+         if (giftTenders.length !== giftTenderRows.length) throw new Error('The original gift-card payment is missing its Shopify card ID. Refresh the order before retrying.');
+-        const history = await Promise.all(giftTenders.map(t => allGiftCardTransactions(t.giftCardId)));
++        const history = await Promise.all(giftTenders.map(t => needFeature('giftCards', 'allHistory')(t.giftCardId)));
+         const prefixes = giftTenders.map((t, i) => `posrefund|${order.id}|${t.id}:${i}|`);
+         const currentNotes = prefixes.map(prefix => `${prefix}${refundKey}`);
+         const alreadyRefunded = Object.fromEntries(giftTenders.map((t, i) => [`${t.id}:${i}`, history[i]
+@@ -70,13 +71,13 @@ export async function executeRefund(a: {
+           const note = currentNotes[part.index];
+           const existing = history[part.index].find(x => x.kind === 'credit' && x.note === note);
+           if (existing && existing.cents !== part.cents) throw new Error('A gift-card credit with this refund reference already exists for a different amount.');
+-          await creditGiftCardOnce(orig.giftCardId, part.cents, note);
++          await needFeature('giftCards', 'creditOnce')(orig.giftCardId, part.cents, note);
+           tenders.push({ id: `${refundKey}-gift-${part.index}`, kind: 'gift_card', amountCents: part.cents, giftCardId: orig.giftCardId, giftCardCode: orig.giftCardCode, at: stamp() });
+           credited += part.cents;
+         }
+         if (credited < plan.gift_card) throw new Error('The original gift card(s) did not fund enough of this order to cover the refund. Choose a new gift card or reduce the refund amount.');
+       } else {
+-        const code = newGiftCode(); await createGiftCard(plan.gift_card, code, `refund-${saleUuid}`, order.customer?.id); newGiftCodeOut = code; tenders.push({ id: uid(), kind: 'gift_card', amountCents: plan.gift_card, giftCardCode: code, at: stamp() });
++        const code = newGiftCode(); await needFeature('giftCards', 'create')({ valueCents: plan.gift_card, code, saleUuid: `refund-${saleUuid}`, customerId: order.customer?.id }); newGiftCodeOut = code; tenders.push({ id: uid(), kind: 'gift_card', amountCents: plan.gift_card, giftCardCode: code, at: stamp() });
+       }
+       done.gift_card = plan.gift_card;
+     } catch (e: any) { return await finish(false, `Gift card credit failed: ${e.message}`, true); }
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index 4d45e73..17a095d 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -18,6 +18,7 @@ import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
+ import { loadDiscounts } from '../alloyhost/discounts';
+ import { listAllCollections, listAllCustomers, listAllItems } from '../alloyhost/catalogue';
+ import { stockChanges } from '../alloyhost/stock';
++import { needFeature } from '../alloyhost/need';
+ import { activeBackendKind, getShared, listShared, putShared, detailReadyShared, type BackendRow } from './syncBackend';
+ import { applyPulled, baseOf, mergeSaved, parseSavedRow } from './savedMerge';
+ import { refreshDue, CATALOGUE_REFRESH_MS } from './catalogueRefresh';
+@@ -54,7 +55,7 @@ import type { SquareNative } from './cloudkit/squareCloud';
+ import type { EventNative } from './cloudkit/eventCloud';
+ import { readCalibration, type ScannerCalibration } from './scanSpeed';
+ import { createOrderForSale } from './shopify/orders';
+-import { createGiftCard } from './shopify/giftcards';
++import { isAlloyUserError } from '../alloykit/errors';
+ import { ReceiptConfigError, receiptsEnabled, uploadReceipt } from './receiptSync';
+ import { adjustStock } from './shopify/inventory';
+ import type { BundleConfig, Cart, SaleRecord } from './types';
+@@ -309,7 +310,7 @@ async function runItem(o: OutboxItem): Promise<SaleRecord> {
+     let doneIds = st().pos.outbox.find(x => x.id === o.id)?.giftDone ?? o.giftDone ?? [];
+     for (const l of giftLines) {
+       if (doneIds.includes(l.giftCardCode!)) continue;
+-      await createGiftCard(l.netCents, l.giftCardCode!, cur.uuid, cur.customer?.id, l.giftRecipient);
++      await needFeature('giftCards', 'create')({ valueCents: l.netCents, code: l.giftCardCode!, saleUuid: cur.uuid, customerId: cur.customer?.id, recipient: l.giftRecipient });
+       doneIds = [...doneIds, l.giftCardCode!];
+       patchItem(o.id, x => ({ ...x, giftDone: doneIds }));
+     }
+@@ -346,7 +347,7 @@ export async function processOutbox() {
+         st().patchPos({ outbox: st().pos.outbox.filter(x => x.id !== o.id) });
+       } catch (e: any) {
+         if (isNetworkError(e)) { st().set({ sync: { state: 'offline', at: st().sync.at, error: 'No connection' } }); patchItem(o.id, x => ({ ...x, tries: x.tries + 1 })); break; }
+-        const user = e instanceof ShopifyUserError;
++        const user = e instanceof ShopifyUserError || isAlloyUserError(e); // routed calls throw the Alloy kind
+         patchItem(o.id, x => ({ ...x, tries: x.tries + 1, error: String(e?.message ?? e), blocked: user }));
+         st().notify({ kind: 'sync', title: user ? 'Sale needs attention' : 'Sale upload failed', body: `${o.sale.orderName ?? o.sale.uuid.slice(0, 8)}: ${String(e?.message ?? e)}`, route: 'notifications' });
+         void csv.event({ kind: 'error', saleUuid: o.sale.uuid, message: String(e?.message ?? e) });
+diff --git a/src/lib/trainingGifts.ts b/src/lib/trainingGifts.ts
+index 0428972..1aa10d5 100644
+--- a/src/lib/trainingGifts.ts
++++ b/src/lib/trainingGifts.ts
+@@ -4,7 +4,7 @@
+ // sent: leaving training (or starting a part again) puts the cards back as they were.
+ import { TRAIN_PREFIX } from './trainingSandbox';
+ import { normaliseCode } from './giftCode';
+-import type { GiftCardInfo, GiftCardTxn } from './shopify/giftcards';
++import type { GiftCard as GiftCardInfo, GiftCardTxn } from '../alloykit/types';
+ 
+ const P = TRAIN_PREFIX;
+ const WHEN = '2026-10-12T02:10:00.000Z';
+diff --git a/src/screens/CartPane.tsx b/src/screens/CartPane.tsx
+index a1294d4..77b5e84 100644
+--- a/src/screens/CartPane.tsx
++++ b/src/screens/CartPane.tsx
+@@ -34,7 +34,8 @@ import { isGiftQr, normaliseCode } from '../lib/giftCode';
+ import { findDiscountPreset, resolveScan } from '../lib/lookup';
+ import { registerCartScan } from '../lib/scanBridge';
+ import { signInWithPass } from '../lib/staffAuth';
+-import { lookupGiftCard, type GiftCardInfo } from '../lib/shopify/giftcards';
++import { needFeature } from '../alloyhost/need';
++import type { GiftCard as GiftCardInfo } from '../alloykit/types';
+ import type { CartLine } from '../lib/types';
+ 
+ /** `hid`: this pane owns the Bluetooth scan box. False beside the grid, where Checkout owns the one box and hands gift card and discount scans to this pane (lib/scanBridge.ts). */
+@@ -68,7 +69,7 @@ export default function CartPane({ onClose, hid = true }: { onClose?: () => void
+       setScanCode(clean);
+       if (isGiftQr(raw)) {
+         setSheet('scan'); // a scan from the scan box opens the window so the balance is seen
+-        setScanInfo(await lookupGiftCard(clean));
++        setScanInfo(await needFeature('giftCards', 'lookup')(clean));
+       } else {
+         // treat as a discount code
+         const presets = useApp.getState().data.presets;
+diff --git a/src/screens/GiftCards.tsx b/src/screens/GiftCards.tsx
+index ee5c951..b6fcda7 100644
+--- a/src/screens/GiftCards.tsx
++++ b/src/screens/GiftCards.tsx
+@@ -5,14 +5,14 @@ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
+ import { GIFT_CARD_PASSES } from '../lib/features';
+ import { GiftCheckSheet, GiftSellSheet } from './sheets';
+-import { giftCardHistory, type GiftCardTxn } from '../lib/shopify/giftcards';
+-import { lookupGiftCard, type GiftCardInfo } from '../lib/shopify/giftcards';
++import { needFeature } from '../alloyhost/need';
++import type { GiftCard as GiftCardInfo, GiftCardTxn } from '../alloykit/types';
+ 
+ /** Gift cards hub: sell (adds a line to the cart), check balance by scan/typing, use as tender at Pay. */
+ export default function GiftCards() {
+   const nav = useNav(); const [sell, setSell] = useState(false); const [check, setCheck] = useState(false); const url = useApp(s => s.settings.passServerUrl);
+   const [hist, setHist] = useState<{ info: GiftCardInfo; txns: GiftCardTxn[] } | null>(null);
+-  const show = async (_g: GiftCardInfo, code: string) => { const info = await lookupGiftCard(code); if (info) setHist({ info, txns: await giftCardHistory(info.id) }); setCheck(false); };
++  const show = async (_g: GiftCardInfo, code: string) => { const info = await needFeature('giftCards', 'lookup')(code); if (info) setHist({ info, txns: await needFeature('giftCards', 'history')(info.id) }); setCheck(false); };
+   return (
+     <Page title="Gift cards" onBack={nav.pop} helpId="gift">
+       <View style={{ padding: 16, gap: 10 }}>
+diff --git a/src/screens/Pay.tsx b/src/screens/Pay.tsx
+index 1c19bb8..8082179 100644
+--- a/src/screens/Pay.tsx
++++ b/src/screens/Pay.tsx
+@@ -15,7 +15,8 @@ import { digitsToCents, fmt } from '../lib/money';
+ import { equalPlan, firstPlan, isSplit, planAfter, planTarget, type SplitPlan } from '../lib/splitPlan';
+ import { uid } from '../lib/ids';
+ import { emptyCart } from '../lib/cartOps';
+-import { lookupGiftCard, debitGiftCardOnce, creditGiftCardOnce, type GiftCardInfo } from '../lib/shopify/giftcards';
++import { needFeature } from '../alloyhost/need';
++import type { GiftCard as GiftCardInfo } from '../alloykit/types';
+ import { debitNote } from '../lib/shopify/giftCardOnce';
+ import { normaliseCode, isGiftQr } from '../lib/giftCode';
+ import { maskedLast4 } from '../lib/cards';
+@@ -164,7 +165,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+   const useGift = async (info: GiftCardInfo, code: string) => {
+     const amt = Math.min(info.balanceCents, target); const uuid = saleUuid();
+     // The note is the same on a retry of this payment (0240), so a charge Shopify took but whose reply was lost is not taken twice.
+-    try { await debitGiftCardOnce(info.id, amt, debitNote(uuid, tenders.length)); } catch (e: any) { return alertMsg('Gift card could not be charged', e.message, 'pay/gift-card'); }
++    try { await needFeature('giftCards', 'debitOnce')(info.id, amt, debitNote(uuid, tenders.length)); } catch (e: any) { return alertMsg('Gift card could not be charged', e.message, 'pay/gift-card'); }
+     addTender({ id: uid(), kind: 'gift_card', amountCents: amt, giftCardId: info.id, giftCardCode: normaliseCode(code), at: new Date().toISOString() }, uuid); setGift(false);
+   };
+ 
+@@ -192,11 +193,11 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+       }
+       for (const tn of tenders.filter(t => t.kind === 'gift_card' && !returned.has(t.id))) {
+         let cardId: string | undefined;
+-        try { cardId = tn.giftCardId ?? (tn.giftCardCode ? (await lookupGiftCard(tn.giftCardCode))?.id : undefined); }
++        try { cardId = tn.giftCardId ?? (tn.giftCardCode ? (await needFeature('giftCards', 'lookup')(tn.giftCardCode))?.id : undefined); }
+         catch (error) { return alertMsg('Gift card could not be credited', `Cancellation remains in progress; retry after checking the connection. ${String((error as Error)?.message ?? error)}`); }
+         if (!cardId) return alertMsg('Gift card could not be credited', 'The original Shopify gift card could not be identified. The sale is still saved here so you can resolve this without charging the customer again.');
+         const saleId = cart.saleUuid ?? saleUuid();
+-        try { await creditGiftCardOnce(cardId, tn.amountCents, `POS cancel ${saleId} tender ${tn.id}`); }
++        try { await needFeature('giftCards', 'creditOnce')(cardId, tn.amountCents, `POS cancel ${saleId} tender ${tn.id}`); }
+         catch (error) { return alertMsg('Gift card could not be credited', `Cancellation remains in progress; no further payment can be taken. ${String((error as Error)?.message ?? error)}`); }
+         returned.add(tn.id); setCart(c0 => ({ ...c0, cancelPending: true, returnedTenderIds: [...returned] }));
+       }
+@@ -273,4 +274,3 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+ function PayOption({ hint, children }: { hint?: string; children: React.ReactNode }) {
+   return <View style={{ gap: 4 }}>{children}{hint ? <Txt size={13} sub style={{ textAlign: 'center', paddingHorizontal: 12 }}>{hint}</Txt> : null}</View>;
+ }
+-void lookupGiftCard;
+diff --git a/src/screens/Reports.tsx b/src/screens/Reports.tsx
+index 714fe5d..3f8ad24 100644
+--- a/src/screens/Reports.tsx
++++ b/src/screens/Reports.tsx
+@@ -8,7 +8,7 @@ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
+ import { listShared } from '../lib/syncBackend';
+ import { hasCreds } from '../lib/shopify/client';
+-import { outstandingBalance } from '../lib/shopify/giftcards';
++import { needFeature } from '../alloyhost/need';
+ import { applyRecord, derived, emptyTotals, lastYearRange, parseDay, pctChange, periodRange, previousRange, rollupKey, staffSummary, sumRange, type Period, type Range, type RollupRow, type Totals, adjustmentSummary } from '../lib/rollup';
+ import { fmt } from '../lib/money';
+ import { loadSquareRollups } from '../lib/squareHistoryIO';
+@@ -48,7 +48,7 @@ export default function Reports() {
+   const now = useMemo(() => sumRange(rows, range, dev), [rows, range.from, range.to, dev]); const d = derived(now);
+   const cr = cmp === 'prev' ? previousRange(range) : cmp === 'year' ? lastYearRange(range) : null; const was = cr ? derived(sumRange(rows, cr, dev)) : null;
+   const devices = [...new Set(rows.map(r => r.registerId))];
+-  useEffect(() => { if (tab === 'gift' && hasCreds()) outstandingBalance().then(setGift).catch(() => {}); }, [tab]);
++  useEffect(() => { if (tab === 'gift' && hasCreds()) needFeature('giftCards', 'outstanding')().then(setGift).catch(() => {}); }, [tab]);
+   const adj = adjustmentSummary(now);
+   const staff = staffSummary(now);
+   const cats = Object.entries(now.byCategory).sort((a, b) => b[1].grossCents - a[1].grossCents).slice(0, 12);
+diff --git a/src/screens/sheets.tsx b/src/screens/sheets.tsx
+index e931215..f9837ff 100644
+--- a/src/screens/sheets.tsx
++++ b/src/screens/sheets.tsx
+@@ -21,7 +21,8 @@ import { checkAdjustAllowed, gateAdjust, useAdjustAllowed } from '../ui/adjustGa
+ import { saveCartLocal } from '../lib/sync';
+ import { uid } from '../lib/ids';
+ import { needFeature } from '../alloyhost/need';
+-import { lookupGiftCard, newGiftCode, type GiftCardInfo } from '../lib/shopify/giftcards';
++import type { GiftCard as GiftCardInfo } from '../alloykit/types';
++import { newGiftCode } from '../lib/giftCode';
+ import { stripGiftPrefix, normaliseCode } from '../lib/giftCode';
+ import { CameraScanner } from './Scanner';
+ import type { CartLine, Customer, ManualDiscount } from '../lib/types';
+@@ -312,7 +313,7 @@ export function GiftCheckSheet({ visible, onClose, onUse }: { visible: boolean;
+     setBusy(true);
+     try {
+       const clean = stripGiftPrefix(raw); setCode(clean); setGiftCodeProbe(clean);
+-      const found = await lookupGiftCard(clean); setInfo(found);
++      const found = await needFeature('giftCards', 'lookup')(clean); setInfo(found);
+       const norm = normaliseCode(clean); setGiftCheckProbe(found ? { code: norm, found: true, enabled: found.enabled, balanceCents: found.balanceCents } : { code: norm, found: false, enabled: false, balanceCents: 0 });
+     } catch (e: any) { alertMsg('Lookup failed', e.message, 'pay/gift-card'); }
+     setBusy(false);
+diff --git a/tests/alloyp5giftcards.test.ts b/tests/alloyp5giftcards.test.ts
+new file mode 100644
+index 0000000..fdb9fbc
+--- /dev/null
++++ b/tests/alloyp5giftcards.test.ts
+@@ -0,0 +1,85 @@
++// Location: tests/alloyp5giftcards.test.ts
++// Alloys P5e: gift cards (Pay, the cart scan, the Gift cards screen, the new-card sheet, Reports, the refund flow and the order outbox) reach
++// Shopify through the router. Pins that the Shopify calls are the same as before, that the outbox still treats a Shopify refusal as one
++// that needs attention (now arriving as an Alloy error), and that no caller imports the Shopify gift card files for these any more.
++import './helpers/fakeShopify';
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import * as fake from './helpers/fakeShopify';
++import { setTrainingGuard } from '../src/lib/trainingGuard';
++import { WRITES } from '../src/alloyhost/router';
++
++const card = (o: any = {}) => ({ id: 'GC1', lastCharacters: 'ABCD', balance: { amount: '20.00' }, initialValue: { amount: '50.00' }, enabled: true, expiresOn: null, note: null, customer: null, ...o });
++const ok = (f: string, extra: Record<string, unknown> = {}) => fake.data({ [f]: { ...extra, userErrors: [] } });
++const txn = (id: string, kind: 'Debit' | 'Credit', amount: string, note: string) => ({ __typename: `GiftCard${kind}Transaction`, id, note, processedAt: '2026-11-01T00:00:00Z', amount: { amount } });
++
++test('lookup, history, all-history and outstanding through the router return what the Shopify functions return, with the same queries', async () => {
++  const { needFeature } = await import('../src/alloyhost/need'); const g = await import('../src/lib/shopify/giftcards');
++  const both = async <T>(queue: () => void, viaRouter: () => Promise<T>, direct: () => Promise<T>) => {
++    fake.install(); await fake.signIn(); queue(); const a = await viaRouter(); const qa = JSON.stringify(fake.gqlCalls().map(c => [c.query, c.variables]));
++    fake.install(); await fake.signIn(); queue(); const b = await direct(); const qb = JSON.stringify(fake.gqlCalls().map(c => [c.query, c.variables]));
++    assert.deepEqual(a, b); assert.equal(qa, qb); return a;
++  };
++  const found = await both(() => fake.on('giftCards(first: 10', fake.data({ giftCards: { nodes: [card()] } })), () => needFeature('giftCards', 'lookup')('ABCD1234EFGH5678'), () => g.lookupGiftCard('ABCD1234EFGH5678'));
++  assert.equal(found?.id, 'GC1');
++  const hist = () => fake.on('transactions(first: 30)', fake.data({ giftCard: { transactions: { nodes: [txn('A', 'Debit', '-5.00', 'n1')] } } }));
++  assert.equal((await both(hist, () => needFeature('giftCards', 'history')('GC1'), () => g.giftCardHistory('GC1'))).length, 1);
++  const all = () => fake.on('transactions(first:250', fake.data({ giftCard: { transactions: { pageInfo: { hasNextPage: false }, nodes: [txn('B', 'Credit', '2.00', 'n2')] } } }));
++  assert.equal((await both(all, () => needFeature('giftCards', 'allHistory')('GC1'), () => g.allGiftCardTransactions('GC1'))).length, 1);
++  const out = () => fake.on('giftCards(first: 100', fake.data({ giftCards: { pageInfo: { hasNextPage: false }, nodes: [{ balance: { amount: '2.50' } }] } }));
++  assert.deepEqual(await both(out, () => needFeature('giftCards', 'outstanding')(), () => g.outstandingBalance()), { cards: 1, cents: 250 });
++});
++
++test('creating a card (till sale from the outbox, or a refund to a new card) sends the same mutations, including the recipient', async () => {
++  fake.install(); await fake.signIn();
++  const { needFeature } = await import('../src/alloyhost/need');
++  fake.on('customers(first: 20', fake.data({ customers: { nodes: [{ id: 'U9', email: 'f@x.com', displayName: 'F' }] } }));
++  fake.on('giftCardCreate', ok('giftCardCreate', { giftCard: card() }));
++  const g = await needFeature('giftCards', 'create')({ valueCents: 5000, code: 'ABCD1234EFGH5678', saleUuid: 'S', customerId: 'U1', recipient: { email: 'f@x.com', name: 'Fay', message: 'Enjoy' } });
++  assert.equal(g.id, 'GC1'); const i = fake.lastCall().variables.i;
++  assert.equal(i.customerId, 'U1'); assert.deepEqual(i.recipientAttributes, { id: 'U9', preferredName: 'Fay', message: 'Enjoy' }); assert.equal(i.initialValue, '50.00');
++});
++
++test('debitOnce and creditOnce through the router skip what is already on the card and refuse a different amount, as before', async () => {
++  fake.install(); await fake.signIn();
++  const { needFeature } = await import('../src/alloyhost/need');
++  const hist = (nodes: any[]) => fake.on('transactions(first:250', fake.data({ giftCard: { transactions: { pageInfo: { hasNextPage: false }, nodes } } }));
++  hist([]); fake.on('giftCardDebit', ok('giftCardDebit', { giftCardDebitTransaction: { id: 'T' } }));
++  await needFeature('giftCards', 'debitOnce')('GC1', 500, 'POS sale AB tender 1');
++  assert.deepEqual(fake.lastCall().variables, { id: 'GC1', i: { debitAmount: { amount: '5.00', currencyCode: 'AUD' }, note: 'POS sale AB tender 1' } });
++  hist([txn('A', 'Credit', '3.00', 'N')]);
++  await needFeature('giftCards', 'creditOnce')('GC1', 300, 'N'); assert.equal(fake.gqlCalls().filter(c => c.query.includes('giftCardCredit')).length, 0);
++  hist([txn('A', 'Credit', '3.00', 'N')]);
++  await assert.rejects(() => needFeature('giftCards', 'creditOnce')('GC1', 400, 'N'), /different amount/);
++});
++
++test('a Shopify refusal reaches the outbox as an Alloy user error, and the outbox still treats it as one that needs attention', async () => {
++  fake.install(); await fake.signIn();
++  const { needFeature } = await import('../src/alloyhost/need'); const { isAlloyUserError } = await import('../src/alloykit/errors');
++  fake.on('giftCardCreate', fake.data({ giftCardCreate: { giftCard: null, userErrors: [{ code: 'INVALID', message: 'Too big' }] } }));
++  await assert.rejects(() => needFeature('giftCards', 'create')({ valueCents: 5000, code: 'ABCD1234EFGH5678', saleUuid: 'S' }), (e: any) => isAlloyUserError(e) && e.message === 'Creating the gift card: Too big');
++  assert.ok(readFileSync('src/lib/sync.ts', 'utf8').includes('const user = e instanceof ShopifyUserError || isAlloyUserError(e);'));
++});
++
++test('with no login the screens get the old "not set up" words, and in practice mode the old practice words', async () => {
++  fake.install(); const client = await import('../src/alloys/shopify/client'); await client.clearCreds();
++  const { needFeature, NOT_SET_UP } = await import('../src/alloyhost/need');
++  assert.throws(() => needFeature('giftCards', 'lookup'), (e: any) => e.message === NOT_SET_UP);
++  await fake.signIn(); setTrainingGuard(true);
++  try { assert.throws(() => needFeature('giftCards', 'lookup'), (e: any) => e.message === 'Training mode: Shopify is switched off.'); } finally { setTrainingGuard(false); }
++});
++
++test('the router treats every gift card write as a write (create, debit, credit and both once-only forms) in practice mode', () => {
++  assert.deepEqual(WRITES.giftCards, ['create', 'debit', 'credit', 'debitOnce', 'creditOnce']);
++});
++
++test('no caller imports the Shopify gift card file for these calls; the card type and the code maker come from the app side', () => {
++  const files = ['src/screens/Pay.tsx', 'src/screens/CartPane.tsx', 'src/screens/GiftCards.tsx', 'src/screens/sheets.tsx', 'src/screens/Reports.tsx', 'src/lib/refundFlow.ts', 'src/lib/sync.ts', 'src/lib/trainingGifts.ts'];
++  for (const f of files) {
++    const src = readFileSync(f, 'utf8');
++    assert.equal(/shopify\/giftcards/.test(src), false, f);
++    assert.equal(/\b(lookupGiftCard|createGiftCard|debitGiftCardOnce|creditGiftCardOnce|giftCardHistory|allGiftCardTransactions|outstandingBalance)\(/.test(src), false, f);
++  }
++  assert.ok(readFileSync('src/lib/giftCode.ts', 'utf8').includes('export const newGiftCode'));
++});
+diff --git a/tests/giftcardonce.test.ts b/tests/giftcardonce.test.ts
+index 94b15c4..9649160 100644
+--- a/tests/giftcardonce.test.ts
++++ b/tests/giftcardonce.test.ts
+@@ -28,7 +28,7 @@ test('the Nth payment of a sale has the same reference on every retry, and the n
+ });
+ test('the Payment screen charges through the retry-safe call, with that reference', () => {
+   const pay = readFileSync('src/screens/Pay.tsx', 'utf8');
+-  assert.match(pay, /await debitGiftCardOnce\(info\.id, amt, debitNote\(uuid, tenders\.length\)\)/);
++  assert.match(pay, /await needFeature\('giftCards', 'debitOnce'\)\(info\.id, amt, debitNote\(uuid, tenders\.length\)\)/);
+   assert.doesNotMatch(pay, /await debitGiftCard\(/);
+   const g = readFileSync('src/alloys/shopify/giftcards.ts', 'utf8');
+   assert.match(g, /export async function debitGiftCardOnce[\s\S]*?onceDecision\([\s\S]*?'debit'/);
+diff --git a/tests/trainingrefund.test.ts b/tests/trainingrefund.test.ts
+index 88bfb42..997dcc3 100644
+--- a/tests/trainingrefund.test.ts
++++ b/tests/trainingrefund.test.ts
+@@ -45,7 +45,7 @@ test('the refund screens carry the spots the course points at', () => {
+ 
+ test('Orders and the refund run on practice data only while training: no Shopify call is reachable', () => {
+   const ord = fs.readFileSync('src/screens/Orders.tsx', 'utf8'); assert.ok(ord.indexOf('isTraining() ? listPracticeOrders') >= 0); assert.ok(ord.indexOf('if (isTraining()) markPracticeFulfilled') >= 0);
+-  const flow = fs.readFileSync('src/lib/refundFlow.ts', 'utf8'); assert.ok(flow.indexOf('if (isTraining()) applyPracticeRefund') < flow.indexOf('await refundOrderInShopify')); assert.ok(flow.indexOf('plan.gift_card && isTraining()') < flow.indexOf('creditGiftCardOnce('));
++  const flow = fs.readFileSync('src/lib/refundFlow.ts', 'utf8'); assert.ok(flow.indexOf('if (isTraining()) applyPracticeRefund') < flow.indexOf('await refundOrderInShopify')); assert.ok(flow.indexOf('plan.gift_card && isTraining()') < flow.indexOf("needFeature('giftCards', 'creditOnce')"));
+ });
+ 
+ test('Guide steps are finished by the right press or state', () => {
+-- 
+2.43.0
+

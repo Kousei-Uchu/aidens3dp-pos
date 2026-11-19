@@ -1,0 +1,697 @@
+From 1d163bf26f191a09070060feb5bd1384494afbbf Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Tue, 17 Nov 2026 21:47:33 +1100
+Subject: [PATCH] 0250 - Alloys P1: alloykit scaffold, registry and boundary
+ tests
+
+---
+ dev_docs/ALLOYS.md            |   4 +-
+ dev_docs/ALLOYS_PLAN.md       |   5 +-
+ dev_docs/PROGRESS.md          |   1 +
+ dev_docs/QUEUE.md             |   4 +-
+ dev_docs/TILLIUM_BRANCH.md    |   8 +-
+ dev_docs/TO_DO.md             |   7 +-
+ src/alloykit/boundaries.ts    |  78 +++++++++++++++++++
+ src/alloykit/elements.ts      |  20 +++++
+ src/alloykit/errors.ts        |  15 ++++
+ src/alloykit/policy.ts        |  12 +++
+ src/alloykit/selection.ts     |  67 +++++++++++++++++
+ src/alloykit/types.ts         | 136 ++++++++++++++++++++++++++++++++++
+ src/alloys/index.ts           |   6 ++
+ tests/alloyboundaries.test.ts |  69 +++++++++++++++++
+ tests/alloyselection.test.ts  |  89 ++++++++++++++++++++++
+ 15 files changed, 509 insertions(+), 12 deletions(-)
+ create mode 100644 src/alloykit/boundaries.ts
+ create mode 100644 src/alloykit/elements.ts
+ create mode 100644 src/alloykit/errors.ts
+ create mode 100644 src/alloykit/policy.ts
+ create mode 100644 src/alloykit/selection.ts
+ create mode 100644 src/alloykit/types.ts
+ create mode 100644 src/alloys/index.ts
+ create mode 100644 tests/alloyboundaries.test.ts
+ create mode 100644 tests/alloyselection.test.ts
+
+diff --git a/dev_docs/ALLOYS.md b/dev_docs/ALLOYS.md
+index f4fa039..36bb695 100644
+--- a/dev_docs/ALLOYS.md
++++ b/dev_docs/ALLOYS.md
+@@ -1,7 +1,7 @@
+ # Writing an Alloy
+ 
+-The rules every Alloy follows. The plan and the reasons are in `dev_docs/ALLOYS_PLAN.md`. A test (added in phase P1) checks
+-the structure and import rules below and fails the build when one is broken.
++The rules every Alloy follows. The plan and the reasons are in `dev_docs/ALLOYS_PLAN.md`. `tests/alloyboundaries.test.ts` (rules in
++`src/alloykit/boundaries.ts`) checks the structure and import rules below over the whole of `src/` and fails the build when one is broken.
+ 
+ An **Alloy** is the code specific to one service (Shopify, Zeller, iCloud, Square...) and nothing else. The app does the shared
+ work. If a piece of code would be needed by every Alloy, it belongs in `src/alloykit/` or `src/alloyhost/`, not in an Alloy.
+diff --git a/dev_docs/ALLOYS_PLAN.md b/dev_docs/ALLOYS_PLAN.md
+index 4c830f1..eae515e 100644
+--- a/dev_docs/ALLOYS_PLAN.md
++++ b/dev_docs/ALLOYS_PLAN.md
+@@ -174,8 +174,9 @@ limits so the report can say so before anyone commits.
+ 
+ - Branch **`tillium-dev`**, made from main **before** any of this work, and cloned beside the main folder
+   (`dev_docs/TILLIUM_BRANCH.md` has the commands). This plan and every patch after it (0248 onwards, until the merge) are
+-  applied on the branch only, with `git am`, and kept **out of `patches/`**: the apply-patches workflow only watches `main`,
+-  so main never sees them.
++  applied on the branch only. Put them in the branch's `patches/` folder and run `bash ./scripts/apply-patches.sh`, as on main,
++  then `git push`. The apply-patches workflow only runs for pushes to `main`, so nothing is applied for you on the branch, and
++  main never sees them. When the branch is merged the patches and the ledger arrive together, so the workflow has nothing to apply.
+ - Fixes needed on main meanwhile go to main and are merged into the branch regularly (`git merge main`).
+ - **Identity.** The branch's app is a separate app: bundle ID `page.aspens.tillium`, its own CloudKit container, its own
+   Keychain and data. It installs beside the current app, so the live shop is never touched (patch 0249).
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index e036742..26ee1e4 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -209,6 +209,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0247 | 2026-11-16 | Repo housekeeping (your request). Docs only. `TO_DO.md`: brought up to date through 0247; the four newest device tests (T115 to T118) added to the waiting-on-you table; section 3c rewritten as one tidy table (it had grown out of order and described 0182 as not started in places); the `0175-companion-mode-plan.patch` item corrected, because it is in `patches/APPLIED.txt` and nothing in `patches/` is unlisted (checked); D7 noted as a placeholder with no ideas written down. `QUEUE.md` date updated. |
+ | 0248 | 2026-11-17 | Alloys plan (your request: modularise every Shopify and Zeller touchpoint so any service can be swapped, with a setup picker, Pure Tillium and a migration tool, on its own branch). **Docs only, nothing built.** `dev_docs/ALLOYS_PLAN.md`: the names (Tillium, Alloys, Pure Tillium, Elements, the Smelter), a survey of what the app touches today (11 Shopify files, about 25 callers, the Zeller `TerminalLike` seam, the existing `SharedBackend` and CloudKit move to reuse), the Alloy and Element model, the folder split (`src/alloys/` for Alloy code only, `src/alloykit/` for the shared toolbox, `src/alloyhost/` for the app's side), how each step stays non-destructive, Pure Tillium on AsyncStorage, Alloy-marked data, the Smelter, what stays outside, branch and phases P0 to P10, and your decisions (iCloud is an Alloy, Customers optional with a code-side switch that disallows iCloud customers, first Alloys Shopify, Zeller and iCloud, old refunds chosen per old Alloy). `dev_docs/ALLOYS.md`: the rules for writing an Alloy (Option A one file or Option B a folder with `alloy.ts`, the format, allowed imports, what the app does for you, the checklist). |
+ | 0249 | 2026-11-17 | Tillium identity for the `tillium-dev` branch (your request: new branch, a second clone beside the first, and the bundle ID `page.aspens.tillium` with its extensions). **Apply on `tillium-dev` only, not main.** `app.json`: name `Tillium`, slug `tillium`, bundle ID `page.aspens.tillium`. The CloudKit container becomes `iCloud.page.aspens.tillium` (Swift module, `plugins/withCloudKit.js`, its test) and the two subscription ids `tillium-private-changes` and `tillium-shared-changes`. New `dev_docs/TILLIUM_BRANCH.md`: the commands to make the branch and a sibling clone, a table of what differs from the live app, and the one-off Apple Developer, schema and setup-copy steps. The workers and the `aidens3dp.com` domain are left alone for now (a later step has each user deploy their own). Not run here: it needs a new App ID, container and a clean prebuild on your Mac. |
++| 0250 | 2026-11-17 | Alloys phase P1: the scaffold (your "next!"). **Nothing in the app calls any of it**, so it changes no behaviour. New `src/alloykit/`: `types.ts` (the Alloy format and the nine Element APIs in the app's own types, the `Ctx` an Alloy is handed, `Selection`), `elements.ts` (names, which are required, what a shop loses when one is Off), `selection.ts` (pure rules: `validateSelection` for the setup warning, `legacySelection` for what an install that never chose reads as, `featuresOf` from the functions an Element really has, `diffSelection` for the Smelter, `applyPolicy`), `policy.ts` (`ALLOY_POLICY.icloudCustomers`, `'allowed'` or `'disabled'`), `errors.ts` (`AlloyNetworkError`, `AlloyUserError`) and `boundaries.ts` (the `ALLOYS.md` structure and import rules as a pure checker). New `src/alloys/index.ts`, the registry, empty until P4. `tests/alloyboundaries.test.ts` (runs the rules over the real `src/` and over made-up folders that break each one), `tests/alloyselection.test.ts`. Also corrected the branch docs: patches on `tillium-dev` go in `patches/` and are applied with `bash ./scripts/apply-patches.sh`, as on main (the workflow only runs for `main`). `tsc` clean in the new files. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index 3d3413a..038e9a0 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -1,7 +1,7 @@
+ # Patch queue
+ 
+ The work that is planned but not yet built, in the order it should be done. One line per item, with the first step so a
+-fresh session can start without reading the whole plan. Brought up to date on 2026-11-16, through patch 0247. What is
++fresh session can start without reading the whole plan. Brought up to date on 2026-11-17, through patch 0250. What is
+ built is in `PROGRESS.md`; the open items outside this queue are in `TO_DO.md`.
+ 
+ ## Stream A: CloudKit sync is built
+@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only
+ 
+ ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+ 
+-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. First step: P1, the `src/alloykit/` types, `src/alloys/index.ts`, selection rules and the boundary test that enforces `dev_docs/ALLOYS.md`, with nothing calling them.
++Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250). Next: P2, characterisation tests that pin what the Shopify and Zeller code does today, against fakes, before anything moves.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TILLIUM_BRANCH.md b/dev_docs/TILLIUM_BRANCH.md
+index 7808fc8..f80699f 100644
+--- a/dev_docs/TILLIUM_BRANCH.md
++++ b/dev_docs/TILLIUM_BRANCH.md
+@@ -15,7 +15,8 @@ git push -u origin tillium-dev
+ cd ..
+ git clone --branch tillium-dev --single-branch https://github.com/Kousei-Uchu/aidens3dp-pos.git aidens3dp-pos-tillium
+ cd aidens3dp-pos-tillium && npm install
+-git am path/to/0248-*.patch path/to/0249-*.patch
++mv ~/Downloads/0248-*.patch ~/Downloads/0249-*.patch patches/
++bash ./scripts/apply-patches.sh
+ git push
+ ```
+ 
+@@ -23,8 +24,9 @@ You now have `aidens3dp-pos` (main, the live shop) and `aidens3dp-pos-tillium` (
+ `node_modules` and `ios/` folder. Alternatively, `git worktree add ../aidens3dp-pos-tillium tillium-dev` makes the second
+ folder from the same repository without a second download; either works.
+ 
+-Apply every patch from 0248 on inside `aidens3dp-pos-tillium` with `git am <patch>`, and **do not** put them in `patches/` (the
+-apply-patches workflow only watches `main`). Bring main's fixes across with `git merge main`.
++Every patch from 0248 on goes into `aidens3dp-pos-tillium/patches/` and is applied with `bash ./scripts/apply-patches.sh`, then
++`git push`, exactly as on main. The apply-patches workflow only runs for pushes to `main`, so it does nothing on this branch.
++Make sure `~/Downloads` holds only the latest copy of each patch. Bring main's fixes across with `git merge main`.
+ 
+ ## 2. What the identity change does (patch 0249)
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index b31c129..98fba31 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -4,7 +4,7 @@ Every open item I could find across the repo's lists, with training and the in-a
+ tracked in `dev_docs/TRAINING_PLAN.md`, `dev_docs/TRAINING_MODULE_CHECKLIST.md`, `dev_docs/archive/TRAINING_MODULE_BUGS.md`,
+ `dev_docs/TRAINING_CORRECTIONS.md` and `dev_docs/AI_ASSISTANT_PLAN.md`).
+ 
+-Last brought up to date on 2026-11-16, through patch 0247. The main source was `dev_docs/PROGRESS.md`. Nothing else in the repo (code TODOs or the other docs) holds open items of
++Last brought up to date on 2026-11-17, through patch 0250. The main source was `dev_docs/PROGRESS.md`. Nothing else in the repo (code TODOs or the other docs) holds open items of
+ its own that are not already listed here.
+ 
+ Two kinds of item:
+@@ -98,8 +98,9 @@ Everything here is built and unit tested. What is left on each is your device te
+ ## 3d. Tillium: Alloys and Elements
+ 
+ Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+-decisions are recorded in section 10 of the plan. Next is phase P1: the `alloykit` types, the registry, the selection rules
+-and the boundary test, with nothing calling them. Later: users deploy their own Cloudflare workers (section 8 of the plan).
++decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
++the boundary test, with nothing calling them). Next is P2: characterisation tests that pin what the Shopify and Zeller code does
++now. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/src/alloykit/boundaries.ts b/src/alloykit/boundaries.ts
+new file mode 100644
+index 0000000..ccb9051
+--- /dev/null
++++ b/src/alloykit/boundaries.ts
+@@ -0,0 +1,78 @@
++// Location: src/alloykit/boundaries.ts
++// 0250: the structure and import rules in dev_docs/ALLOYS.md, as a pure function over a map of file path to source text.
++// tests/alloyboundaries.test.ts runs it over the real `src/` folder, so a rule broken in a patch fails the build.
++// Paths are posix, relative to the repo root (for example `src/alloys/shopify/alloy.ts`).
++
++export type Violation = { file: string; rule: string; detail: string };
++
++const ALLOYS = 'src/alloys/';
++const KIT = 'src/alloykit/';
++/** What an Alloy may import from the rest of the app: the canonical types and the money helpers, nothing else. */
++const LIB_ALLOWED = new Set(['src/lib/types', 'src/lib/money']);
++
++export function importsOf(source: string): string[] {
++  const out: string[] = []; const re = /(?:from\s+|import\s+|require\(\s*|import\(\s*)['"]([^'"]+)['"]/g; let m: RegExpExecArray | null;
++  while ((m = re.exec(source))) out.push(m[1]);
++  return out;
++}
++/** `../../alloykit/types` from `src/alloys/shopify/alloy.ts` becomes `src/alloykit/types`. Non-relative imports (packages) return null. */
++export function resolveImport(fromFile: string, spec: string): string | null {
++  if (!spec.startsWith('.')) return null;
++  const parts = fromFile.split('/').slice(0, -1);
++  for (const p of spec.split('/')) { if (p === '.' || p === '') continue; if (p === '..') parts.pop(); else parts.push(p); }
++  return parts.join('/').replace(/\.(tsx?|js)$/, '');
++}
++const stripIndex = (p: string): string => p.replace(/\/index$/, '');
++
++/** `src/alloys/shopify.ts` and `src/alloys/shopify/alloy.ts` both belong to the Alloy `shopify`; the registry belongs to none. */
++export function alloyOf(path: string): string | null {
++  if (!path.startsWith(ALLOYS)) return null;
++  const rest = path.slice(ALLOYS.length); if (rest === 'index.ts') return null;
++  return rest.includes('/') ? rest.split('/')[0] : rest.replace(/\.tsx?$/, '');
++}
++
++export function checkAlloys(files: Record<string, string>): Violation[] {
++  const v: Violation[] = []; const paths = Object.keys(files).sort();
++
++  // Structure: top level of src/alloys/ is index.ts, <id>.ts (Option A) or <id>/ (Option B, which needs alloy.ts).
++  const optionA = new Set<string>(); const optionBDirs = new Set<string>();
++  for (const p of paths) {
++    if (!p.startsWith(ALLOYS)) continue; const rest = p.slice(ALLOYS.length);
++    if (rest.includes('/')) optionBDirs.add(rest.split('/')[0]);
++    else if (rest !== 'index.ts') { if (/^[a-z][a-z0-9-]*\.ts$/.test(rest)) optionA.add(rest.replace(/\.ts$/, '')); else v.push({ file: p, rule: 'structure', detail: 'Only index.ts, <id>.ts and <id>/ folders may sit directly in src/alloys/.' }); }
++  }
++  for (const id of optionBDirs) {
++    if (!files[`${ALLOYS}${id}/alloy.ts`]) v.push({ file: `${ALLOYS}${id}/`, rule: 'structure', detail: 'A folder Alloy must contain alloy.ts, the file the app sees.' });
++    if (!/^[a-z][a-z0-9-]*$/.test(id)) v.push({ file: `${ALLOYS}${id}/`, rule: 'structure', detail: 'Alloy ids are lowercase letters, digits and hyphens.' });
++    if (optionA.has(id)) v.push({ file: `${ALLOYS}${id}`, rule: 'structure', detail: 'An Alloy is either one file or one folder, not both.' });
++  }
++  const entries = new Map<string, string>(); // id -> entry file
++  for (const id of optionA) entries.set(id, `${ALLOYS}${id}.ts`);
++  for (const id of optionBDirs) if (files[`${ALLOYS}${id}/alloy.ts`]) entries.set(id, `${ALLOYS}${id}/alloy.ts`);
++  for (const [id, entry] of entries) if (!/export\s+default\s+/.test(files[entry])) v.push({ file: entry, rule: 'structure', detail: `The entry file of ${id} must export default the Alloy.` });
++
++  // Registry: every Alloy is imported by src/alloys/index.ts, and nothing else is.
++  const reg = files[`${ALLOYS}index.ts`];
++  if (reg !== undefined) {
++    const imported = new Set(importsOf(reg).map(s => resolveImport(`${ALLOYS}index.ts`, s)).filter((x): x is string => !!x));
++    for (const [id, entry] of entries) if (![entry.replace(/\.ts$/, ''), `${ALLOYS}${id}`].some(c => imported.has(c))) v.push({ file: `${ALLOYS}index.ts`, rule: 'registry', detail: `Alloy ${id} is not listed in the registry.` });
++  } else if (entries.size) v.push({ file: `${ALLOYS}index.ts`, rule: 'registry', detail: 'Alloys exist but src/alloys/index.ts does not.' });
++
++  for (const p of paths) {
++    const src = files[p]; const own = alloyOf(p);
++    for (const spec of importsOf(src)) {
++      const to = resolveImport(p, spec); if (!to) continue; const target = stripIndex(to);
++
++      if (own) { // an Alloy file: its own files, the kit, and the canonical types and money helpers
++        const toOwn = alloyOf(`${to}.ts`) === own || alloyOf(`${to}/x.ts`) === own;
++        const ok = toOwn || target.startsWith(KIT.slice(0, -1)) || LIB_ALLOWED.has(target);
++        if (!ok) v.push({ file: p, rule: 'alloy-imports', detail: `Alloy ${own} imports ${target}. Allowed: its own files, src/alloykit/*, src/lib/types, src/lib/money.` });
++      } else if (p.startsWith(KIT)) { // the kit sits below the app and the Alloys
++        if (/^src\/(alloyhost|alloys|screens|state|ui)(\/|$)/.test(target) || target === 'App') v.push({ file: p, rule: 'kit-imports', detail: `src/alloykit must not import ${target}.` });
++      } else if (p !== `${ALLOYS}index.ts`) { // everything else reaches Alloys only through the registry
++        if (target.startsWith('src/alloys/') && target !== 'src/alloys' && target !== 'src/alloys/index') v.push({ file: p, rule: 'registry-only', detail: `Import ${target}: only src/alloys/index.ts may import an Alloy file.` });
++      }
++    }
++  }
++  return v;
++}
+diff --git a/src/alloykit/elements.ts b/src/alloykit/elements.ts
+new file mode 100644
+index 0000000..6e0fff6
+--- /dev/null
++++ b/src/alloykit/elements.ts
+@@ -0,0 +1,20 @@
++// Location: src/alloykit/elements.ts
++// 0250: what each Element is called, whether setup must pick something for it, and what a shop loses when it is Off.
++import type { ElementId } from './types';
++
++export type ElementInfo = { id: ElementId; label: string; blurb: string; required: boolean; whenOff: string };
++
++export const ELEMENTS: ElementInfo[] = [
++  { id: 'catalogue', label: 'Catalogue', blurb: 'Products, variations, prices, images and collections.', required: true, whenOff: '' },
++  { id: 'orders', label: 'Orders', blurb: 'Recording each sale, listing orders and refunding them.', required: true, whenOff: '' },
++  { id: 'sharedState', label: 'Shared state', blurb: 'Carts, layouts, sales and settings shared between registers.', required: true, whenOff: '' },
++  { id: 'stock', label: 'Stock', blurb: 'Counts, receiving, adjusting and counting stock.', required: false, whenOff: 'Items are not tracked and stock screens are hidden.' },
++  { id: 'discounts', label: 'Discounts', blurb: 'Automatic discounts and manual presets.', required: false, whenOff: 'Only discounts typed at the till are available.' },
++  { id: 'customers', label: 'Customers', blurb: 'Finding and saving customers.', required: false, whenOff: 'Sales cannot be attached to a customer.' },
++  { id: 'giftCards', label: 'Gift cards', blurb: 'Selling, checking, charging and refunding gift cards.', required: false, whenOff: 'Gift cards cannot be sold or accepted.' },
++  { id: 'cardTerminal', label: 'Connected terminal', blurb: 'Card payments and refunds on a card reader.', required: false, whenOff: 'Cash and gift cards only.' },
++  { id: 'tapToPay', label: 'Tap to Pay on iPhone', blurb: 'Card payments on the phone itself.', required: false, whenOff: 'No card payments on the phone.' },
++];
++export const ELEMENT_IDS: ElementId[] = ELEMENTS.map(e => e.id);
++export const REQUIRED_ELEMENTS: ElementId[] = ELEMENTS.filter(e => e.required).map(e => e.id);
++export const elementInfo = (id: ElementId): ElementInfo => ELEMENTS.find(e => e.id === id)!;
+diff --git a/src/alloykit/errors.ts b/src/alloykit/errors.ts
+new file mode 100644
+index 0000000..10b1a19
+--- /dev/null
++++ b/src/alloykit/errors.ts
+@@ -0,0 +1,15 @@
++// Location: src/alloykit/errors.ts
++// 0250: the two errors an Alloy throws. The app decides what to show; an Alloy only says which kind of trouble it was.
++
++/** The service could not be reached (offline, timed out, DNS, 5xx). Worth retrying; a queued sale stays queued. */
++export class AlloyNetworkError extends Error {
++  readonly retryable = true;
++  constructor(message: string, readonly cause?: unknown) { super(message); this.name = 'AlloyNetworkError'; }
++}
++/** The service answered and refused (bad credentials, a missing permission, a rule it enforces). Retrying will not help. */
++export class AlloyUserError extends Error {
++  readonly retryable = false;
++  constructor(message: string, readonly field?: string) { super(message); this.name = 'AlloyUserError'; }
++}
++export const isAlloyNetworkError = (e: unknown): e is AlloyNetworkError => e instanceof AlloyNetworkError;
++export const isAlloyUserError = (e: unknown): e is AlloyUserError => e instanceof AlloyUserError;
+diff --git a/src/alloykit/policy.ts b/src/alloykit/policy.ts
+new file mode 100644
+index 0000000..c4e46a9
+--- /dev/null
++++ b/src/alloykit/policy.ts
+@@ -0,0 +1,12 @@
++// Location: src/alloykit/policy.ts
++// 0250: build-time switches. A build that must never behave a certain way sets it here, and nothing in the app can turn it back on.
++
++export type AlloyPolicy = {
++  /**
++   * Whether the iCloud Alloy may hold the Customers Element, which puts customer names, emails and phones in the shop's own iCloud.
++   * `'allowed'` (the default) offers it as an explicit choice with a warning. `'disabled'` removes it when Alloys are registered, the
++   * picker never offers it, and the router refuses it. Today's rule (customers live in Shopify only) is what `'disabled'` keeps.
++   */
++  icloudCustomers: 'allowed' | 'disabled';
++};
++export const ALLOY_POLICY: AlloyPolicy = { icloudCustomers: 'allowed' };
+diff --git a/src/alloykit/selection.ts b/src/alloykit/selection.ts
+new file mode 100644
+index 0000000..b529890
+--- /dev/null
++++ b/src/alloykit/selection.ts
+@@ -0,0 +1,67 @@
++// Location: src/alloykit/selection.ts
++// 0250: pure rules for the app's choice of Alloy per Element. No storage, no network, no React: the picker, the router and the
++// Smelter all use these, and the tests pin them.
++import { ELEMENTS, REQUIRED_ELEMENTS } from './elements';
++import { ALLOY_POLICY, type AlloyPolicy } from './policy';
++import { OFF, type Alloy, type ElementId, type Selection } from './types';
++
++/** The Alloy that implements an Element, or undefined. */
++export const alloyFor = (alloys: Alloy[], id: string | undefined): Alloy | undefined => (id ? alloys.find(a => a.id === id) : undefined);
++export const supports = (a: Alloy, e: ElementId): boolean => !!a.elements[e];
++
++/** Which optional functions an Element implements, by name. The picker shows these: an Alloy cannot claim what it does not have. */
++export function featuresOf(a: Alloy, e: ElementId): string[] {
++  const api = a.elements[e]?.api as Record<string, unknown> | undefined;
++  return api ? Object.keys(api).filter(k => typeof api[k] === 'function').sort() : [];
++}
++
++/**
++ * Applies the build's policy to the Alloys: with `icloudCustomers: 'disabled'` the iCloud Alloy loses its Customers Element, so the
++ * picker never offers it and a saved selection of it is reported as unsupported.
++ */
++export function applyPolicy(alloys: Alloy[], policy: AlloyPolicy = ALLOY_POLICY): Alloy[] {
++  if (policy.icloudCustomers !== 'disabled') return alloys;
++  return alloys.map(a => {
++    if (a.id !== 'icloud' || !a.elements.customers) return a;
++    const { customers: _removed, ...rest } = a.elements;
++    return { ...a, elements: rest };
++  });
++}
++
++export type Problem =
++  | { kind: 'unchosen'; element: ElementId }                       // a required Element has nothing selected
++  | { kind: 'unknown_alloy'; element: ElementId; alloy: string }   // saved choice names an Alloy this build does not have
++  | { kind: 'unsupported'; element: ElementId; alloy: string };    // the Alloy cannot do that Element (or the policy removed it)
++
++export type Validation = { ok: boolean; problems: Problem[]; off: ElementId[] };
++
++/** What setup checks before Next: every required Element has a working choice; optional ones may be unset or Off. */
++export function validateSelection(sel: Selection, alloys: Alloy[]): Validation {
++  const problems: Problem[] = []; const off: ElementId[] = [];
++  for (const { id } of ELEMENTS) {
++    const v = sel[id];
++    if (v === OFF) { if (REQUIRED_ELEMENTS.includes(id)) problems.push({ kind: 'unchosen', element: id }); else off.push(id); continue; }
++    if (!v) { if (REQUIRED_ELEMENTS.includes(id)) problems.push({ kind: 'unchosen', element: id }); else off.push(id); continue; }
++    const a = alloyFor(alloys, v);
++    if (!a) { problems.push({ kind: 'unknown_alloy', element: id, alloy: v }); continue; }
++    if (!supports(a, id)) problems.push({ kind: 'unsupported', element: id, alloy: v });
++  }
++  return { ok: problems.length === 0, problems, off };
++}
++
++/** What an install that has never chosen reads as: today's behaviour. Facts come from the app (is there a Shopify login, which shared backend). */
++export type LegacyFacts = { shopifyConnected: boolean; sharedBackend: 'metaobject' | 'cloudkit'; zellerPaired: boolean };
++export function legacySelection(f: LegacyFacts): Selection {
++  const sel: Selection = {};
++  if (f.shopifyConnected) for (const e of ['catalogue', 'stock', 'discounts', 'customers', 'orders', 'giftCards'] as const) sel[e] = 'shopify';
++  sel.sharedState = f.sharedBackend === 'cloudkit' ? 'icloud' : 'shopify';
++  if (f.zellerPaired) sel.cardTerminal = 'zeller';
++  return sel;
++}
++
++export type SelectionChange = { element: ElementId; from: string | undefined; to: string | undefined };
++/** The Elements whose Alloy differs. The Smelter works from this list. An unset Element and Off count as the same. */
++export function diffSelection(from: Selection, to: Selection): SelectionChange[] {
++  const norm = (v: string | undefined) => (v === OFF ? undefined : v);
++  return ELEMENTS.flatMap(({ id }) => (norm(from[id]) === norm(to[id]) ? [] : [{ element: id, from: norm(from[id]), to: norm(to[id]) }]));
++}
+diff --git a/src/alloykit/types.ts b/src/alloykit/types.ts
+new file mode 100644
+index 0000000..f904422
+--- /dev/null
++++ b/src/alloykit/types.ts
+@@ -0,0 +1,136 @@
++// Location: src/alloykit/types.ts
++// 0250: the Alloy format (see dev_docs/ALLOYS.md and ALLOYS_PLAN.md). Types only: nothing here runs.
++// An Alloy is the code specific to one service. It lists the Elements it can do; each Element has the fixed API below, written in the
++// app's own types. The app calls Elements through the router and never imports an Alloy. These shapes are final for the format
++// (`contract: 1`) once the first Alloys (P4) are written against them; until then P4 may still adjust them.
++import type { AutoDiscount, Collection, Customer, ManualPreset, SaleRecord, Variant } from '../lib/types';
++import type { SharedBackend } from '../lib/syncBackend';
++import type { TerminalLike } from '../lib/zeller';
++
++export const ALLOY_CONTRACT = 1;
++
++export type ElementId =
++  | 'catalogue' | 'stock' | 'discounts' | 'customers' | 'orders' | 'giftCards' | 'sharedState' | 'cardTerminal' | 'tapToPay';
++
++// ── What the app hands to every Alloy function ─────────────────────────────────────────────
++export type Http = {
++  json<T = unknown>(url: string, init?: { method?: string; headers?: Record<string, string>; body?: unknown; query?: Record<string, string | undefined> }): Promise<T>;
++};
++/** Typed local collections. Pure Tillium keeps its data here; the Shared state Alloy syncs it between registers. */
++export type LocalStore = {
++  get<T>(collection: string, id: string): Promise<T | null>;
++  put<T>(collection: string, id: string, value: T): Promise<void>;
++  remove(collection: string, id: string): Promise<void>;
++  list<T>(collection: string): Promise<T[]>;
++};
++export type Ctx = {
++  http: Http;
++  secret(key: string): string;
++  setting(key: string): string;
++  store: LocalStore;
++  idempotencyKey(): string;
++  log(message: string): void;
++};
++
++export type PageReq = { after?: string | null; limit?: number };
++export type Page<T> = { rows: T[]; next: string | null };
++
++// ── The Elements' APIs. An optional function is a feature: the picker reads what an Alloy can do from which functions exist. ──
++export type ItemInput = { title: string; priceCents: number; sku?: string; barcode?: string; costCents?: number; stock?: number; tags?: string[] };
++export type ItemPatch = { priceCents?: number; sku?: string; barcode?: string; costCents?: number };
++export type AdjustReason = 'correction' | 'received' | 'cycle_count_available' | 'damaged' | 'shrinkage' | 'restock' | 'other';
++export type StockLevel = { itemId: string; quantity: number };
++
++export type CatalogueApi = {
++  listItems(ctx: Ctx, page: PageReq): Promise<Page<Variant>>;
++  listCollections(ctx: Ctx, page: PageReq): Promise<Page<Collection>>;
++  createItem?(ctx: Ctx, input: ItemInput): Promise<Variant>;
++  updateItem?(ctx: Ctx, variantId: string, patch: ItemPatch): Promise<Variant>;
++};
++export type StockApi = {
++  /** Levels changed since the cursor (null = everything). The app keeps the cursor and the refresh timing. */
++  changesSince(ctx: Ctx, cursor: string | null): Promise<{ levels: StockLevel[]; cursor: string }>;
++  adjust(ctx: Ctx, a: { itemId: string; delta: number; reason: AdjustReason; key: string }): Promise<void>;
++  set?(ctx: Ctx, a: { itemId: string; quantity: number; reason: AdjustReason; key: string }): Promise<void>;
++};
++export type DiscountsApi = {
++  listAutomatic(ctx: Ctx): Promise<AutoDiscount[]>;
++  listPresets(ctx: Ctx): Promise<ManualPreset[]>;
++};
++export type CustomerInput = { name: string; email?: string; phone?: string; note?: string };
++export type CustomersApi = {
++  search(ctx: Ctx, query: string): Promise<Customer[]>;
++  create?(ctx: Ctx, c: CustomerInput): Promise<Customer>;
++  update?(ctx: Ctx, id: string, c: CustomerInput): Promise<Customer>;
++};
++/** What an Alloy returns for a sale it has recorded. The app stores it in `sale.refs[alloyId]`. */
++export type OrderRef = { id: string; name?: string; url?: string; extra?: Record<string, string> };
++export type OrderSummary = { ref: OrderRef; ts: string; totalCents: number; customerName?: string; fulfilled?: boolean };
++export type RefundItem = { lineId: string; qty: number };
++export type OrdersApi = {
++  record(ctx: Ctx, sale: SaleRecord, o: { key: string }): Promise<OrderRef>;
++  find?(ctx: Ctx, saleUuid: string): Promise<OrderRef | null>;
++  list?(ctx: Ctx, page: PageReq & { query?: string }): Promise<Page<OrderSummary>>;
++  fulfil?(ctx: Ctx, ref: OrderRef): Promise<void>;
++  refund?(ctx: Ctx, ref: OrderRef, items: RefundItem[], o: { amountCents: number; note: string; key: string }): Promise<void>;
++};
++export type GiftCard = { id: string; last4: string; balanceCents: number; initialCents: number; enabled: boolean; expiresOn?: string };
++export type GiftCardTxn = { at: string; cents: number; kind: 'credit' | 'debit'; note?: string };
++export type GiftCardsApi = {
++  lookup(ctx: Ctx, code: string): Promise<GiftCard | null>;
++  create(ctx: Ctx, a: { valueCents: number; code: string; saleUuid: string; customerId?: string }): Promise<GiftCard>;
++  debit(ctx: Ctx, id: string, cents: number, note: string): Promise<void>;
++  credit(ctx: Ctx, id: string, cents: number, note: string): Promise<void>;
++  history?(ctx: Ctx, id: string): Promise<GiftCardTxn[]>;
++};
++/** Shared state is the app's existing `SharedBackend` (records by type and handle), so today's two backends already fit it. */
++export type SharedStateApi = { backend(ctx: Ctx): SharedBackend };
++/** Card payments. The terminal object is the app's existing `TerminalLike`, so training and virtual terminals fit it too. */
++export type CardTerminalApi = { terminal(ctx: Ctx): TerminalLike };
++export type TapToPayApi = { terminal(ctx: Ctx): TerminalLike };
++
++export type ElementApi = {
++  catalogue: CatalogueApi; stock: StockApi; discounts: DiscountsApi; customers: CustomersApi; orders: OrdersApi;
++  giftCards: GiftCardsApi; sharedState: SharedStateApi; cardTerminal: CardTerminalApi; tapToPay: TapToPayApi;
++};
++
++// ── The Alloy ─────────────────────────────────────────────────────────────────────────────
++export type SettingField = {
++  key: string; label: string; placeholder?: string; help?: string;
++  /** Kept in the Keychain, never in settings or backups' plain fields. */
++  secret?: boolean;
++  /** Offered as a list the Alloy fills in after `connect` (for example Shopify locations). */
++  pickFrom?: string;
++};
++export type ConnectReport = {
++  ok: boolean;
++  /** Plain words when not ok: what to fix. */
++  problem?: string;
++  /** Per Element, the permissions the credentials lack (so the picker can say which Element will not work and why). */
++  missing?: Partial<Record<ElementId, string[]>>;
++  /** Lists for `pickFrom` fields. */
++  lists?: Record<string, { id: string; name: string }[]>;
++};
++export type ElementImpl<E extends ElementId> = {
++  api: ElementApi[E];
++  /** Permissions or scopes this Element needs from the service, for the picker and the connect check. */
++  needs?: string[];
++  /** Plain-words limits, one line each, shown on the picker and in the Smelter's report. */
++  limits?: string[];
++};
++export type Alloy = {
++  /** Lowercase, unique, never changes: it is saved in settings and on every sale. */
++  id: string;
++  name: string;
++  blurb: string;
++  contract: typeof ALLOY_CONTRACT;
++  settings: SettingField[];
++  connect(ctx: Ctx): Promise<ConnectReport>;
++  elements: { [E in ElementId]?: ElementImpl<E> };
++  /** Only for a native SDK that must be mounted (Zeller's reader). */
++  host?: () => unknown;
++};
++
++// ── The app's choice of Alloy per Element ───────────────────────────────────────────────────
++export type Selection = Partial<Record<ElementId, string>>;
++export const OFF = 'off';
+diff --git a/src/alloys/index.ts b/src/alloys/index.ts
+new file mode 100644
+index 0000000..516dfa9
+--- /dev/null
++++ b/src/alloys/index.ts
+@@ -0,0 +1,6 @@
++// Location: src/alloys/index.ts
++// 0250: the registry. The ONLY file that imports an Alloy (see dev_docs/ALLOYS.md). It is empty until the first Alloys are written in
++// phase P4; the app does not read it yet, so adding it changes nothing at runtime.
++import type { Alloy } from '../alloykit/types';
++
++export const ALLOYS: Alloy[] = [];
+diff --git a/tests/alloyboundaries.test.ts b/tests/alloyboundaries.test.ts
+new file mode 100644
+index 0000000..1413f5b
+--- /dev/null
++++ b/tests/alloyboundaries.test.ts
+@@ -0,0 +1,69 @@
++// Location: tests/alloyboundaries.test.ts
++// 0250: the structure and import rules of dev_docs/ALLOYS.md, checked over the real src/ folder and over made-up folders that break them.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import path from 'node:path';
++import { alloyOf, checkAlloys, importsOf, resolveImport } from '../src/alloykit/boundaries';
++
++const ROOT = path.resolve(__dirname, '..');
++function walk(dir: string, out: Record<string, string>) {
++  for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
++    const rel = `${dir}/${e.name}`;
++    if (e.isDirectory()) walk(rel, out); else if (/\.(ts|tsx)$/.test(e.name)) out[rel] = fs.readFileSync(path.join(ROOT, rel), 'utf8');
++  }
++}
++const real = (): Record<string, string> => { const f: Record<string, string> = {}; walk('src', f); f['App.tsx'] = fs.readFileSync(path.join(ROOT, 'App.tsx'), 'utf8'); return f; };
++const ALLOY = "import type { Alloy } from '../alloykit/types';\nconst alloy = {} as Alloy;\nexport default alloy;\n";
++const ALLOY_B = "import type { Alloy } from '../../alloykit/types';\nconst alloy = {} as Alloy;\nexport default alloy;\n";
++const rules = (f: Record<string, string>) => checkAlloys(f).map(v => v.rule);
++
++test('the real src/ folder obeys every rule', () => { assert.deepEqual(checkAlloys(real()), []); });
++
++test('imports are read and resolved', () => {
++  assert.deepEqual(importsOf("import a from './a';\nimport type { B } from \"../b\";\nconst c = require('c');\nconst d = await import('./d');\nexport * from './e';"), ['./a', '../b', 'c', './d', './e']);
++  assert.equal(resolveImport('src/alloys/shopify/alloy.ts', '../../alloykit/types'), 'src/alloykit/types');
++  assert.equal(resolveImport('src/alloys/shopify/alloy.ts', './catalogue.tsx'), 'src/alloys/shopify/catalogue');
++  assert.equal(resolveImport('src/alloys/x.ts', 'react-native'), null);
++  assert.equal(alloyOf('src/alloys/shopify/stock.ts'), 'shopify'); assert.equal(alloyOf('src/alloys/tillium.ts'), 'tillium'); assert.equal(alloyOf('src/alloys/index.ts'), null); assert.equal(alloyOf('src/lib/a.ts'), null);
++});
++
++test('a well formed Option A and Option B Alloy pass', () => {
++  const f = {
++    'src/alloys/index.ts': "import tillium from './tillium';\nimport shopify from './shopify/alloy';\nexport const ALLOYS = [tillium, shopify];\n",
++    'src/alloys/tillium.ts': ALLOY,
++    'src/alloys/shopify/alloy.ts': ALLOY_B + "import { x } from './catalogue';\nimport { toCents } from '../../lib/money';\nimport type { Variant } from '../../lib/types';\n",
++    'src/alloys/shopify/catalogue.ts': "import { gql } from './graphql';\nimport { AlloyUserError } from '../../alloykit/errors';\n",
++    'src/alloys/shopify/graphql.ts': "import fetch from 'node-fetch';\n",
++  };
++  assert.deepEqual(checkAlloys(f), []);
++});
++
++test('structure: stray files, a folder with no alloy.ts, both shapes at once, no default export', () => {
++  assert.ok(rules({ 'src/alloys/index.ts': '', 'src/alloys/helpers.tsx': '' }).includes('structure'));
++  assert.ok(rules({ 'src/alloys/index.ts': '', 'src/alloys/zeller/terminal.ts': '' }).includes('structure'));
++  assert.ok(rules({ 'src/alloys/index.ts': "import a from './a';\nimport b from './a/alloy';", 'src/alloys/a.ts': ALLOY, 'src/alloys/a/alloy.ts': ALLOY_B }).includes('structure'));
++  assert.ok(rules({ 'src/alloys/index.ts': "import a from './a';", 'src/alloys/a.ts': 'export const alloy = {};' }).includes('structure'));
++});
++
++test('registry: every Alloy is listed, and the registry must exist', () => {
++  assert.ok(rules({ 'src/alloys/index.ts': 'export const ALLOYS = [];', 'src/alloys/a.ts': ALLOY }).includes('registry'));
++  assert.ok(rules({ 'src/alloys/a.ts': ALLOY }).includes('registry'));
++});
++
++test('an Alloy may not import the app, another Alloy, or lib beyond types and money', () => {
++  const base = { 'src/alloys/index.ts': "import a from './a';\nimport b from './b';", 'src/alloys/a.ts': ALLOY, 'src/alloys/b.ts': ALLOY };
++  for (const bad of ["import { s } from '../state/store';", "import { sync } from '../lib/sync';", "import b from './b';", "import { host } from '../alloyhost/router';", "import { Row } from '../ui/kit';"]) {
++    assert.ok(rules({ ...base, 'src/alloys/a.ts': ALLOY + bad }).includes('alloy-imports'), bad);
++  }
++  assert.deepEqual(checkAlloys({ ...base, 'src/alloys/a.ts': ALLOY + "import { toCents } from '../lib/money';\nimport type { Variant } from '../lib/types';\nimport z from 'zod';" }), []);
++});
++
++test('only the registry reaches Alloy files; the kit stays below the app', () => {
++  const base = { 'src/alloys/index.ts': "import a from './a';", 'src/alloys/a.ts': ALLOY };
++  assert.ok(rules({ ...base, 'src/screens/Settings.tsx': "import a from '../alloys/a';" }).includes('registry-only'));
++  assert.ok(rules({ ...base, 'src/lib/sync.ts': "import a from '../alloys/shopify/alloy';" }).includes('registry-only'));
++  assert.deepEqual(checkAlloys({ ...base, 'src/screens/Settings.tsx': "import { ALLOYS } from '../alloys';\nimport { ALLOYS as B } from '../alloys/index';" }), []);
++  assert.ok(rules({ ...base, 'src/alloykit/x.ts': "import { s } from '../state/store';" }).includes('kit-imports'));
++  assert.ok(rules({ ...base, 'src/alloykit/x.ts': "import { r } from '../alloyhost/router';" }).includes('kit-imports'));
++});
+diff --git a/tests/alloyselection.test.ts b/tests/alloyselection.test.ts
+new file mode 100644
+index 0000000..deb81f6
+--- /dev/null
++++ b/tests/alloyselection.test.ts
+@@ -0,0 +1,89 @@
++// Location: tests/alloyselection.test.ts
++// 0250: the Alloy selection rules: what setup warns about, what an old install reads as, what the picker shows, what the policy removes.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { ELEMENTS, ELEMENT_IDS, REQUIRED_ELEMENTS } from '../src/alloykit/elements';
++import { alloyFor, applyPolicy, diffSelection, featuresOf, legacySelection, supports, validateSelection } from '../src/alloykit/selection';
++import { ALLOY_POLICY } from '../src/alloykit/policy';
++import { AlloyNetworkError, AlloyUserError, isAlloyNetworkError, isAlloyUserError } from '../src/alloykit/errors';
++import { ALLOYS } from '../src/alloys';
++import type { Alloy, ElementId } from '../src/alloykit/types';
++
++const stub = (id: string, elements: Partial<Record<ElementId, Record<string, unknown>>>): Alloy => ({
++  id, name: id, blurb: '', contract: 1, settings: [], connect: async () => ({ ok: true }),
++  elements: Object.fromEntries(Object.entries(elements).map(([k, api]) => [k, { api }])) as Alloy['elements'],
++});
++const fn = () => async () => undefined;
++const shopify = stub('shopify', { catalogue: { listItems: fn(), listCollections: fn(), createItem: fn() }, orders: { record: fn() }, sharedState: { backend: fn() }, stock: { changesSince: fn(), adjust: fn() }, customers: { search: fn() }, discounts: { listAutomatic: fn(), listPresets: fn() }, giftCards: { lookup: fn(), create: fn(), debit: fn(), credit: fn() } });
++const icloud = stub('icloud', { sharedState: { backend: fn() }, customers: { search: fn(), create: fn() } });
++const zeller = stub('zeller', { cardTerminal: { terminal: fn() } });
++const pure = stub('tillium', { catalogue: { listItems: fn(), listCollections: fn() }, orders: { record: fn() }, sharedState: { backend: fn() } });
++const ALL = [shopify, icloud, zeller, pure];
++
++test('the Elements table is complete and ordered, with Catalogue, Orders and Shared state required', () => {
++  assert.equal(ELEMENTS.length, 9); assert.equal(new Set(ELEMENT_IDS).size, 9);
++  assert.deepEqual(REQUIRED_ELEMENTS, ['catalogue', 'orders', 'sharedState']);
++  for (const e of ELEMENTS) assert.ok(e.blurb.length > 0 && (e.required || e.whenOff.length > 0), e.id);
++});
++
++test('setup warns about each unchosen required Element, and optional ones may be left unset or Off', () => {
++  const v = validateSelection({ cardTerminal: 'zeller', stock: 'off' }, ALL);
++  assert.equal(v.ok, false);
++  assert.deepEqual(v.problems.map(p => `${p.kind}:${p.element}`), ['unchosen:catalogue', 'unchosen:orders', 'unchosen:sharedState']);
++  assert.ok(v.off.includes('stock') && v.off.includes('giftCards') && !v.off.includes('cardTerminal'));
++  assert.equal(validateSelection({ catalogue: 'shopify', orders: 'shopify', sharedState: 'icloud' }, ALL).ok, true);
++});
++
++test('a required Element set to Off is a problem, and John\'s forgotten Shopify choices are caught', () => {
++  assert.equal(validateSelection({ catalogue: 'off', orders: 'tillium', sharedState: 'tillium' }, ALL).problems[0].kind, 'unchosen');
++  const john = validateSelection({ cardTerminal: 'zeller' }, ALL); assert.equal(john.ok, false);
++});
++
++test('an unknown Alloy or one that cannot do the Element is reported by name', () => {
++  const v = validateSelection({ catalogue: 'wix', orders: 'zeller', sharedState: 'icloud', giftCards: 'icloud' }, ALL);
++  assert.deepEqual(v.problems.map(p => `${p.kind}:${p.element}`).sort(), ['unknown_alloy:catalogue', 'unsupported:giftCards', 'unsupported:orders']);
++});
++
++test('an install that never chose reads as today: Shopify for the shop, Zeller for the reader, the shared backend it uses', () => {
++  assert.deepEqual(legacySelection({ shopifyConnected: true, sharedBackend: 'metaobject', zellerPaired: true }),
++    { catalogue: 'shopify', stock: 'shopify', discounts: 'shopify', customers: 'shopify', orders: 'shopify', giftCards: 'shopify', sharedState: 'shopify', cardTerminal: 'zeller' });
++  assert.deepEqual(legacySelection({ shopifyConnected: true, sharedBackend: 'cloudkit', zellerPaired: false }).sharedState, 'icloud');
++  assert.deepEqual(legacySelection({ shopifyConnected: false, sharedBackend: 'metaobject', zellerPaired: false }), { sharedState: 'shopify' });
++});
++
++test('the legacy selection is valid against the first public Alloys', () => {
++  const v = validateSelection(legacySelection({ shopifyConnected: true, sharedBackend: 'cloudkit', zellerPaired: true }), ALL); assert.deepEqual(v.problems, []);
++});
++
++test('features come from the functions an Element really has', () => {
++  assert.deepEqual(featuresOf(shopify, 'catalogue'), ['createItem', 'listCollections', 'listItems']);
++  assert.deepEqual(featuresOf(pure, 'catalogue'), ['listCollections', 'listItems']);
++  assert.deepEqual(featuresOf(zeller, 'catalogue'), []);
++  assert.ok(supports(icloud, 'sharedState') && !supports(icloud, 'catalogue'));
++  assert.equal(alloyFor(ALL, 'zeller'), zeller); assert.equal(alloyFor(ALL, undefined), undefined); assert.equal(alloyFor(ALL, 'nope'), undefined);
++});
++
++test('diffing selections lists the Elements that move, treating unset and Off as the same', () => {
++  assert.deepEqual(diffSelection({ catalogue: 'shopify', stock: 'shopify' }, { catalogue: 'square', stock: 'shopify', giftCards: 'off' }), [{ element: 'catalogue', from: 'shopify', to: 'square' }]);
++  assert.deepEqual(diffSelection({ stock: 'off' }, {}), []);
++  assert.deepEqual(diffSelection({}, { customers: 'tillium' }), [{ element: 'customers', from: undefined, to: 'tillium' }]);
++});
++
++test('the policy can remove the iCloud Customers Element, and a saved choice of it then fails validation', () => {
++  assert.equal(ALLOY_POLICY.icloudCustomers, 'allowed');
++  assert.equal(applyPolicy(ALL, { icloudCustomers: 'allowed' }), ALL);
++  const locked = applyPolicy(ALL, { icloudCustomers: 'disabled' });
++  assert.ok(!supports(locked.find(a => a.id === 'icloud')!, 'customers')); assert.ok(supports(locked.find(a => a.id === 'icloud')!, 'sharedState'));
++  assert.ok(supports(locked.find(a => a.id === 'shopify')!, 'customers')); assert.ok(supports(icloud, 'customers'), 'the original is not changed');
++  const sel = { catalogue: 'shopify', orders: 'shopify', sharedState: 'icloud', customers: 'icloud' };
++  assert.equal(validateSelection(sel, ALL).ok, true);
++  assert.deepEqual(validateSelection(sel, locked).problems, [{ kind: 'unsupported', element: 'customers', alloy: 'icloud' }]);
++});
++
++test('the errors tell network trouble from a refusal', () => {
++  const n = new AlloyNetworkError('offline'); const u = new AlloyUserError('bad key', 'token');
++  assert.ok(isAlloyNetworkError(n) && !isAlloyUserError(n) && n.retryable); assert.ok(isAlloyUserError(u) && !u.retryable && u.field === 'token');
++  assert.ok(n instanceof Error && u.name === 'AlloyUserError');
++});
++
++test('no Alloy is registered yet, so nothing in the app can reach one', () => { assert.deepEqual(ALLOYS, []); });
+-- 
+2.43.0
+

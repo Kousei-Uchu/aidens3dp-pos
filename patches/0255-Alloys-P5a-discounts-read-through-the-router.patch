@@ -1,0 +1,205 @@
+From 7d67c624efe6dc52fb472f57c6987114b54568f1 Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Wed, 18 Nov 2026 14:11:21 +1100
+Subject: [PATCH] Alloys P5a: discounts read through the router
+
+---
+ dev_docs/PROGRESS.md           |  1 +
+ dev_docs/QUEUE.md              |  2 +-
+ dev_docs/TO_DO.md              |  2 +-
+ src/alloyhost/appRouter.ts     | 23 +++++++++++++
+ src/alloyhost/discounts.ts     | 15 +++++++++
+ src/lib/sync.ts                |  5 +--
+ tests/alloyp5discounts.test.ts | 60 ++++++++++++++++++++++++++++++++++
+ 7 files changed, 104 insertions(+), 4 deletions(-)
+ create mode 100644 src/alloyhost/appRouter.ts
+ create mode 100644 src/alloyhost/discounts.ts
+ create mode 100644 tests/alloyp5discounts.test.ts
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index b034d1a..696bef1 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -214,6 +214,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0252 | 2026-11-18 | Alloys phase P3: the Shopify and Zeller code moves into `src/alloys/`, with the old paths kept working. **The app behaves the same**: nothing was rewritten, only moved with `git mv`. `src/lib/shopify/*.ts` is now `src/alloys/shopify/*.ts` and `src/lib/zeller.ts` is `src/alloys/zeller/terminal.ts`. Each old path is now a one-line shim (`export * from ...`), so the 66 files that import them are untouched. The wallet-pass, gift-claim and receipt secrets, which sat at the bottom of the Shopify client but belong to your own servers, moved to `src/lib/secrets.ts`; the client shim re-exports them. The moved code still reaches a few app files (the practice-mode guard, id helpers, price and sale codecs) and has no `alloy.ts` yet, which the Alloy rules forbid, so `src/alloykit/boundaries.ts` now has a `TRANSITION` list naming exactly those exceptions. The boundary test fails if an exception is unused (so the list can only shrink), if a shim holds anything but `export *`, or if the rules stop flagging the moved code without the list. Also fixed the paths in `demoguard.test.ts`, `giftcardonce.test.ts` and `scripts/package-zeller-sdk.sh`. The 73 characterisation tests from 0251 pass unchanged through the shims. Full suite 2094 passing. |
+ | 0253 | 2026-11-18 | Alloys phase P4a: the app-side plumbing that reaches an Alloy. **Nothing in the app calls it yet**, so it changes no behaviour (P5 moves the callers over one Element per patch). New `src/alloyhost/ctx.ts` builds the `Ctx` an Alloy is given: each Alloy sees only its own secrets and settings, and one `http.json` helper treats a network failure or 5xx as a retryable `AlloyNetworkError` and a 4xx as an `AlloyUserError`. New `src/alloyhost/store.ts` is an in-memory `LocalStore` (the persistent one for Pure Tillium is P7). New `src/alloyhost/router.ts`: `createRouter` looks up the Alloy selected for an Element and returns its functions with the Ctx already applied (`api`, `need`, `has(element, fn)` for optional features, `missingRequired`). An install that never chose reads as today's behaviour (`legacySelection`); a saved choice of an unknown Alloy, one that cannot do the Element, or one the build policy removed reads as Off rather than crashing. In practice mode the write functions (`createItem`, `adjust`, `record`, `refund`, `debit` and so on, listed per Element in `WRITES`) refuse with `PracticeBlockedError` before reaching the Alloy, and reads still run. 12 new tests in `tests/alloyrouter.test.ts`. P4b (the Shopify, Zeller and iCloud `alloy.ts` adapters and the registry entries) is next. |
+ | 0254 | 2026-11-18 | Alloys phase P4b: the Shopify, Zeller and iCloud Alloys, as adapters over the code that is already there. **Nothing in the app calls them yet**, so behaviour is unchanged (P5 moves the callers over, one Element per patch). `src/alloys/shopify/alloy.ts` presents catalogue, stock, discounts, customers, orders, gift cards and shared state through the Element contracts; Shopify's own errors become the two Alloy errors (anything else, such as practice mode, passes through); the location comes from the Alloy's settings; `connect` lists the locations and names which Elements lack permissions; `changesSince` stamps its cursor before the call as the poll does today. `src/alloys/zeller/alloy.ts` is the card terminal over the existing `TerminalLike`, with the native reader code loaded only when asked for. `src/alloys/icloud.ts` is shared state over CloudKit (no iCloud Customers Element is built yet; the policy switch for it already exists). `src/alloys/index.ts` now registers all three. Four small fixes to the contract where the real functions carry more than the first draft showed: creating an item returns its three ids, updating one takes the product id too, refunds are per way paid with an optional restock flag, and gift cards have once-only debit and credit. `ELEMENT_FUNCTIONS` in `alloykit/elements.ts` lists the required and optional functions of each Element, and the new `tests/alloyconformance.test.ts` holds every registered Alloy to it, then runs the Shopify Alloy against the fake Shopify (19 tests). The `pendingEntry` boundary exception is gone; the other `TRANSITION` exceptions stay until P5. Full suite 2124 passing. |
++| 0255 | 2026-11-18 | Alloys phase P5a: the first caller moves onto the router, **Discounts**. The import and the half-hourly refresh in `sync.ts` used to call Shopify for automatic discounts and manual presets themselves; they now call `loadDiscounts()` (new `src/alloyhost/discounts.ts`), which asks the router for the Discounts Element. With the legacy default selection that is the Shopify Alloy while a Shopify login exists, which makes the same two calls in the same order, so nothing changes for you. If the Element is off, or there is no login (or practice mode, which reads as no login), discounts read as empty and nothing is sent. New `src/alloyhost/appRouter.ts` is the one router the app uses: built from the registry, reading the live location and login each time, with the selection fixed at the legacy default until the picker (P6) saves a choice. 5 new tests in `tests/alloyp5discounts.test.ts` pin that the router result equals calling Shopify directly, the call order, the empty cases, and that `sync.ts` has no direct discount calls left. Full suite 2129 passing. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index 8f34be2..d5c8e29 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only
+ 
+ ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+ 
+-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). Next: P5, the callers onto the router one Element per patch, smallest first; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
++Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts done, 0255). Next: the remaining callers onto the router one Element per patch (customers, catalogue, stock, gift cards, orders, shared state, card terminal); each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index 548289b..a9c86e3 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -100,7 +100,7 @@ Everything here is built and unit tested. What is left on each is your device te
+ Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+ decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
+ the boundary test, with nothing calling them). P2 is built (0251: tests that pin what the Shopify and Zeller code does now).
+-P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). Next is P5: move the app's callers onto the router, one Element per patch, starting with the smallest (discounts). Later: users deploy their own Cloudflare workers (section 8 of the plan).
++P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts are on the router (0255). Next in P5, one Element per patch: customers, then catalogue, stock, gift cards, orders, shared state, card terminal. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/src/alloyhost/appRouter.ts b/src/alloyhost/appRouter.ts
+new file mode 100644
+index 0000000..265c1da
+--- /dev/null
++++ b/src/alloyhost/appRouter.ts
+@@ -0,0 +1,23 @@
++// Location: src/alloyhost/appRouter.ts
++// Alloys P5: the one router the app uses. It is built once from the registry and reads the app's live state each time it is asked, so a
++// change of location or login is seen straight away. Until the picker (P6) saves a choice, the selection is always the legacy one:
++// exactly today's behaviour (Shopify for the shop Elements while a Shopify login exists, the shared backend in use, the Zeller reader).
++import { ALLOYS } from '../alloys';
++import { hasCreds } from '../lib/shopify/client';
++import { uid } from '../lib/ids';
++import { isTraining } from '../lib/trainingGuard';
++import { activeBackendKind } from '../lib/syncBackend';
++import { useApp } from '../state/store';
++import { makeCtx } from './ctx';
++import { createRouter } from './router';
++import { memoryStore } from './store';
++
++const store = memoryStore(); // Shopify keeps nothing here; Pure Tillium (P7) gets a persistent one
++
++export const appRouter = createRouter({
++  alloys: ALLOYS,
++  selection: () => undefined, // P6 reads the saved choice from settings here
++  legacyFacts: () => ({ shopifyConnected: hasCreds(), sharedBackend: activeBackendKind() === 'cloudkit' ? 'cloudkit' : 'metaobject', zellerPaired: true }),
++  ctxFor: id => makeCtx(id, { secrets: {}, settings: { shopify: { locationId: useApp.getState().settings.locationId ?? '' } }, store, uid }),
++  isTraining,
++});
+diff --git a/src/alloyhost/discounts.ts b/src/alloyhost/discounts.ts
+new file mode 100644
+index 0000000..c19ecc3
+--- /dev/null
++++ b/src/alloyhost/discounts.ts
+@@ -0,0 +1,15 @@
++// Location: src/alloyhost/discounts.ts
++// Alloys P5a: the app's way to read discounts. It asks the router for the Discounts Element instead of calling Shopify, and an Element that
++// is Off or unset reads as "no discounts" (only discounts typed at the till are then available). The two reads run one after the other,
++// in the order the import has always made them.
++import type { AutoDiscount, ManualPreset } from '../lib/types';
++import type { Router } from './router';
++import { appRouter } from './appRouter';
++
++export async function loadDiscounts(router: Router = appRouter): Promise<{ autos: AutoDiscount[]; presets: ManualPreset[] }> {
++  const d = router.api('discounts');
++  if (!d) return { autos: [], presets: [] };
++  const autos = await d.listAutomatic();
++  const presets = await d.listPresets();
++  return { autos, presets };
++}
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index 2234c11..ff23fac 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -16,6 +16,7 @@ import { buildWarningListEntries, mergeWarningList } from './warningList';
+ import { isTraining } from './trainingGuard';
+ import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
+ import * as shop from './shopify/catalogue';
++import { loadDiscounts } from '../alloyhost/discounts';
+ import { activeBackendKind, getShared, listShared, putShared, detailReadyShared, type BackendRow } from './syncBackend';
+ import { applyPulled, baseOf, mergeSaved, parseSavedRow } from './savedMerge';
+ import { refreshDue, CATALOGUE_REFRESH_MS } from './catalogueRefresh';
+@@ -364,7 +365,7 @@ export async function importFromShopify(onProgress: (s: string) => void) {
+   onProgress('Products & stock…'); const vs = await shop.fetchVariants(s.settings.locationId, onProgress);
+   onProgress('Collections…'); const collections = await shop.fetchCollections(onProgress);
+   onProgress('Customers…'); const customers = await shop.fetchCustomers(onProgress);
+-  onProgress('Discounts…'); const autos = await shop.fetchAutoDiscounts(); const presets = await shop.fetchManualPresets();
++  onProgress('Discounts…'); const { autos, presets } = await loadDiscounts();
+   s.patchData({ variants: Object.fromEntries(vs.map(v => [v.id, v])), collections, customers, autos, presets, catalogueAt: new Date().toISOString(), stockSince: new Date().toISOString(), catalogueLoc: s.settings.locationId });
+   return { variants: vs.length, collections: collections.length, customers: customers.length, discounts: autos.length + presets.length };
+ }
+@@ -380,7 +381,7 @@ const refreshOnce = singleFlight(async () => {
+   const s = st(); const loc = s.settings.locationId; if (!loc) return;
+   const stamp = new Date().toISOString(); // taken before reading, so a change made during the read is picked up next poll
+   const vs = await shop.fetchVariants(loc); const collections = await shop.fetchCollections(() => {});
+-  const autos = await shop.fetchAutoDiscounts(); const presets = await shop.fetchManualPresets();
++  const { autos, presets } = await loadDiscounts();
+   s.patchData({ variants: Object.fromEntries(vs.map(v => [v.id, v])), collections, autos, presets, catalogueAt: stamp, stockSince: stamp, catalogueLoc: loc });
+ });
+ export async function refreshCatalogue(): Promise<void> { try { await refreshOnce(); } catch { /* try again at the next poll */ } }
+diff --git a/tests/alloyp5discounts.test.ts b/tests/alloyp5discounts.test.ts
+new file mode 100644
+index 0000000..3fda371
+--- /dev/null
++++ b/tests/alloyp5discounts.test.ts
+@@ -0,0 +1,60 @@
++// Location: tests/alloyp5discounts.test.ts
++// Alloys P5a: discounts are read through the router. Pins that the result is the same as calling Shopify directly (today's behaviour),
++// that an Element that is off reads as "no discounts", and that sync.ts no longer reaches Shopify for them itself.
++import './helpers/fakeShopify';
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import * as fake from './helpers/fakeShopify';
++import { setTrainingGuard } from '../src/lib/trainingGuard';
++import { OFF } from '../src/alloykit/types';
++
++const autoNode = { id: 'D1', automaticDiscount: { __typename: 'DiscountAutomaticBasic', title: '10% off', status: 'ACTIVE', startsAt: 's', endsAt: null, minimumRequirement: null,
++  customerGets: { value: { __typename: 'DiscountPercentage', percentage: 0.1 }, items: { __typename: 'AllDiscountItems', allItems: true } } } };
++const presetNode = { id: 'M1', codeDiscount: { __typename: 'DiscountCodeBasic', title: 'Mates', status: 'ACTIVE', customerGets: { value: { __typename: 'DiscountPercentage', percentage: 0.15 } } } };
++const queue = () => {
++  fake.on('automaticDiscountNodes', fake.data({ automaticDiscountNodes: { pageInfo: { hasNextPage: false }, nodes: [autoNode] } }));
++  fake.on('codeDiscountNodes', fake.data({ codeDiscountNodes: { pageInfo: { hasNextPage: false }, nodes: [presetNode] } }));
++};
++
++test('through the router (legacy default, Shopify connected) the result equals calling Shopify directly, automatic first, then presets', async () => {
++  fake.install(); await fake.signIn(); queue();
++  const { loadDiscounts } = await import('../src/alloyhost/discounts');
++  const viaRouter = await loadDiscounts();
++  const order = fake.gqlCalls().map(c => c.query.includes('automaticDiscountNodes') ? 'auto' : 'presets');
++  fake.install(); await fake.signIn(); queue();
++  const shop = await import('../src/lib/shopify/catalogue');
++  const direct = { autos: await shop.fetchAutoDiscounts(), presets: await shop.fetchManualPresets() };
++  assert.deepEqual(viaRouter, direct); assert.equal(direct.autos.length, 1); assert.equal(direct.presets.length, 1);
++  assert.deepEqual(order, ['auto', 'presets']);
++});
++
++test('no Shopify login: discounts read as empty and nothing is sent', async () => {
++  fake.install();
++  const client = await import('../src/lib/shopify/client'); await client.clearCreds();
++  const { loadDiscounts } = await import('../src/alloyhost/discounts');
++  assert.deepEqual(await loadDiscounts(), { autos: [], presets: [] }); assert.equal(fake.calls.length, 0);
++});
++
++test('practice mode reads as no login, so discounts are empty and nothing is sent', async () => {
++  fake.install(); await fake.signIn();
++  const { loadDiscounts } = await import('../src/alloyhost/discounts');
++  setTrainingGuard(true);
++  try { assert.deepEqual(await loadDiscounts(), { autos: [], presets: [] }); } finally { setTrainingGuard(false); }
++  assert.equal(fake.calls.length, 0);
++});
++
++test('a router with the Discounts Element off reads as no discounts, even with Shopify connected', async () => {
++  fake.install(); await fake.signIn();
++  const { createRouter } = await import('../src/alloyhost/router'); const { ALLOYS } = await import('../src/alloys');
++  const { makeCtx } = await import('../src/alloyhost/ctx'); const { memoryStore } = await import('../src/alloyhost/store'); const { loadDiscounts } = await import('../src/alloyhost/discounts');
++  const r = createRouter({ alloys: ALLOYS, selection: () => ({ catalogue: 'shopify', orders: 'shopify', sharedState: 'shopify', discounts: OFF }), legacyFacts: () => ({ shopifyConnected: true, sharedBackend: 'metaobject', zellerPaired: true }),
++    ctxFor: id => makeCtx(id, { secrets: {}, settings: {}, store: memoryStore(), uid: () => 'k' }), isTraining: () => false });
++  assert.deepEqual(await loadDiscounts(r), { autos: [], presets: [] }); assert.equal(fake.calls.length, 0);
++});
++
++test('sync.ts reads discounts only through loadDiscounts (twice: the import and the half-hourly refresh)', () => {
++  const src = readFileSync('src/lib/sync.ts', 'utf8');
++  assert.equal((src.match(/loadDiscounts\(\)/g) ?? []).length, 2);
++  assert.equal(/fetchAutoDiscounts|fetchManualPresets/.test(src), false);
++});
+-- 
+2.43.0
+

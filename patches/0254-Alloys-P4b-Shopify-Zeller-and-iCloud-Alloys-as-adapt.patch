@@ -1,0 +1,637 @@
+From dd722a2cf866bab86c6f94fed9c48fcce0dd3b0e Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Wed, 18 Nov 2026 13:47:07 +1100
+Subject: [PATCH] Alloys P4b: Shopify, Zeller and iCloud Alloys as adapters,
+ registry and conformance suite
+
+---
+ dev_docs/ALLOYS.md             |  11 ++-
+ dev_docs/ALLOYS_PLAN.md        |   2 +-
+ dev_docs/PROGRESS.md           |   1 +
+ dev_docs/QUEUE.md              |   2 +-
+ dev_docs/TO_DO.md              |   2 +-
+ src/alloykit/boundaries.ts     |   5 +-
+ src/alloykit/elements.ts       |  17 ++++
+ src/alloykit/types.ts          |  22 +++--
+ src/alloys/icloud.ts           |  22 +++++
+ src/alloys/index.ts            |   9 +-
+ src/alloys/shopify/alloy.ts    | 132 +++++++++++++++++++++++++
+ src/alloys/zeller/alloy.ts     |  32 ++++++
+ tests/alloyboundaries.test.ts  |   2 +-
+ tests/alloyconformance.test.ts | 174 +++++++++++++++++++++++++++++++++
+ tests/alloyselection.test.ts   |   2 -
+ 15 files changed, 413 insertions(+), 22 deletions(-)
+ create mode 100644 src/alloys/icloud.ts
+ create mode 100644 src/alloys/shopify/alloy.ts
+ create mode 100644 src/alloys/zeller/alloy.ts
+ create mode 100644 tests/alloyconformance.test.ts
+
+diff --git a/dev_docs/ALLOYS.md b/dev_docs/ALLOYS.md
+index 36bb695..ec232e0 100644
+--- a/dev_docs/ALLOYS.md
++++ b/dev_docs/ALLOYS.md
+@@ -73,9 +73,14 @@ functions and writes with another's `create` functions. Declare what cannot move
+ 
+ ## 5. Tests every Alloy must pass
+ 
+-`alloykit/conformance.ts` runs the same suite against every Element an Alloy declares, using `alloykit/fakes` (a fake HTTP
+-layer you feed recorded responses, a fake store, a fixed clock). An Alloy is not registered until it passes. It also
+-checks the Alloy never touches the network or storage except through `ctx`.
++`tests/alloyconformance.test.ts` holds every Alloy in `src/alloys/index.ts` to the same checks: the format's fields, unique setting keys,
++only real Elements, every required function of each Element present, and no function the app does not know. The table it checks
++against is `ELEMENT_FUNCTIONS` in `src/alloykit/elements.ts`: add a function to an Element's API there first, as `required` or `optional`.
++An Alloy that is not in the registry is not reachable, and one that fails these checks fails the build.
++
++Still to come (when the Alloys' network code moves onto `ctx.http`): a fake HTTP layer you feed recorded responses, a fake clock, and a
++check that an Alloy never touches the network or storage except through `ctx`. Until then the Shopify Alloy is tested against the
++fake Shopify in `tests/helpers/fakeShopify.ts`.
+ 
+ ## 6. Adding an Alloy: checklist
+ 
+diff --git a/dev_docs/ALLOYS_PLAN.md b/dev_docs/ALLOYS_PLAN.md
+index e5a635b..0a75435 100644
+--- a/dev_docs/ALLOYS_PLAN.md
++++ b/dev_docs/ALLOYS_PLAN.md
+@@ -190,7 +190,7 @@ limits so the report can say so before anyone commits.
+ | P1 | The `alloykit` types, `alloys/index.ts`, selection rules, and the **boundary test** that enforces `ALLOYS.md`. Nothing calls it yet | none |
+ | P2 | Characterisation tests for every function in the section 2 table, against fakes | none |
+ | P3 | `git mv` the Shopify and Zeller code into `src/alloys/`, with shims at the old paths. Secrets helpers out of `client.ts`. **Done (0252).** The moved code is allowed a listed set of exceptions (`TRANSITION` in `boundaries.ts`) until P4 and P5 remove them | low |
+-| P4 | Element contracts, the Shopify, Zeller and iCloud Alloys as `alloy.ts` adapters over the moved code, the router with the legacy default | low |
++| P4 | Element contracts, the Shopify, Zeller and iCloud Alloys as `alloy.ts` adapters over the moved code, the router with the legacy default. **Done (0253 router, 0254 adapters).** The Shopify adapter still uses the app's own Shopify client for transport; moving that onto `ctx.http` is separate and later | low |
+ | P5 | Move callers to the router, one Element per patch: Catalogue, Stock, Discounts, Customers, Orders, Gift cards, Shared state, Terminal | medium: each has a device test |
+ | P6 | The setup picker and Settings screen: Alloy cards, tick boxes, the unchosen-Elements warning, per-Alloy credentials | medium |
+ | P7 | Pure Tillium for Catalogue, Stock, Orders, Discounts, Customers, then Gift cards | the largest build |
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index e195ceb..b034d1a 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -213,6 +213,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0251 | 2026-11-18 | Alloys phase P2: characterisation tests. **No app code changed**, so it changes no behaviour. These pin what the Shopify and Zeller code does today, so the later moves (P3 onwards) can be proved to change nothing. New `tests/helpers/fakeShopify.ts`, a fake Shopify (stands in for the Keychain, the SHA-256 helper and `fetch`, records every call, plays back queued replies). New `tests/characterise_shopify_client.test.ts` (sign-in, token reuse and refresh, 401 and 429 retries, throttling, user errors, practice mode, the receipt, claim and pass secrets), `characterise_shopify_catalogue.test.ts` (shop and locations, the three bulk imports, the stock delta, automatic discounts and discount codes), `characterise_shopify_writes.test.ts` (stock adjust and count with their idempotency keys, item create and update, customers, order create with its lookup-by-tag retry, listing, fulfilment, refunds), `characterise_shopify_state.test.ts` (gift cards, the once-only debit and credit, the five shared-state metaobject types and the backend over them) and `characterise_zeller.test.ts` (the exact terminal calls, reconcile, the refund error branches, cancel, events). 73 tests; the full suite is 2092 passing. If one fails after a later move, the move changed behaviour: fix the move, not the test. |
+ | 0252 | 2026-11-18 | Alloys phase P3: the Shopify and Zeller code moves into `src/alloys/`, with the old paths kept working. **The app behaves the same**: nothing was rewritten, only moved with `git mv`. `src/lib/shopify/*.ts` is now `src/alloys/shopify/*.ts` and `src/lib/zeller.ts` is `src/alloys/zeller/terminal.ts`. Each old path is now a one-line shim (`export * from ...`), so the 66 files that import them are untouched. The wallet-pass, gift-claim and receipt secrets, which sat at the bottom of the Shopify client but belong to your own servers, moved to `src/lib/secrets.ts`; the client shim re-exports them. The moved code still reaches a few app files (the practice-mode guard, id helpers, price and sale codecs) and has no `alloy.ts` yet, which the Alloy rules forbid, so `src/alloykit/boundaries.ts` now has a `TRANSITION` list naming exactly those exceptions. The boundary test fails if an exception is unused (so the list can only shrink), if a shim holds anything but `export *`, or if the rules stop flagging the moved code without the list. Also fixed the paths in `demoguard.test.ts`, `giftcardonce.test.ts` and `scripts/package-zeller-sdk.sh`. The 73 characterisation tests from 0251 pass unchanged through the shims. Full suite 2094 passing. |
+ | 0253 | 2026-11-18 | Alloys phase P4a: the app-side plumbing that reaches an Alloy. **Nothing in the app calls it yet**, so it changes no behaviour (P5 moves the callers over one Element per patch). New `src/alloyhost/ctx.ts` builds the `Ctx` an Alloy is given: each Alloy sees only its own secrets and settings, and one `http.json` helper treats a network failure or 5xx as a retryable `AlloyNetworkError` and a 4xx as an `AlloyUserError`. New `src/alloyhost/store.ts` is an in-memory `LocalStore` (the persistent one for Pure Tillium is P7). New `src/alloyhost/router.ts`: `createRouter` looks up the Alloy selected for an Element and returns its functions with the Ctx already applied (`api`, `need`, `has(element, fn)` for optional features, `missingRequired`). An install that never chose reads as today's behaviour (`legacySelection`); a saved choice of an unknown Alloy, one that cannot do the Element, or one the build policy removed reads as Off rather than crashing. In practice mode the write functions (`createItem`, `adjust`, `record`, `refund`, `debit` and so on, listed per Element in `WRITES`) refuse with `PracticeBlockedError` before reaching the Alloy, and reads still run. 12 new tests in `tests/alloyrouter.test.ts`. P4b (the Shopify, Zeller and iCloud `alloy.ts` adapters and the registry entries) is next. |
++| 0254 | 2026-11-18 | Alloys phase P4b: the Shopify, Zeller and iCloud Alloys, as adapters over the code that is already there. **Nothing in the app calls them yet**, so behaviour is unchanged (P5 moves the callers over, one Element per patch). `src/alloys/shopify/alloy.ts` presents catalogue, stock, discounts, customers, orders, gift cards and shared state through the Element contracts; Shopify's own errors become the two Alloy errors (anything else, such as practice mode, passes through); the location comes from the Alloy's settings; `connect` lists the locations and names which Elements lack permissions; `changesSince` stamps its cursor before the call as the poll does today. `src/alloys/zeller/alloy.ts` is the card terminal over the existing `TerminalLike`, with the native reader code loaded only when asked for. `src/alloys/icloud.ts` is shared state over CloudKit (no iCloud Customers Element is built yet; the policy switch for it already exists). `src/alloys/index.ts` now registers all three. Four small fixes to the contract where the real functions carry more than the first draft showed: creating an item returns its three ids, updating one takes the product id too, refunds are per way paid with an optional restock flag, and gift cards have once-only debit and credit. `ELEMENT_FUNCTIONS` in `alloykit/elements.ts` lists the required and optional functions of each Element, and the new `tests/alloyconformance.test.ts` holds every registered Alloy to it, then runs the Shopify Alloy against the fake Shopify (19 tests). The `pendingEntry` boundary exception is gone; the other `TRANSITION` exceptions stay until P5. Full suite 2124 passing. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index defc161..8f34be2 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only
+ 
+ ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+ 
+-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4a is done (0253, Ctx builder and router). Next: P4b, the Shopify, Zeller and iCloud `alloy.ts` adapters; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
++Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). Next: P5, the callers onto the router one Element per patch, smallest first; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index e293a7f..548289b 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -100,7 +100,7 @@ Everything here is built and unit tested. What is left on each is your device te
+ Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+ decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
+ the boundary test, with nothing calling them). P2 is built (0251: tests that pin what the Shopify and Zeller code does now).
+-P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4a is built (0253: the Ctx builder, the router, the in-memory store). Next is P4b: the Shopify, Zeller and iCloud `alloy.ts` adapters and their registry entries. Later: users deploy their own Cloudflare workers (section 8 of the plan).
++P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). Next is P5: move the app's callers onto the router, one Element per patch, starting with the smallest (discounts). Later: users deploy their own Cloudflare workers (section 8 of the plan).
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/src/alloykit/boundaries.ts b/src/alloykit/boundaries.ts
+index 7452ef7..293537f 100644
+--- a/src/alloykit/boundaries.ts
++++ b/src/alloykit/boundaries.ts
+@@ -42,10 +42,11 @@ export function alloyOf(path: string): string | null {
+ export type Transition = { pendingEntry: string[]; legacyImports: Record<string, string[]>; shims: string[] };
+ export const NO_TRANSITION: Transition = { pendingEntry: [], legacyImports: {}, shims: [] };
+ export const TRANSITION: Transition = {
+-  pendingEntry: ['shopify', 'zeller'],
++  pendingEntry: [],
+   legacyImports: {
+     shopify: ['src/lib/ids', 'src/lib/trainingGuard', 'src/lib/trainingGifts', 'src/lib/productStatus', 'src/lib/giftCode', 'src/lib/syncBackend', 'src/lib/adjustReason', 'src/lib/pricing', 'src/lib/saleCodec', 'src/lib/startingStock'],
+-    zeller: ['src/lib/cards', 'src/lib/responseCodes'],
++    zeller: ['src/lib/cards', 'src/lib/responseCodes', 'src/zellerBridge'],
++    icloud: ['src/lib/syncBackend', 'src/lib/cloudkit/cloudkitBackend'],
+   },
+   shims: ['catalogue', 'client', 'customers', 'giftCardOnce', 'giftcards', 'inventory', 'metaobjectBackend', 'metaobjects', 'orderModel', 'orders', 'products'].map(f => `src/lib/shopify/${f}.ts`).concat('src/lib/zeller.ts'),
+ };
+diff --git a/src/alloykit/elements.ts b/src/alloykit/elements.ts
+index 6e0fff6..c6131a4 100644
+--- a/src/alloykit/elements.ts
++++ b/src/alloykit/elements.ts
+@@ -18,3 +18,20 @@ export const ELEMENTS: ElementInfo[] = [
+ export const ELEMENT_IDS: ElementId[] = ELEMENTS.map(e => e.id);
+ export const REQUIRED_ELEMENTS: ElementId[] = ELEMENTS.filter(e => e.required).map(e => e.id);
+ export const elementInfo = (id: ElementId): ElementInfo => ELEMENTS.find(e => e.id === id)!;
++
++/**
++ * The functions of each Element's API, by name: `required` ones every Alloy must have to offer the Element, `optional` ones are features the
++ * picker lists. The conformance test (tests/alloyconformance.test.ts) holds every registered Alloy to this table, and a function that is in
++ * neither list is an error, so an Alloy cannot quietly add API the app does not know about.
++ */
++export const ELEMENT_FUNCTIONS: Record<ElementId, { required: string[]; optional: string[] }> = {
++  catalogue: { required: ['listItems', 'listCollections'], optional: ['createItem', 'updateItem'] },
++  stock: { required: ['changesSince', 'adjust'], optional: ['set'] },
++  discounts: { required: ['listAutomatic', 'listPresets'], optional: [] },
++  customers: { required: ['search'], optional: ['create', 'update'] },
++  orders: { required: ['record'], optional: ['find', 'list', 'fulfil', 'refund'] },
++  giftCards: { required: ['lookup', 'create', 'debit', 'credit'], optional: ['debitOnce', 'creditOnce', 'history'] },
++  sharedState: { required: ['backend'], optional: [] },
++  cardTerminal: { required: ['terminal'], optional: [] },
++  tapToPay: { required: ['terminal'], optional: [] },
++};
+diff --git a/src/alloykit/types.ts b/src/alloykit/types.ts
+index f904422..4ddee95 100644
+--- a/src/alloykit/types.ts
++++ b/src/alloykit/types.ts
+@@ -3,7 +3,7 @@
+ // An Alloy is the code specific to one service. It lists the Elements it can do; each Element has the fixed API below, written in the
+ // app's own types. The app calls Elements through the router and never imports an Alloy. These shapes are final for the format
+ // (`contract: 1`) once the first Alloys (P4) are written against them; until then P4 may still adjust them.
+-import type { AutoDiscount, Collection, Customer, ManualPreset, SaleRecord, Variant } from '../lib/types';
++import type { AutoDiscount, Collection, Customer, ManualPreset, SaleRecord, TenderKind, Variant } from '../lib/types';
+ import type { SharedBackend } from '../lib/syncBackend';
+ import type { TerminalLike } from '../lib/zeller';
+ 
+@@ -36,7 +36,9 @@ export type PageReq = { after?: string | null; limit?: number };
+ export type Page<T> = { rows: T[]; next: string | null };
+ 
+ // ── The Elements' APIs. An optional function is a feature: the picker reads what an Alloy can do from which functions exist. ──
+-export type ItemInput = { title: string; priceCents: number; sku?: string; barcode?: string; costCents?: number; stock?: number; tags?: string[] };
++export type ItemInput = { title: string; priceCents: number; sku?: string; barcode?: string; costCents?: number; stock?: number; collectionId?: string };
++/** What creating an item returns: enough for the app to add it to its local catalogue without a full re-import. */
++export type ItemRef = { productId: string; variantId: string; inventoryItemId: string };
+ export type ItemPatch = { priceCents?: number; sku?: string; barcode?: string; costCents?: number };
+ export type AdjustReason = 'correction' | 'received' | 'cycle_count_available' | 'damaged' | 'shrinkage' | 'restock' | 'other';
+ export type StockLevel = { itemId: string; quantity: number };
+@@ -44,8 +46,8 @@ export type StockLevel = { itemId: string; quantity: number };
+ export type CatalogueApi = {
+   listItems(ctx: Ctx, page: PageReq): Promise<Page<Variant>>;
+   listCollections(ctx: Ctx, page: PageReq): Promise<Page<Collection>>;
+-  createItem?(ctx: Ctx, input: ItemInput): Promise<Variant>;
+-  updateItem?(ctx: Ctx, variantId: string, patch: ItemPatch): Promise<Variant>;
++  createItem?(ctx: Ctx, input: ItemInput): Promise<ItemRef>;
++  updateItem?(ctx: Ctx, item: { productId: string; variantId: string }, patch: ItemPatch): Promise<void>;
+ };
+ export type StockApi = {
+   /** Levels changed since the cursor (null = everything). The app keeps the cursor and the refresh timing. */
+@@ -72,15 +74,19 @@ export type OrdersApi = {
+   find?(ctx: Ctx, saleUuid: string): Promise<OrderRef | null>;
+   list?(ctx: Ctx, page: PageReq & { query?: string }): Promise<Page<OrderSummary>>;
+   fulfil?(ctx: Ctx, ref: OrderRef): Promise<void>;
+-  refund?(ctx: Ctx, ref: OrderRef, items: RefundItem[], o: { amountCents: number; note: string; key: string }): Promise<void>;
++  /** `amounts` is the money returned per way it was paid (card, cash, gift card, exchange credit); `restock` defaults to true. Returns the service's refund id when it has one. */
++  refund?(ctx: Ctx, ref: OrderRef, items: RefundItem[], o: { amounts: Partial<Record<TenderKind, number>>; note: string; key: string; restock?: boolean }): Promise<{ id?: string }>;
+ };
+-export type GiftCard = { id: string; last4: string; balanceCents: number; initialCents: number; enabled: boolean; expiresOn?: string };
+-export type GiftCardTxn = { at: string; cents: number; kind: 'credit' | 'debit'; note?: string };
++export type GiftCard = { id: string; last4: string; balanceCents: number; initialCents: number; enabled: boolean; expiresOn?: string; customerName?: string; verified?: boolean };
++export type GiftCardTxn = { id?: string; at: string; cents: number; kind: 'credit' | 'debit'; note?: string };
+ export type GiftCardsApi = {
+   lookup(ctx: Ctx, code: string): Promise<GiftCard | null>;
+-  create(ctx: Ctx, a: { valueCents: number; code: string; saleUuid: string; customerId?: string }): Promise<GiftCard>;
++  create(ctx: Ctx, a: { valueCents: number; code: string; saleUuid: string; customerId?: string; recipient?: { email: string; name?: string; message?: string } }): Promise<GiftCard>;
+   debit(ctx: Ctx, id: string, cents: number, note: string): Promise<void>;
+   credit(ctx: Ctx, id: string, cents: number, note: string): Promise<void>;
++  /** As debit and credit, but safe to repeat: when the same note and amount are already on the card it sends nothing, and a different amount under that note is refused. */
++  debitOnce?(ctx: Ctx, id: string, cents: number, note: string): Promise<void>;
++  creditOnce?(ctx: Ctx, id: string, cents: number, note: string): Promise<void>;
+   history?(ctx: Ctx, id: string): Promise<GiftCardTxn[]>;
+ };
+ /** Shared state is the app's existing `SharedBackend` (records by type and handle), so today's two backends already fit it. */
+diff --git a/src/alloys/icloud.ts b/src/alloys/icloud.ts
+new file mode 100644
+index 0000000..69277aa
+--- /dev/null
++++ b/src/alloys/icloud.ts
+@@ -0,0 +1,22 @@
++// Location: src/alloys/icloud.ts
++// Alloys P4b: the iCloud Alloy (Option A: one file). It holds the Shared state Element over CloudKit, the same backend the app already uses
++// when iCloud sync is on. The CloudKit module is native, so it is loaded only when the backend is asked for. A Customers Element for iCloud
++// is not built yet; the build policy that would gate it (`icloudCustomers`) is already in place. Nothing calls this before P5.
++import type { Alloy } from '../alloykit/types';
++import type { SharedBackend } from '../lib/syncBackend';
++
++const alloy: Alloy = {
++  id: 'icloud',
++  name: 'iCloud',
++  blurb: 'Share carts, layouts, sales and settings between your iPads through iCloud. No server needed.',
++  contract: 1,
++  settings: [],
++  async connect() { return { ok: true }; },
++  elements: {
++    sharedState: {
++      limits: ['Every register must be signed in to the same Apple account.'],
++      api: { backend: () => (require('../lib/cloudkit/cloudkitBackend') as { cloudkitBackend: SharedBackend }).cloudkitBackend },
++    },
++  },
++};
++export default alloy;
+diff --git a/src/alloys/index.ts b/src/alloys/index.ts
+index 516dfa9..afdceea 100644
+--- a/src/alloys/index.ts
++++ b/src/alloys/index.ts
+@@ -1,6 +1,9 @@
+ // Location: src/alloys/index.ts
+-// 0250: the registry. The ONLY file that imports an Alloy (see dev_docs/ALLOYS.md). It is empty until the first Alloys are written in
+-// phase P4; the app does not read it yet, so adding it changes nothing at runtime.
++// 0250, filled in by P4b: the registry. The ONLY file that imports an Alloy (see dev_docs/ALLOYS.md). The app does not read it until P5,
++// so listing the Alloys here changes nothing at runtime. Pure Tillium (P7) and Square (P10) join this list.
+ import type { Alloy } from '../alloykit/types';
++import icloud from './icloud';
++import shopify from './shopify/alloy';
++import zeller from './zeller/alloy';
+ 
+-export const ALLOYS: Alloy[] = [];
++export const ALLOYS: Alloy[] = [shopify, zeller, icloud];
+diff --git a/src/alloys/shopify/alloy.ts b/src/alloys/shopify/alloy.ts
+new file mode 100644
+index 0000000..fdc42de
+--- /dev/null
++++ b/src/alloys/shopify/alloy.ts
+@@ -0,0 +1,132 @@
++// Location: src/alloys/shopify/alloy.ts
++// Alloys P4b: the Shopify Alloy. It presents today's Shopify code (the files beside this one) through the Element contracts, and changes
++// none of it. Transport is still the app's existing Shopify client (Keychain login, token, retries); moving that onto `ctx.http` is a
++// later step, so this adapter ignores `ctx` for the network and uses it only for settings (the location). Nothing calls it before P5.
++import { AlloyNetworkError, AlloyUserError } from '../../alloykit/errors';
++import type { Alloy, ConnectReport, Ctx, ElementId, GiftCard, OrderRef } from '../../alloykit/types';
++import { fetchAutoDiscounts, fetchCollections, fetchManualPresets, fetchShop, fetchStockDelta, fetchVariants } from './catalogue';
++import { ShopifyNetworkError, ShopifyUserError, hasCreds, tokenScopes } from './client';
++import { createCustomer, searchRemote, updateCustomer } from './customers';
++import { createGiftCard, creditGiftCard, creditGiftCardOnce, debitGiftCard, debitGiftCardOnce, giftCardHistory, lookupGiftCard, type GiftCardInfo } from './giftcards';
++import { adjustStock, setStock } from './inventory';
++import { metaobjectBackend } from './metaobjectBackend';
++import { createOrderForSale, findOrderBySale, fulfillOrder, getOrder, listOrders, refundOrderInShopify } from './orders';
++import { createItem, updateVariant } from './products';
++
++/** Shopify's own errors become the two kinds an Alloy throws. Anything else (practice mode, a bad argument) passes through unchanged. */
++export async function translate<T>(run: () => Promise<T>): Promise<T> {
++  try { return await run(); }
++  catch (e) {
++    if (e instanceof ShopifyNetworkError) throw new AlloyNetworkError(e.message, e);
++    if (e instanceof ShopifyUserError) throw new AlloyUserError(e.message);
++    throw e;
++  }
++}
++const loc = (ctx: Ctx): string => {
++  const id = ctx.setting('locationId');
++  if (!id) throw new AlloyUserError('Choose the Shopify location for this shop first.', 'locationId');
++  return id;
++};
++const splitName = (name: string) => { const [first, ...rest] = name.trim().split(/\s+/); return { firstName: first || undefined, lastName: rest.join(' ') || undefined }; };
++const toCard = (g: GiftCardInfo): GiftCard => g;
++
++/** Scopes each Element needs from the Shopify app. `write_x` also satisfies `read_x`. */
++const NEEDS: Partial<Record<ElementId, string[]>> = {
++  catalogue: ['read_products', 'write_products'], stock: ['read_inventory', 'write_inventory', 'read_locations'], discounts: ['read_discounts'],
++  customers: ['read_customers', 'write_customers'], orders: ['read_orders', 'write_orders', 'read_fulfillments', 'write_fulfillments'],
++  giftCards: ['read_gift_cards', 'write_gift_cards', 'write_gift_card_transactions'],
++  sharedState: ['read_metaobjects', 'write_metaobjects', 'read_metaobject_definitions', 'write_metaobject_definitions'],
++};
++const has = (granted: string[], need: string) => granted.includes(need) || (need.startsWith('read_') && granted.includes(need.replace('read_', 'write_')));
++
++const alloy: Alloy = {
++  id: 'shopify',
++  name: 'Shopify',
++  blurb: 'Products, stock, customers, orders and gift cards from your Shopify shop.',
++  contract: 1,
++  settings: [
++    { key: 'domain', label: 'Shop address', placeholder: 'your-shop.myshopify.com' },
++    { key: 'clientId', label: 'Client ID' },
++    { key: 'clientSecret', label: 'Client secret', secret: true },
++    { key: 'locationId', label: 'Location', pickFrom: 'locationId', help: 'Stock and orders are counted at this Shopify location. All registers share it.' },
++  ],
++  async connect(): Promise<ConnectReport> {
++    if (!hasCreds()) return { ok: false, problem: 'Enter the shop address, client ID and client secret.' };
++    try {
++      const shop = await fetchShop();
++      const granted = tokenScopes(); const missing: Partial<Record<ElementId, string[]>> = {};
++      for (const [el, needs] of Object.entries(NEEDS) as [ElementId, string[]][]) { const m = needs.filter(n => !has(granted, n)); if (m.length) missing[el] = m; }
++      return { ok: true, missing, lists: { locationId: shop.locations } };
++    } catch (e) {
++      if (e instanceof ShopifyNetworkError) return { ok: false, problem: 'Could not reach Shopify. Check the internet connection and try again.' };
++      if (e instanceof ShopifyUserError) return { ok: false, problem: e.message };
++      throw e;
++    }
++  },
++  elements: {
++    catalogue: {
++      needs: NEEDS.catalogue,
++      api: {
++        // The import is one bulk job, so it comes back as a single page.
++        listItems: (ctx) => translate(async () => ({ rows: await fetchVariants(loc(ctx)), next: null })),
++        listCollections: () => translate(async () => ({ rows: await fetchCollections(), next: null })),
++        createItem: (ctx, input) => translate(() => createItem(input, loc(ctx))),
++        updateItem: (_ctx, item, patch) => translate(() => updateVariant(item.productId, item.variantId, patch)),
++      },
++    },
++    stock: {
++      needs: NEEDS.stock,
++      limits: ['One Shopify location is counted, shared by every register.'],
++      api: {
++        async changesSince(ctx, cursor) {
++          const since = new Date().toISOString(); // taken before the call, so nothing changed during it is missed next time
++          const delta = await translate(() => fetchStockDelta(cursor ?? '1970-01-01T00:00:00Z', loc(ctx)));
++          return { levels: Object.entries(delta).map(([itemId, quantity]) => ({ itemId, quantity })), cursor: since };
++        },
++        adjust: (ctx, a) => translate(() => adjustStock(a.itemId, loc(ctx), a.delta, a.reason, a.key)),
++        set: (ctx, a) => translate(() => setStock(a.itemId, loc(ctx), a.quantity, a.reason, a.key)),
++      },
++    },
++    discounts: { needs: NEEDS.discounts, api: { listAutomatic: () => translate(fetchAutoDiscounts), listPresets: () => translate(fetchManualPresets) } },
++    customers: {
++      needs: NEEDS.customers,
++      api: {
++        search: (_ctx, q) => translate(() => searchRemote(q)),
++        create: (_ctx, c) => translate(() => createCustomer({ ...splitName(c.name), email: c.email, phone: c.phone, note: c.note })),
++        update: (_ctx, id, c) => translate(() => updateCustomer(id, { ...splitName(c.name), email: c.email, phone: c.phone, note: c.note })),
++      },
++    },
++    orders: {
++      needs: NEEDS.orders,
++      api: {
++        // Looks the sale up by its tag first, so a retry after a lost reply never makes a second order.
++        record: (ctx, sale) => translate(async (): Promise<OrderRef> => { const o = await createOrderForSale(sale, { locationId: ctx.setting('locationId') || undefined, markFulfilled: true }); return { id: o.id, name: o.name }; }),
++        find: (_ctx, uuid) => translate(async () => { const o = await findOrderBySale(uuid); return o ? { id: o.id, name: o.name } : null; }),
++        list: (_ctx, p) => translate(async () => {
++          const r = await listOrders({ query: p.query, after: p.after, first: p.limit });
++          return { rows: r.orders.map(o => ({ ref: { id: o.id, name: o.name }, ts: o.createdAt, totalCents: o.totalCents, customerName: o.customer?.name, fulfilled: o.fulfillment === 'FULFILLED' })), next: r.next };
++        }),
++        fulfil: (_ctx, ref) => translate(() => fulfillOrder(ref.id)),
++        refund: (ctx, ref, items, o) => translate(async () => {
++          const order = await getOrder(ref.id);
++          const id = await refundOrderInShopify(order, items.map(i => ({ lineItemId: i.lineId, quantity: i.qty, restock: o.restock ?? true })), o.amounts, o.note, ctx.setting('locationId') || undefined, o.key);
++          return { id };
++        }),
++      },
++    },
++    giftCards: {
++      needs: NEEDS.giftCards,
++      api: {
++        lookup: (_ctx, code) => translate(async () => { const g = await lookupGiftCard(code); return g ? toCard(g) : null; }),
++        create: (_ctx, a) => translate(async () => toCard(await createGiftCard(a.valueCents, a.code, a.saleUuid, a.customerId, a.recipient))),
++        debit: (_ctx, id, cents, note) => translate(() => debitGiftCard(id, cents, note)),
++        credit: (_ctx, id, cents, note) => translate(() => creditGiftCard(id, cents, note)),
++        debitOnce: (_ctx, id, cents, note) => translate(() => debitGiftCardOnce(id, cents, note)),
++        creditOnce: (_ctx, id, cents, note) => translate(() => creditGiftCardOnce(id, cents, note)),
++        history: (_ctx, id) => translate(() => giftCardHistory(id)),
++      },
++    },
++    sharedState: { needs: NEEDS.sharedState, api: { backend: () => metaobjectBackend } },
++  },
++};
++export default alloy;
+diff --git a/src/alloys/zeller/alloy.ts b/src/alloys/zeller/alloy.ts
+new file mode 100644
+index 0000000..57b3619
+--- /dev/null
++++ b/src/alloys/zeller/alloy.ts
+@@ -0,0 +1,32 @@
++// Location: src/alloys/zeller/alloy.ts
++// Alloys P4b: the Zeller Alloy. Card payments on a Zeller reader, through the terminal object the app already uses (`TerminalLike`).
++// The native reader code lives in src/zellerBridge.tsx, which pulls in the Zeller SDK, so it is loaded only when asked for (a node test or
++// a build without the SDK can still load this file). Nothing calls it before P5.
++import { AlloyUserError } from '../../alloykit/errors';
++import type { Alloy } from '../../alloykit/types';
++
++type Bridge = { getTerminal(): import('./terminal').TerminalLike | null; ZellerRoot: unknown; checkReader(): Promise<boolean> };
++const bridge = (): Bridge => require('../../zellerBridge') as Bridge;
++
++const alloy: Alloy = {
++  id: 'zeller',
++  name: 'Zeller',
++  blurb: 'Card payments and refunds on a Zeller reader.',
++  contract: 1,
++  settings: [],
++  async connect() {
++    try { return (await bridge().checkReader()) ? { ok: true } : { ok: false, problem: 'No Zeller reader is paired yet. Pair one in Settings.' }; }
++    catch { return { ok: false, problem: 'The Zeller reader could not be checked on this device.' }; }
++  },
++  host: () => bridge().ZellerRoot,
++  elements: {
++    cardTerminal: {
++      limits: ['Needs the Zeller SDK and a paired reader on this iPad.'],
++      api: {
++        // In practice mode the bridge hands back the pretend terminal, so the cashier can rehearse a card payment.
++        terminal: () => { const t = bridge().getTerminal(); if (!t) throw new AlloyUserError('The Zeller reader is not paired.'); return t; },
++      },
++    },
++  },
++};
++export default alloy;
+diff --git a/tests/alloyboundaries.test.ts b/tests/alloyboundaries.test.ts
+index d8579f7..ea9c15f 100644
+--- a/tests/alloyboundaries.test.ts
++++ b/tests/alloyboundaries.test.ts
+@@ -25,7 +25,7 @@ test('the real src/ folder obeys every rule (with the listed P3 to P9 exceptions
+ 
+ test('without the exceptions the moved Shopify and Zeller code is flagged, so they are doing real work', () => {
+   const rs = new Set(checkAlloys(real()).map(x => x.rule));
+-  assert.ok(rs.has('alloy-imports') && rs.has('structure') && rs.has('registry-only'));
++  assert.ok(rs.has('alloy-imports') && rs.has('registry-only'));
+ });
+ 
+ test('every shim is exactly a header comment and `export *` lines, so no logic hides at an old path', () => {
+diff --git a/tests/alloyconformance.test.ts b/tests/alloyconformance.test.ts
+new file mode 100644
+index 0000000..5a82ae5
+--- /dev/null
++++ b/tests/alloyconformance.test.ts
+@@ -0,0 +1,174 @@
++// Location: tests/alloyconformance.test.ts
++// Alloys P4b: the conformance suite (dev_docs/ALLOYS.md). Every registered Alloy is held to the same checks, then the Shopify Alloy is run
++// against the fake Shopify to show that each Element function reaches the same Shopify call the app makes today and maps the result.
++import './helpers/fakeShopify'; // installs the module stubs (Keychain, crypto) before anything below loads the Shopify client
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import * as fake from './helpers/fakeShopify';
++import { ALLOYS } from '../src/alloys';
++import { ELEMENT_FUNCTIONS, ELEMENT_IDS } from '../src/alloykit/elements';
++import { featuresOf, validateSelection, legacySelection } from '../src/alloykit/selection';
++import { ALLOY_CONTRACT, type Alloy, type Ctx, type ElementId } from '../src/alloykit/types';
++import { isAlloyNetworkError, isAlloyUserError } from '../src/alloykit/errors';
++import { makeCtx } from '../src/alloyhost/ctx';
++import { memoryStore } from '../src/alloyhost/store';
++import { createRouter } from '../src/alloyhost/router';
++import shopifyAlloy from '../src/alloys/shopify/alloy';
++
++test('the registry lists Shopify, Zeller and iCloud once each, with unique lowercase ids', () => {
++  assert.deepEqual(ALLOYS.map(a => a.id), ['shopify', 'zeller', 'icloud']);
++  for (const a of ALLOYS) assert.match(a.id, /^[a-z][a-z0-9-]*$/);
++});
++
++for (const a of ALLOYS) {
++  test(`conformance: ${a.id} has the format's fields and unique, well-formed settings`, () => {
++    assert.equal(a.contract, ALLOY_CONTRACT); assert.ok(a.name.trim()); assert.ok(a.blurb.trim()); assert.equal(typeof a.connect, 'function');
++    const keys = a.settings.map(s => s.key); assert.equal(new Set(keys).size, keys.length, 'setting keys are unique');
++    for (const s of a.settings) { assert.ok(s.label.trim()); assert.ok(!(s.secret && s.pickFrom), 'a secret is typed, never picked from a list'); }
++  });
++  test(`conformance: ${a.id} offers only real Elements, each with every required function and no function the app does not know`, () => {
++    assert.ok(Object.keys(a.elements).length > 0, 'an Alloy must offer at least one Element');
++    for (const [el, impl] of Object.entries(a.elements) as [ElementId, NonNullable<Alloy['elements'][ElementId]>][]) {
++      assert.ok(ELEMENT_IDS.includes(el), `${el} is an Element`);
++      const names = Object.keys(impl.api); const { required, optional } = ELEMENT_FUNCTIONS[el];
++      for (const r of required) assert.equal(typeof (impl.api as any)[r], 'function', `${a.id}.${el} is missing ${r}`);
++      for (const n of names) assert.ok([...required, ...optional].includes(n), `${a.id}.${el} has ${n}, which is not in the contract`);
++      assert.deepEqual(featuresOf(a, el), names.sort());
++      for (const l of impl.limits ?? []) assert.ok(l.trim().length > 0 && !/[–—]/.test(l), 'limits are plain one-line text');
++    }
++  });
++}
++
++test('the legacy selection of an existing install is fully supported by the registered Alloys', () => {
++  const sel = legacySelection({ shopifyConnected: true, sharedBackend: 'metaobject', zellerPaired: true });
++  assert.deepEqual(validateSelection(sel, ALLOYS), { ok: true, problems: [], off: ['stock', 'discounts', 'customers', 'giftCards', 'tapToPay'].filter(e => !sel[e as ElementId]) });
++  assert.equal(validateSelection(legacySelection({ shopifyConnected: true, sharedBackend: 'cloudkit', zellerPaired: false }), ALLOYS).ok, true);
++});
++
++test('Shopify supplies the six shop Elements and shared state; Zeller the card terminal; iCloud shared state only', () => {
++  const els = (id: string) => Object.keys(ALLOYS.find(a => a.id === id)!.elements).sort();
++  assert.deepEqual(els('shopify'), ['catalogue', 'customers', 'discounts', 'giftCards', 'orders', 'sharedState', 'stock']);
++  assert.deepEqual(els('zeller'), ['cardTerminal']); assert.deepEqual(els('icloud'), ['sharedState']);
++});
++
++// ── the Shopify Alloy against the fake Shopify ──
++const ctx = (settings: Record<string, string> = { locationId: 'L1' }): Ctx => makeCtx('shopify', { secrets: {}, settings: { shopify: settings }, store: memoryStore(), uid: () => 'k', fetchImpl: fetch });
++const ok = (field: string, extra: Record<string, unknown> = {}) => fake.data({ [field]: { ...extra, userErrors: [] } });
++const api = shopifyAlloy.elements;
++const orderNode = (o: any = {}) => ({ id: 'O1', name: '#1001', createdAt: '2026-11-01T00:00:00Z', displayFinancialStatus: 'PAID', displayFulfillmentStatus: 'FULFILLED', note: null, tags: ['pos'],
++  totalPriceSet: { shopMoney: { amount: '18.00' } }, totalRefundedSet: { shopMoney: { amount: '0.00' } }, customer: null, customAttributes: [],
++  lineItems: { nodes: [{ id: 'LI1', title: 'D', variantTitle: null, quantity: 1, refundableQuantity: 1, variant: { id: 'V1' }, originalUnitPriceSet: { shopMoney: { amount: '5.00' } }, discountedUnitPriceSet: { shopMoney: { amount: '5.00' } }, customAttributes: [] }] },
++  transactions: [{ id: 'T1', kind: 'SALE', status: 'SUCCESS', gateway: 'Cash', amountSet: { shopMoney: { amount: '5.00' } } }], ...o });
++
++test('shopify: stock functions use the settings location and the same Shopify mutations; no location is a plain-words user error before anything is sent', async () => {
++  fake.install(); await fake.signIn();
++  fake.on('inventoryAdjustQuantities', ok('inventoryAdjustQuantities'));
++  await api.stock!.api.adjust(ctx(), { itemId: 'I1', delta: -1, reason: 'damaged', key: 'k1' });
++  assert.deepEqual(fake.lastCall().variables.i.changes, [{ delta: -1, inventoryItemId: 'I1', locationId: 'L1' }]);
++  fake.on('inventorySetQuantities', ok('inventorySetQuantities'));
++  await api.stock!.api.set!(ctx(), { itemId: 'I1', quantity: 9, reason: 'cycle_count_available', key: 'k2' });
++  assert.equal(fake.lastCall().variables.i.quantities[0].quantity, 9);
++  const before = fake.calls.length;
++  await assert.rejects(() => api.stock!.api.adjust(ctx({}), { itemId: 'I1', delta: 1, reason: 'correction', key: 'k' }), (e: any) => isAlloyUserError(e) && /Choose the Shopify location/.test(e.message));
++  assert.equal(fake.calls.length, before);
++});
++
++test('shopify: changesSince returns the levels and a cursor stamped before the call; no cursor asks for everything', async () => {
++  fake.install(); await fake.signIn();
++  fake.on('inventoryItems', fake.data({ inventoryItems: { pageInfo: { hasNextPage: false }, nodes: [{ id: 'I1', inventoryLevel: { quantities: [{ name: 'available', quantity: 4 }] } }] } }));
++  const t0 = Date.now();
++  const r = await api.stock!.api.changesSince(ctx(), null);
++  assert.deepEqual(r.levels, [{ itemId: 'I1', quantity: 4 }]); assert.ok(Date.parse(r.cursor) >= t0 - 1 && Date.parse(r.cursor) <= Date.now());
++  assert.ok(fake.lastCall().variables.q.includes('1970-01-01'));
++});
++
++test('shopify: Shopify errors become the two Alloy errors, and anything else passes through unchanged', async () => {
++  fake.install(); await fake.signIn();
++  fake.on('inventoryAdjustQuantities', { json: { errors: [{ message: 'Nope' }] } });
++  await assert.rejects(() => api.stock!.api.adjust(ctx(), { itemId: 'I', delta: 1, reason: 'correction', key: 'k' }), (e: any) => isAlloyUserError(e) && e.message === 'Nope');
++  fake.on('inventoryAdjustQuantities', { status: 200 });
++  await assert.rejects(() => api.stock!.api.adjust(ctx(), { itemId: 'I', delta: 1, reason: 'correction', key: 'k' }), isAlloyNetworkError);
++  await assert.rejects(() => api.catalogue!.api.createItem!(ctx(), { title: 'x', priceCents: 1, stock: -1 }), (e: any) => e instanceof Error && !isAlloyUserError(e) && /whole number/.test(e.message));
++});
++
++test('shopify: items, customers and discounts reach the same calls; names are split first and last', async () => {
++  fake.install(); await fake.signIn();
++  fake.on('productCreate', ok('productCreate', { product: { id: 'P1', variants: { nodes: [{ id: 'V1', inventoryItem: { id: 'I1' } }] } } }));
++  fake.on('productVariantsBulkUpdate', ok('productVariantsBulkUpdate')); fake.on('inventoryActivate', ok('inventoryActivate'));
++  assert.deepEqual(await api.catalogue!.api.createItem!(ctx(), { title: 'Dragon', priceCents: 100 }), { productId: 'P1', variantId: 'V1', inventoryItemId: 'I1' });
++  fake.on('productVariantsBulkUpdate', ok('productVariantsBulkUpdate'));
++  await api.catalogue!.api.updateItem!(ctx(), { productId: 'P1', variantId: 'V1' }, { priceCents: 250 });
++  assert.deepEqual(fake.lastCall().variables, { pid: 'P1', v: [{ id: 'V1', price: '2.50' }] });
++  fake.on('customerCreate', ok('customerCreate', { customer: { id: 'U1', displayName: 'Ann Lee Smith' } }));
++  await api.customers!.api.create!(ctx(), { name: 'Ann Lee Smith', email: 'a@x.com' });
++  assert.deepEqual(fake.lastCall().variables, { i: { firstName: 'Ann', lastName: 'Lee Smith', email: 'a@x.com' } });
++  fake.on('codeDiscountNodes', fake.data({ codeDiscountNodes: { pageInfo: { hasNextPage: false }, nodes: [] } }));
++  assert.deepEqual(await api.discounts!.api.listPresets(ctx()), []);
++});
++
++test('shopify: record uses the settings location and returns an OrderRef; find, list and refund map the order', async () => {
++  fake.install(); await fake.signIn();
++  fake.on('orders(first: 1', fake.data({ orders: { nodes: [] } }));
++  fake.on('orderCreate', ok('orderCreate', { order: { id: 'O1', name: '#1001' } }));
++  const sale: any = { uuid: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', type: 'sale', ts: '2026-11-01T00:00:00Z', lines: [], tenders: [], itemsCents: 0, discountCents: 0, netCents: 0, tipCents: 0, totalCents: 0, roundingCents: 0, cogsCents: 0, feesCents: 0, deals: [] };
++  assert.deepEqual(await api.orders!.api.record(ctx(), sale, { key: 'k' }), { id: 'O1', name: '#1001' });
++  assert.equal(fake.lastCall().variables.order.fulfillment.locationId, 'L1');
++  fake.on('orders(first: 1', fake.data({ orders: { nodes: [{ id: 'O1', name: '#1001' }] } }));
++  assert.deepEqual(await api.orders!.api.find!(ctx(), 'u'), { id: 'O1', name: '#1001' });
++  fake.on('orders(first:$first', fake.data({ orders: { pageInfo: { hasNextPage: true, endCursor: 'c' }, nodes: [orderNode({ customer: { id: 'U', displayName: 'Ann' } })] } }));
++  const page = await api.orders!.api.list!(ctx(), { limit: 5, query: 'name:#1001' });
++  assert.deepEqual(page, { rows: [{ ref: { id: 'O1', name: '#1001' }, ts: '2026-11-01T00:00:00Z', totalCents: 1800, customerName: 'Ann', fulfilled: true }], next: 'c' });
++  assert.deepEqual(fake.lastCall().variables, { q: 'name:#1001', after: null, first: 5 });
++});
++
++test('shopify: refund reads the order, restocks by default at the settings location, and passes per-tender amounts and the key through', async () => {
++  fake.install(); await fake.signIn();
++  fake.on('order(id:$id)', fake.data({ order: orderNode() }));
++  fake.on('refundCreate', ok('refundCreate', { refund: { id: 'R1' } }));
++  assert.deepEqual(await api.orders!.api.refund!(ctx(), { id: 'O1' }, [{ lineId: 'LI1', qty: 1 }], { amounts: { cash: 500 }, note: 'n', key: 'rk' }), { id: 'R1' });
++  const i = fake.lastCall().variables.i;
++  assert.deepEqual(i.refundLineItems, [{ lineItemId: 'LI1', quantity: 1, restockType: 'RETURN', locationId: 'L1' }]);
++  assert.equal(i.transactions[0].amount, '5.00'); assert.ok(fake.lastCall().query.includes('@idempotent(key: "rk")'));
++});
++
++test('shopify: gift card functions map to the same calls (create passes the recipient, debitOnce skips what is already done)', async () => {
++  fake.install(); await fake.signIn();
++  const card = { id: 'GC1', lastCharacters: 'ABCD', balance: { amount: '20.00' }, initialValue: { amount: '50.00' }, enabled: true, expiresOn: null, note: null, customer: null };
++  fake.on('customers(first: 20', fake.data({ customers: { nodes: [{ id: 'U9', email: 'f@x.com', displayName: 'F' }] } }));
++  fake.on('giftCardCreate', ok('giftCardCreate', { giftCard: card }));
++  const g = await api.giftCards!.api.create(ctx(), { valueCents: 5000, code: 'ABCD1234EFGH5678', saleUuid: 'S', recipient: { email: 'f@x.com', name: 'Fay' } });
++  assert.equal(g.id, 'GC1'); assert.equal(g.balanceCents, 2000); assert.equal(fake.lastCall().variables.i.recipientAttributes.id, 'U9');
++  fake.on('transactions(first:250', fake.data({ giftCard: { transactions: { pageInfo: { hasNextPage: false }, nodes: [{ __typename: 'GiftCardDebitTransaction', id: 'T', note: 'N', processedAt: 'x', amount: { amount: '-5.00' } }] } } }));
++  const n = fake.gqlCalls().length; await api.giftCards!.api.debitOnce!(ctx(), 'GC1', 500, 'N');
++  assert.equal(fake.gqlCalls().length, n + 1, 'only the history was read; no debit was sent');
++});
++
++test('shopify: connect says what to fix without credentials, and with them lists the locations and which Elements lack permissions', async () => {
++  fake.install();
++  const client = await import('../src/alloys/shopify/client'); await client.clearCreds();
++  assert.deepEqual(await shopifyAlloy.connect(ctx()), { ok: false, problem: 'Enter the shop address, client ID and client secret.' });
++  await fake.signIn();
++  fake.on('locations(first: 20)', fake.data({ shop: { name: 'S', currencyCode: 'AUD' }, locations: { nodes: [{ id: 'L1', name: 'Home', isActive: true }] } }));
++  const r = await shopifyAlloy.connect(ctx());
++  assert.equal(r.ok, true); assert.deepEqual(r.lists, { locationId: [{ id: 'L1', name: 'Home' }] });
++  // the fake token grants only read_products and write_orders
++  assert.equal(r.missing!.catalogue!.includes('read_products'), false, 'read_products is granted');
++  assert.deepEqual(r.missing!.catalogue, ['write_products']); assert.ok(r.missing!.stock!.includes('write_inventory')); assert.equal(r.missing!.orders!.includes('read_orders'), false, 'write_orders satisfies read_orders');
++});
++
++test('through the router: the legacy default sends shop Elements to Shopify and the app gets bound functions that work', async () => {
++  fake.install(); await fake.signIn();
++  const r = createRouter({ alloys: ALLOYS, selection: () => undefined, legacyFacts: () => ({ shopifyConnected: true, sharedBackend: 'metaobject', zellerPaired: false }),
++    ctxFor: id => makeCtx(id, { secrets: {}, settings: { shopify: { locationId: 'L1' } }, store: memoryStore(), uid: () => 'k' }), isTraining: () => false });
++  assert.deepEqual(r.missingRequired(), []); assert.equal(r.alloyId('catalogue'), 'shopify'); assert.equal(r.alloyId('sharedState'), 'shopify'); assert.equal(r.alloyId('cardTerminal'), null);
++  fake.on('inventoryAdjustQuantities', ok('inventoryAdjustQuantities'));
++  await r.need('stock').adjust({ itemId: 'I1', delta: 2, reason: 'received', key: 'k' });
++  assert.equal(fake.lastCall().variables.i.changes[0].locationId, 'L1');
++  assert.equal(r.need('sharedState').backend().kind, 'metaobject');
++});
++
++test('the zeller and icloud Alloys load without their native modules, and ask for them only when used', () => {
++  const z = ALLOYS.find(a => a.id === 'zeller')!, i = ALLOYS.find(a => a.id === 'icloud')!;
++  assert.equal(typeof z.elements.cardTerminal!.api.terminal, 'function'); assert.equal(typeof i.elements.sharedState!.api.backend, 'function');
++  assert.throws(() => z.elements.cardTerminal!.api.terminal({} as Ctx));
++});
+diff --git a/tests/alloyselection.test.ts b/tests/alloyselection.test.ts
+index deb81f6..36c7250 100644
+--- a/tests/alloyselection.test.ts
++++ b/tests/alloyselection.test.ts
+@@ -6,7 +6,6 @@ import { ELEMENTS, ELEMENT_IDS, REQUIRED_ELEMENTS } from '../src/alloykit/elemen
+ import { alloyFor, applyPolicy, diffSelection, featuresOf, legacySelection, supports, validateSelection } from '../src/alloykit/selection';
+ import { ALLOY_POLICY } from '../src/alloykit/policy';
+ import { AlloyNetworkError, AlloyUserError, isAlloyNetworkError, isAlloyUserError } from '../src/alloykit/errors';
+-import { ALLOYS } from '../src/alloys';
+ import type { Alloy, ElementId } from '../src/alloykit/types';
+ 
+ const stub = (id: string, elements: Partial<Record<ElementId, Record<string, unknown>>>): Alloy => ({
+@@ -86,4 +85,3 @@ test('the errors tell network trouble from a refusal', () => {
+   assert.ok(n instanceof Error && u.name === 'AlloyUserError');
+ });
+ 
+-test('no Alloy is registered yet, so nothing in the app can reach one', () => { assert.deepEqual(ALLOYS, []); });
+-- 
+2.43.0
+
