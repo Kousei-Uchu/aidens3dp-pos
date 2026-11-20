@@ -1,0 +1,260 @@
+From af338ee61ecd28fccdb07e75caecaf04c8f93d33 Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Fri, 20 Nov 2026 09:27:28 +1100
+Subject: [PATCH] Alloys P5h: card terminal through the router
+
+---
+ dev_docs/PROGRESS.md          |  1 +
+ dev_docs/QUEUE.md             |  2 +-
+ dev_docs/TO_DO.md             |  2 +-
+ src/alloyhost/terminal.ts     |  9 ++++++++
+ src/alloykit/types.ts         |  5 +++--
+ src/alloys/zeller/alloy.ts    |  5 ++---
+ src/screens/Diagnostics.tsx   |  7 +++---
+ src/screens/Pay.tsx           | 11 ++++-----
+ src/screens/Refund.tsx        |  4 ++--
+ tests/alloyp5terminal.test.ts | 42 +++++++++++++++++++++++++++++++++++
+ 10 files changed, 71 insertions(+), 17 deletions(-)
+ create mode 100644 src/alloyhost/terminal.ts
+ create mode 100644 tests/alloyp5terminal.test.ts
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 1c7d23e..7aa7476 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -221,6 +221,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0259 | 2026-11-19 | Alloys phase P5e: **Gift cards** move onto the router. Every place that touched a gift card in Shopify now asks for it through `needFeature('giftCards', ...)`: Pay (charge and cancel-credit), the cart scan box, the Gift cards screen (balance and history), the new-card sheet, Reports (outstanding liability), the refund flow (original-card credits, which read the whole history first, and refunds to a new card) and the order outbox (cards bought in a sale). Against Shopify the calls and their inputs are identical (tests compare each against calling Shopify directly), including the once-only debit and credit that skip what is already on the card and refuse a different amount, and the recipient on a new card. With no login the screens say the same "not set up" words, and in practice mode the same practice words. **Outbox:** a Shopify refusal now arrives as an Alloy user error, so the check that marks a queued sale "needs attention" (rather than retrying forever) now accepts both kinds. Contract: two optional functions added (`allHistory`, `outstanding`), `verified` and the transaction `id` are required, and the router counts the once-only debit and credit as writes in practice mode. `newGiftCode` (a plain 16-character code maker) moved to `src/lib/giftCode.ts`, with the old export kept; the card type and transaction type now come from `alloykit/types`. The `debitNote` helper in the Shopify folder is still imported by Pay and is on the P9 list with the other plain helpers. 7 new tests in `tests/alloyp5giftcards.test.ts`; two source pins (`giftcardonce`, `trainingrefund`) follow the new call text. Full suite 2154 passing. |
+ | 0260 | 2026-11-19 | Alloys phase P5f: **Orders** move onto the router. The sale outbox records orders through `needFeature('orders', 'record')`, the Orders screen lists and fulfils, Transactions lists (paged), and the refund flow refunds, all through the router; the Shopify order files are no longer imported by any of them. The contract changed in two places the screens needed: `list` now returns whole orders (`OrderDetail`, the same shape as the old `PosOrder`, which is now an alias of it) instead of summaries, and `refund` takes the order on screen instead of re-reading it, so a refund sends exactly the calls it did before (no extra read). `PosOrder` is imported type-only from the contract by Refund, trainingOrders and refundFlow. New `tests/alloyp5orders.test.ts` compares each call with the old direct call (queries and variables identical): record (including retry by tag and the empty-location case), the fulfilment-field fallback, list for a tab and for Transactions paging, fulfil, refund with and without restock. Practice-mode pins updated to the new call text. No change to what the app does. | `src/alloykit/types.ts`, `src/alloys/shopify/{alloy,orderModel}.ts`, `src/lib/{sync,refundFlow,trainingOrders}.ts`, `src/screens/{Orders,Transactions,Refund}.tsx`, tests |
+ | 0261 | 2026-11-19 | Alloys phase P5g: **Shared state** moves onto the Alloys. The migration, the missing-order job and the sync seam reach a backend by kind (`loadBackend('metaobject' or 'cloudkit')`); that now asks the Alloy that holds the backend (Shopify for metaobjects, iCloud for CloudKit) through the new `src/alloyhost/sharedState.ts`, instead of importing the two backend files. Both still give the very same backend objects, still loaded only when first asked for (so node tests never load the native module), and writes still stop on the practice-mode guard in the seam. These callers cannot follow the router's single selection (the migration reads one backend while writing the other), so they ask by kind; the router's own `sharedState` answer for the backend in use is pinned equal. The ctx builder is now exported from `appRouter.ts` as `appCtxFor`. New `tests/alloyp5shared.test.ts`. Left for P9: `saleCardMode` is still imported from `cloudkitBackend.ts` by sync.ts. No change to what the app does. | `src/alloyhost/{sharedState,appRouter}.ts`, `src/lib/cloudkit/lazyBackend.ts`, tests |
++| 0262 | 2026-11-20 | Alloys phase P5h: the **Card terminal** moves onto the router, which finishes P5. Pay, Refund and Diagnostics get the terminal from `currentTerminal()` (new `src/alloyhost/terminal.ts`) instead of `getTerminal()` from the Zeller bridge. It returns the very same terminal object (the pretend one in practice mode), and null while the reader has not started or when the Card terminal Element is off, which the screens already treat as reader not ready. The contract changed in one place: `terminal` may return null (it used to throw for a missing reader, which no caller wanted). Not moved yet, on purpose: the reader check, pairing and the Provider (`checkReader`, `pairReader`, `ZellerRoot`) carry app state and stay in the bridge until P6, where they become the Alloy's connect and host; the card helpers in `lib/zeller` (`startCharge`, `startRefund`, `describeEvent`, `attemptRef`, `reconcile`, `txnToCard`) work on any terminal and move to `src/lib` in P9. New `tests/alloyp5terminal.test.ts`. No change to what the app does. | `src/alloykit/types.ts`, `src/alloys/zeller/alloy.ts`, `src/alloyhost/terminal.ts`, `src/screens/{Pay,Refund,Diagnostics}.tsx`, tests |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index 7880205..c4e728f 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only
+ 
+ ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+ 
+-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259, orders 0260, shared state 0261). Next: the card terminal onto the router; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
++Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259, orders 0260, shared state 0261, card terminal 0262; P5 is done). Next: P6, the picker; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index 9cf1ca3..ae323c7 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -100,7 +100,7 @@ Everything here is built and unit tested. What is left on each is your device te
+ Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+ decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
+ the boundary test, with nothing calling them). P2 is built (0251: tests that pin what the Shopify and Zeller code does now).
+-P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258), gift cards (0259), orders (0260) and shared state (0261) are on the router. Next in P5: card terminal. P9 list also: `saleCardMode` in `cloudkitBackend.ts` is still reached directly by sync.ts. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
++P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258), gift cards (0259), orders (0260) and shared state (0261) and the card terminal (0262) are on the router, which finishes P5. Next: P6 (the picker), where the reader check and pairing (still the bridge's `checkReader`/`pairReader`, with `ZellerRoot`) become the Zeller Alloy's connect and host. P9 list also: `saleCardMode` in `cloudkitBackend.ts` is still reached directly by sync.ts. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/src/alloyhost/terminal.ts b/src/alloyhost/terminal.ts
+new file mode 100644
+index 0000000..c2ab718
+--- /dev/null
++++ b/src/alloyhost/terminal.ts
+@@ -0,0 +1,9 @@
++// Location: src/alloyhost/terminal.ts
++// Alloys P5h: how a screen gets the card terminal. It is the terminal of whichever Alloy supplies the Card terminal Element (Zeller today),
++// or null when there is none yet (reader still starting, not paired) or the Element is off, which the screens already treat as "reader not
++// ready". In practice mode the Alloy hands back the pretend terminal, exactly as the old `getTerminal` did.
++import type { TerminalLike } from '../lib/zeller';
++import { appRouter } from './appRouter';
++import type { Router } from './router';
++
++export const currentTerminal = (router: Router = appRouter): TerminalLike | null => router.api('cardTerminal')?.terminal() ?? null;
+diff --git a/src/alloykit/types.ts b/src/alloykit/types.ts
+index d9dc5f0..455ef85 100644
+--- a/src/alloykit/types.ts
++++ b/src/alloykit/types.ts
+@@ -109,8 +109,9 @@ export type GiftCardsApi = {
+ /** Shared state is the app's existing `SharedBackend` (records by type and handle), so today's two backends already fit it. */
+ export type SharedStateApi = { backend(ctx: Ctx): SharedBackend };
+ /** Card payments. The terminal object is the app's existing `TerminalLike`, so training and virtual terminals fit it too. */
+-export type CardTerminalApi = { terminal(ctx: Ctx): TerminalLike };
+-export type TapToPayApi = { terminal(ctx: Ctx): TerminalLike };
++/** `null` while the reader is not started or not paired yet: the till shows its "reader not ready" words rather than failing. */
++export type CardTerminalApi = { terminal(ctx: Ctx): TerminalLike | null };
++export type TapToPayApi = { terminal(ctx: Ctx): TerminalLike | null };
+ 
+ export type ElementApi = {
+   catalogue: CatalogueApi; stock: StockApi; discounts: DiscountsApi; customers: CustomersApi; orders: OrdersApi;
+diff --git a/src/alloys/zeller/alloy.ts b/src/alloys/zeller/alloy.ts
+index 57b3619..7aaf947 100644
+--- a/src/alloys/zeller/alloy.ts
++++ b/src/alloys/zeller/alloy.ts
+@@ -2,7 +2,6 @@
+ // Alloys P4b: the Zeller Alloy. Card payments on a Zeller reader, through the terminal object the app already uses (`TerminalLike`).
+ // The native reader code lives in src/zellerBridge.tsx, which pulls in the Zeller SDK, so it is loaded only when asked for (a node test or
+ // a build without the SDK can still load this file). Nothing calls it before P5.
+-import { AlloyUserError } from '../../alloykit/errors';
+ import type { Alloy } from '../../alloykit/types';
+ 
+ type Bridge = { getTerminal(): import('./terminal').TerminalLike | null; ZellerRoot: unknown; checkReader(): Promise<boolean> };
+@@ -23,8 +22,8 @@ const alloy: Alloy = {
+     cardTerminal: {
+       limits: ['Needs the Zeller SDK and a paired reader on this iPad.'],
+       api: {
+-        // In practice mode the bridge hands back the pretend terminal, so the cashier can rehearse a card payment.
+-        terminal: () => { const t = bridge().getTerminal(); if (!t) throw new AlloyUserError('The Zeller reader is not paired.'); return t; },
++        // In practice mode the bridge hands back the pretend terminal, so the cashier can rehearse a card payment. Null until the reader has started.
++        terminal: () => bridge().getTerminal(),
+       },
+     },
+   },
+diff --git a/src/screens/Diagnostics.tsx b/src/screens/Diagnostics.tsx
+index f981862..b911723 100644
+--- a/src/screens/Diagnostics.tsx
++++ b/src/screens/Diagnostics.tsx
+@@ -3,7 +3,8 @@ import { View } from 'react-native';
+ import { Btn, Card, Page, Row, Section, Txt, alertMsg, confirm } from '../ui/kit';
+ import { useNav } from '../ui/nav';
+ import { useApp, currentStaff } from '../state/store';
+-import { checkReader, getTerminal, pairReader } from '../zellerBridge';
++import { checkReader, pairReader } from '../zellerBridge';
++import { currentTerminal } from '../alloyhost/terminal';
+ import { attemptRef, describeEvent, startCharge, startRefund } from '../lib/zeller';
+ import { processOutbox, pollShared, attemptSync } from '../lib/sync';
+ import { getLastPoll } from '../lib/pollTiming';
+@@ -19,7 +20,7 @@ export default function Diagnostics() {
+   const nav = useNav(); const z = useApp(s => s.zeller); const readerOn = useApp(s => featureOn(s.settings.appMode, s.settings.registerFeatures, 'cardReader')); const sync = useApp(s => s.sync); const outbox = useApp(s => s.pos.outbox); const attempts = useApp(s => s.pos.attempts); const sharedAttempts = useApp(s => s.sharedAttempts); const registerId = useApp(s => s.settings.registerId); const registerName = useApp(s => s.settings.registerName); const waiting = unresolvedRows(sharedAttempts, 8, Date.now(), registerId);
+   const [log, setLog] = useState<string[]>([]); const [busy, setBusy] = useState(false); const [lastRef, setLastRef] = useState<string | null>(null); const add = (m: string) => setLog(l => [`${new Date().toLocaleTimeString()}  ${m}`, ...l].slice(0, 30));
+   const test = async () => {
+-    const t = getTerminal(); if (!t) return alertMsg('Reader not started yet'); setBusy(true); const ref = attemptRef(`test-${Date.now()}`, 1); add('Starting $1.00 test…');
++    const t = currentTerminal(); if (!t) return alertMsg('Reader not started yet'); setBusy(true); const ref = attemptRef(`test-${Date.now()}`, 1); add('Starting $1.00 test…');
+     const h = startCharge(t, { amountCents: 100, reference: ref }, { onEvent: e => add(describeEvent(e)) }); const r = await h.promise; setBusy(false);
+     if (r.kind === 'APPROVED') { add('Approved ✔ - you can refund the test below.'); setLastRef(ref); } else add(r.kind === 'DECLINED' ? `Declined: ${r.text}` : r.kind === 'NOT_READY' ? r.message : r.kind === 'UNKNOWN' ? `Unknown: ${r.reason}` : 'Cancelled');
+   };
+@@ -34,7 +35,7 @@ export default function Diagnostics() {
+     if (won.resolvedBy && won.resolvedBy !== who) alertMsg('Payment already resolved', `${won.resolvedBy} resolved this payment first. Check the terminal or Zeller dashboard that the sale matches what happened.`);
+     else add(`Resolved ${fmt(a.amountCents)} from ${a.registerName || 'another register'}.`);
+   };
+-  const refund = async () => { const t = getTerminal(); if (!t || !lastRef) return; setBusy(true); const r = await startRefund(t, { purchaseRef: lastRef, amountCents: 100, reference: `${lastRef}-refund` }, { onEvent: e => add(describeEvent(e)) }).promise; setBusy(false); add(r.kind === 'APPROVED' ? 'Refund approved ✔' : `Refund: ${r.kind}`); if (r.kind === 'APPROVED') setLastRef(null); };
++  const refund = async () => { const t = currentTerminal(); if (!t || !lastRef) return; setBusy(true); const r = await startRefund(t, { purchaseRef: lastRef, amountCents: 100, reference: `${lastRef}-refund` }, { onEvent: e => add(describeEvent(e)) }).promise; setBusy(false); add(r.kind === 'APPROVED' ? 'Refund approved ✔' : `Refund: ${r.kind}`); if (r.kind === 'APPROVED') setLastRef(null); };
+   return (
+     <Page title="Support & diagnostics" onBack={nav.pop} helpId="fix/reader">
+       {/* a companion without the Card reader group does not show the reader tools */}
+diff --git a/src/screens/Pay.tsx b/src/screens/Pay.tsx
+index 8082179..f4bbbbe 100644
+--- a/src/screens/Pay.tsx
++++ b/src/screens/Pay.tsx
+@@ -7,7 +7,8 @@ import { useApp, currentStaff, type Attempt } from '../state/store';
+ import { usePriced, useCatalogue } from '../state/selectors';
+ import { buildSale, cardTender, cashTender, paidTotal } from '../lib/saleBuilder';
+ import { attemptRef, describeEvent, reconcile, startCharge, startRefund, type PaymentResult, type RefundResult } from '../lib/zeller';
+-import { getTerminal, checkReader } from '../zellerBridge';
++import { checkReader } from '../zellerBridge';
++import { currentTerminal } from '../alloyhost/terminal';
+ import { csv } from '../lib/csvStore';
+ import { applyLocalStock, attemptSync, drawerChanged, recordSale, recordWarningListEntries, updateSaved } from '../lib/sync';
+ import type { SharedAttempt } from '../lib/eventRecords';
+@@ -103,8 +104,8 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+   const runCard = async () => {
+     if (lockPayButtons(card.phase)) return; // a charge is already running
+     const u = blockedByUnknown(); if (u) { setCard({ phase: 'unknown', ref: u.ref, amount: u.amountCents, text: 'A previous card payment has no result yet. Resolve it before charging again.', checking: false }); return; }
+-    const term = getTerminal(); if (!term || !zeller.ready) { const ok = await checkReader(); if (!ok || !getTerminal()) { setCard({ phase: 'notready', text: useApp.getState().zeller.message ?? 'Reader issue' }); return; } }
+-    const t = getTerminal()!; const uuid = saleUuid(); const amount = target; if (amount <= 0) return;
++    const term = currentTerminal(); if (!term || !zeller.ready) { const ok = await checkReader(); if (!ok || !currentTerminal()) { setCard({ phase: 'notready', text: useApp.getState().zeller.message ?? 'Reader issue' }); return; } }
++    const t = currentTerminal()!; const uuid = saleUuid(); const amount = target; if (amount <= 0) return;
+     const ref = attemptRef(uuid, attempts().filter(a => a.saleUuid === uuid).length + 1);
+     setCard({ phase: 'waiting', text: 'Starting…', amount });
+     const h = startCharge(t, { amountCents: amount, reference: ref }, {
+@@ -124,7 +125,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+ 
+   /** Never re-charge before an unknown result resolves: poll getTransactions({reference}); manual resolve is logged. */
+   const recheck = async (ref: string, amount: number, uuid: string) => {
+-    const t = getTerminal(); if (!t) return setCard({ phase: 'unknown', ref, amount, text: 'Can’t check right now - reader unavailable.', checking: false });
++    const t = currentTerminal(); if (!t) return setCard({ phase: 'unknown', ref, amount, text: 'Can’t check right now - reader unavailable.', checking: false });
+     for (let i = 0; i < 6; i++) {
+       setCard({ phase: 'unknown', ref, amount, text: 'Checking…', checking: true });
+       const r = await reconcile(t, ref);
+@@ -178,7 +179,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+       const returned = new Set(cart.returnedTenderIds ?? []);
+       setCart(c0 => ({ ...c0, cancelPending: true }));
+       const cards = tenders.filter(t => t.kind === 'card' && !returned.has(t.id));
+-      const t = getTerminal(); if (cards.length && !t) return alertMsg('Reader not ready', 'Cannot refund cards right now.');
++      const t = currentTerminal(); if (cards.length && !t) return alertMsg('Reader not ready', 'Cannot refund cards right now.');
+       for (const tn of cards) {
+         const ref = tn.card?.externalReference ?? tn.id;
+         let r: RefundResult;
+diff --git a/src/screens/Refund.tsx b/src/screens/Refund.tsx
+index 33dd470..749a470 100644
+--- a/src/screens/Refund.tsx
++++ b/src/screens/Refund.tsx
+@@ -15,7 +15,7 @@ import { exchangeSummary, refundableByGateway, type RefundMethod } from '../lib/
+ import { executeRefund, REFUND_REASONS, type GiftCardDestination } from '../lib/refundFlow';
+ import { GiveCashSheet } from './CashSheet';
+ import { postCashRefund } from '../lib/cashSale';
+-import { getTerminal } from '../zellerBridge';
++import { currentTerminal } from '../alloyhost/terminal';
+ import { uid } from '../lib/ids';
+ import type { OrderDetail as PosOrder } from '../alloykit/types';
+ import type { Cart, Variant } from '../lib/types';
+@@ -51,7 +51,7 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
+     const destinationText = method === 'original' ? 'the original payment' : method === 'cash' ? 'cash' : giftCardDestination === 'original' ? 'the original gift card(s)' : 'a new gift card';
+     if (!(await confirm(label, `${reason}${picked.length ? ` · ${picked.length} item type(s)` : ''}${cashOut ? `\n${fmt(cashOut)} returns to ${destinationText}.` : ''}`, 'Confirm'))) return;
+     setBusy(true);
+-    const out = await executeRefund({ order, lines: picked.map(l => ({ lineId: l.id, qty: qty[l.id] })), amountCents: cashOut, method, reason, restock, terminal: getTerminal(), exchangeCreditCents: credit, giftCardDestination });
++    const out = await executeRefund({ order, lines: picked.map(l => ({ lineId: l.id, qty: qty[l.id] })), amountCents: cashOut, method, reason, restock, terminal: currentTerminal(), exchangeCreditCents: credit, giftCardDestination });
+     setBusy(false);
+     if (!out.ok) return alertMsg('Refund problem', out.message);
+     if (repl.lines.length) {
+diff --git a/tests/alloyp5terminal.test.ts b/tests/alloyp5terminal.test.ts
+new file mode 100644
+index 0000000..ccae4d8
+--- /dev/null
++++ b/tests/alloyp5terminal.test.ts
+@@ -0,0 +1,42 @@
++// Location: tests/alloyp5terminal.test.ts
++// Alloys P5h: the card terminal. Pay, Refund and Diagnostics get the terminal through the router instead of from the Zeller bridge. Pins
++// that they get the very same terminal object the bridge holds (the pretend one in practice mode), null while the reader has not started,
++// null when the Card terminal Element is off, and that the reader check, pairing and the provider are still the bridge's.
++import './helpers/fakeShopify';
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import Module from 'node:module';
++
++const m: any = Module; const realLoad = m._load; let held: unknown = null;
++m._load = function (req: string, ...rest: unknown[]) { if (/zellerBridge$/.test(req)) return { getTerminal: () => held, checkReader: async () => true, ZellerRoot: null }; return realLoad.call(this, req, ...rest); };
++test.after(() => { m._load = realLoad; });
++
++test('the screens get the same terminal object the bridge holds, and null until the reader has started', async () => {
++  const { currentTerminal } = await import('../src/alloyhost/terminal');
++  held = null; assert.equal(currentTerminal(), null);
++  const term = { marker: 'real' }; held = term; assert.equal(currentTerminal() as any, term);
++  const practice = { marker: 'practice' }; held = practice; assert.equal(currentTerminal() as any, practice, 'practice mode: the bridge hands back the pretend terminal and it passes straight through');
++});
++
++test('with the Card terminal Element off, or no Alloy chosen for it, there is no terminal', async () => {
++  const { currentTerminal } = await import('../src/alloyhost/terminal'); const { createRouter } = await import('../src/alloyhost/router');
++  const { ALLOYS } = await import('../src/alloys'); const { appCtxFor } = await import('../src/alloyhost/appRouter');
++  const mk = (sel: any) => createRouter({ alloys: ALLOYS, selection: () => sel, legacyFacts: () => ({ shopifyConnected: true, sharedBackend: 'metaobject', zellerPaired: true }), ctxFor: appCtxFor, isTraining: () => false });
++  held = { marker: 'x' };
++  assert.equal(currentTerminal(mk({ cardTerminal: 'off', catalogue: 'shopify', orders: 'shopify', sharedState: 'shopify' })), null);
++  assert.equal(currentTerminal(mk({ cardTerminal: 'zeller', catalogue: 'shopify', orders: 'shopify', sharedState: 'shopify' })) as any, held);
++});
++
++test('the router never wraps the terminal as a write (practice mode swaps the terminal itself)', async () => {
++  const { WRITES } = await import('../src/alloyhost/router'); assert.deepEqual(WRITES.cardTerminal, []); assert.deepEqual(WRITES.tapToPay, []);
++});
++
++test('the screens no longer take the terminal from the bridge; the reader check, pairing and provider still live there', () => {
++  for (const f of ['src/screens/Pay.tsx', 'src/screens/Refund.tsx', 'src/screens/Diagnostics.tsx']) {
++    const src = readFileSync(f, 'utf8'); assert.ok(!/getTerminal/.test(src), f); assert.ok(src.includes("from '../alloyhost/terminal'"), f);
++  }
++  assert.ok(readFileSync('src/screens/Pay.tsx', 'utf8').includes("import { checkReader } from '../zellerBridge';"));
++  assert.ok(readFileSync('src/screens/Diagnostics.tsx', 'utf8').includes("import { checkReader, pairReader } from '../zellerBridge';"));
++  assert.ok(readFileSync('src/screens/Refund.tsx', 'utf8').includes('terminal: currentTerminal()'));
++});
+-- 
+2.43.0
+

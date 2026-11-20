@@ -1,0 +1,437 @@
+From 81c6a0db9897122186165b3a9fbe293371f4c057 Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Thu, 19 Nov 2026 21:48:24 +1100
+Subject: [PATCH] Alloys P5f: orders through the router
+
+---
+ dev_docs/PROGRESS.md             |  1 +
+ dev_docs/QUEUE.md                |  2 +-
+ dev_docs/TO_DO.md                |  2 +-
+ src/alloykit/types.ts            | 20 +++++--
+ src/alloys/shopify/alloy.ts      | 11 +---
+ src/alloys/shopify/orderModel.ts | 15 ++---
+ src/lib/refundFlow.ts            |  4 +-
+ src/lib/sync.ts                  |  3 +-
+ src/lib/trainingOrders.ts        |  2 +-
+ src/screens/Orders.tsx           |  7 ++-
+ src/screens/Refund.tsx           |  2 +-
+ src/screens/Transactions.tsx     |  5 +-
+ tests/alloyconformance.test.ts   |  9 +--
+ tests/alloyp5orders.test.ts      | 95 ++++++++++++++++++++++++++++++++
+ tests/orderrecovery.test.ts      |  2 +-
+ tests/trainingrefund.test.ts     |  2 +-
+ 16 files changed, 138 insertions(+), 44 deletions(-)
+ create mode 100644 tests/alloyp5orders.test.ts
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 708056b..9f4ab81 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -219,6 +219,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0257 | 2026-11-18 | Alloys phase P5c: **Catalogue** moves onto the router. The full import and the half-hourly refresh in `sync.ts` read items, collections and the customer list through `listAllItems`, `listAllCollections` and `listAllCustomers` (new `src/alloyhost/catalogue.ts`), and the Items screen creates and edits items through `needFeature('catalogue', 'createItem' / 'updateItem')`. Against Shopify these make the same calls with the same inputs in the same order (tests compare each against calling Shopify directly, including the stock-count and collection steps of creating an item), and the screens show the same words when Shopify is missing or in practice mode. An Alloy may return a long list in pages: `readAllPages` reads every page and stops with an error if a cursor repeats, so a faulty Alloy cannot loop; Shopify returns each list as one page. The local customer list is optional: with Customers off, or an Alloy that cannot list them all (new optional `listAll`), the till just stores none. The contract gained `onProgress` on a page request (the import's progress line) and `listAll` on Customers. `fetchShop` in Settings is left alone: it is the connection step, which the setup picker (P6) takes over through the Alloy's `connect`. 6 new tests in `tests/alloyp5catalogue.test.ts`; full suite 2140 passing. |
+ | 0258 | 2026-11-19 | Alloys phase P5d: **Stock** moves onto the router, **and a gap from 0255 and 0257 is fixed**. Stock: the half-hourly poll asks what changed through `stockChanges` (new `src/alloyhost/stock.ts`, same query, same guards, the cursor now comes back from the Alloy), and Receive, Adjust and Count in Inventory and the Scan stock panel go through `needFeature('stock', 'adjust' / 'set')`, keeping the panel's retry key (Inventory makes a fresh key per tap, as before). On the legacy selection a missing login fails with the old words; with Stock switched off on a chosen setup the poll just skips the step. **The gap:** Shopify network errors are translated to `AlloyNetworkError` at the Alloy boundary, but the app's `isNetworkError` only recognised the Shopify class, so a dropped connection on a routed call (discounts, catalogue) would have set the poll to "error" instead of "offline", and the stock screens' "No connection" branch would have been missed. `isNetworkError` now recognises both, which also covers every later Element. The Shopify-specific `instanceof ShopifyUserError` in the order outbox (`sync.ts`) is not affected yet and is on the list for the Orders step. `AdjustReason` now comes from `alloykit/types` (the old export stays). 7 new tests in `tests/alloyp5stock.test.ts` (including one that a dropped connection reads as a network error through discounts and stock), and the practice-mode pin in `traininginventory.test.ts` follows the new call text. Full suite 2147 passing. |
+ | 0259 | 2026-11-19 | Alloys phase P5e: **Gift cards** move onto the router. Every place that touched a gift card in Shopify now asks for it through `needFeature('giftCards', ...)`: Pay (charge and cancel-credit), the cart scan box, the Gift cards screen (balance and history), the new-card sheet, Reports (outstanding liability), the refund flow (original-card credits, which read the whole history first, and refunds to a new card) and the order outbox (cards bought in a sale). Against Shopify the calls and their inputs are identical (tests compare each against calling Shopify directly), including the once-only debit and credit that skip what is already on the card and refuse a different amount, and the recipient on a new card. With no login the screens say the same "not set up" words, and in practice mode the same practice words. **Outbox:** a Shopify refusal now arrives as an Alloy user error, so the check that marks a queued sale "needs attention" (rather than retrying forever) now accepts both kinds. Contract: two optional functions added (`allHistory`, `outstanding`), `verified` and the transaction `id` are required, and the router counts the once-only debit and credit as writes in practice mode. `newGiftCode` (a plain 16-character code maker) moved to `src/lib/giftCode.ts`, with the old export kept; the card type and transaction type now come from `alloykit/types`. The `debitNote` helper in the Shopify folder is still imported by Pay and is on the P9 list with the other plain helpers. 7 new tests in `tests/alloyp5giftcards.test.ts`; two source pins (`giftcardonce`, `trainingrefund`) follow the new call text. Full suite 2154 passing. |
++| 0260 | 2026-11-19 | Alloys phase P5f: **Orders** move onto the router. The sale outbox records orders through `needFeature('orders', 'record')`, the Orders screen lists and fulfils, Transactions lists (paged), and the refund flow refunds, all through the router; the Shopify order files are no longer imported by any of them. The contract changed in two places the screens needed: `list` now returns whole orders (`OrderDetail`, the same shape as the old `PosOrder`, which is now an alias of it) instead of summaries, and `refund` takes the order on screen instead of re-reading it, so a refund sends exactly the calls it did before (no extra read). `PosOrder` is imported type-only from the contract by Refund, trainingOrders and refundFlow. New `tests/alloyp5orders.test.ts` compares each call with the old direct call (queries and variables identical): record (including retry by tag and the empty-location case), the fulfilment-field fallback, list for a tab and for Transactions paging, fulfil, refund with and without restock. Practice-mode pins updated to the new call text. No change to what the app does. | `src/alloykit/types.ts`, `src/alloys/shopify/{alloy,orderModel}.ts`, `src/lib/{sync,refundFlow,trainingOrders}.ts`, `src/screens/{Orders,Transactions,Refund}.tsx`, tests |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index f4aa820..740d67c 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only
+ 
+ ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+ 
+-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259). Next: the remaining callers onto the router one Element per patch (orders, shared state, card terminal); each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
++Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259, orders 0260). Next: the remaining callers onto the router one Element per patch (shared state, card terminal); each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index 365768d..b39d549 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -100,7 +100,7 @@ Everything here is built and unit tested. What is left on each is your device te
+ Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+ decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
+ the boundary test, with nothing calling them). P2 is built (0251: tests that pin what the Shopify and Zeller code does now).
+-P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258) and gift cards (0259) are on the router. Next in P5, one Element per patch: orders, shared state, card terminal. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
++P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258), gift cards (0259) and orders (0260) are on the router. Next in P5, one Element per patch: shared state, card terminal. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/src/alloykit/types.ts b/src/alloykit/types.ts
+index 7de6889..d9dc5f0 100644
+--- a/src/alloykit/types.ts
++++ b/src/alloykit/types.ts
+@@ -3,7 +3,7 @@
+ // An Alloy is the code specific to one service. It lists the Elements it can do; each Element has the fixed API below, written in the
+ // app's own types. The app calls Elements through the router and never imports an Alloy. These shapes are final for the format
+ // (`contract: 1`) once the first Alloys (P4) are written against them; until then P4 may still adjust them.
+-import type { AutoDiscount, Collection, Customer, ManualPreset, SaleRecord, TenderKind, Variant } from '../lib/types';
++import type { AutoDiscount, Collection, Customer, ManualPreset, SaleAdjustment, SaleRecord, Tender, TenderKind, Variant } from '../lib/types';
+ import type { SharedBackend } from '../lib/syncBackend';
+ import type { TerminalLike } from '../lib/zeller';
+ 
+@@ -70,15 +70,25 @@ export type CustomersApi = {
+ };
+ /** What an Alloy returns for a sale it has recorded. The app stores it in `sale.refs[alloyId]`. */
+ export type OrderRef = { id: string; name?: string; url?: string; extra?: Record<string, string> };
+-export type OrderSummary = { ref: OrderRef; ts: string; totalCents: number; customerName?: string; fulfilled?: boolean };
++export type OrderLine = { id: string; title: string; variantTitle?: string; qty: number; refundableQty: number; unitCents: number; originalUnitCents: number; variantId?: string; costCents: number; discount?: string };
++/** A sale as the service holds it: what the Orders and Refund screens show and what a refund is worked out from. */
++export type OrderDetail = {
++  id: string; name: string; createdAt: string; financial: string; fulfillment: string; totalCents: number; refundedCents: number;
++  note?: string; tags: string[]; customer?: { id: string; name: string; email?: string; phone?: string };
++  attrs: Record<string, string>; lines: OrderLine[]; tenders: Tender[]; saleUuid?: string; receiptLink?: string;
++  transactions: { id: string; kind: string; status: string; gateway: string; amountCents: number }[];
++  registerName?: string; staff?: string; roundingCents: number;
++  adjustments?: SaleAdjustment[];
++};
+ export type RefundItem = { lineId: string; qty: number };
+ export type OrdersApi = {
+   record(ctx: Ctx, sale: SaleRecord, o: { key: string }): Promise<OrderRef>;
+   find?(ctx: Ctx, saleUuid: string): Promise<OrderRef | null>;
+-  list?(ctx: Ctx, page: PageReq & { query?: string }): Promise<Page<OrderSummary>>;
++  /** `query` is the service's own filter words; the screens pass what they always did. */
++  list?(ctx: Ctx, page: PageReq & { query?: string }): Promise<Page<OrderDetail>>;
+   fulfil?(ctx: Ctx, ref: OrderRef): Promise<void>;
+-  /** `amounts` is the money returned per way it was paid (card, cash, gift card, exchange credit); `restock` defaults to true. Returns the service's refund id when it has one. */
+-  refund?(ctx: Ctx, ref: OrderRef, items: RefundItem[], o: { amounts: Partial<Record<TenderKind, number>>; note: string; key: string; restock?: boolean }): Promise<{ id?: string }>;
++  /** The order is the one the person is looking at (the refund is worked out from it). `amounts` is the money returned per way it was paid; `restock` defaults to true. Returns the service's refund id when it has one. */
++  refund?(ctx: Ctx, order: OrderDetail, items: RefundItem[], o: { amounts: Partial<Record<TenderKind, number>>; note: string; key: string; restock?: boolean }): Promise<{ id?: string }>;
+ };
+ export type GiftCard = { id: string; last4: string; balanceCents: number; initialCents: number; enabled: boolean; expiresOn?: string; customerName?: string; verified: boolean };
+ export type GiftCardTxn = { id: string; at: string; cents: number; kind: 'credit' | 'debit'; note?: string };
+diff --git a/src/alloys/shopify/alloy.ts b/src/alloys/shopify/alloy.ts
+index 9b59768..0139de2 100644
+--- a/src/alloys/shopify/alloy.ts
++++ b/src/alloys/shopify/alloy.ts
+@@ -102,16 +102,9 @@ const alloy: Alloy = {
+         // Looks the sale up by its tag first, so a retry after a lost reply never makes a second order.
+         record: (ctx, sale) => translate(async (): Promise<OrderRef> => { const o = await createOrderForSale(sale, { locationId: ctx.setting('locationId') || undefined, markFulfilled: true }); return { id: o.id, name: o.name }; }),
+         find: (_ctx, uuid) => translate(async () => { const o = await findOrderBySale(uuid); return o ? { id: o.id, name: o.name } : null; }),
+-        list: (_ctx, p) => translate(async () => {
+-          const r = await listOrders({ query: p.query, after: p.after, first: p.limit });
+-          return { rows: r.orders.map(o => ({ ref: { id: o.id, name: o.name }, ts: o.createdAt, totalCents: o.totalCents, customerName: o.customer?.name, fulfilled: o.fulfillment === 'FULFILLED' })), next: r.next };
+-        }),
++        list: (_ctx, p) => translate(async () => { const r = await listOrders({ query: p.query, after: p.after, first: p.limit }); return { rows: r.orders, next: r.next }; }),
+         fulfil: (_ctx, ref) => translate(() => fulfillOrder(ref.id)),
+-        refund: (ctx, ref, items, o) => translate(async () => {
+-          const order = await getOrder(ref.id);
+-          const id = await refundOrderInShopify(order, items.map(i => ({ lineItemId: i.lineId, quantity: i.qty, restock: o.restock ?? true })), o.amounts, o.note, ctx.setting('locationId') || undefined, o.key);
+-          return { id };
+-        }),
++        refund: (ctx, order, items, o) => translate(async () => ({ id: await refundOrderInShopify(order, items.map(i => ({ lineItemId: i.lineId, quantity: i.qty, restock: o.restock ?? true })), o.amounts, o.note, ctx.setting('locationId') || undefined, o.key) })),
+       },
+     },
+     giftCards: {
+diff --git a/src/alloys/shopify/orderModel.ts b/src/alloys/shopify/orderModel.ts
+index 099dd02..cd55bde 100644
+--- a/src/alloys/shopify/orderModel.ts
++++ b/src/alloys/shopify/orderModel.ts
+@@ -4,7 +4,8 @@ import { CURRENCY, toCents, toDecimal } from '../../lib/money';
+ import { splitLineForOrder } from '../../lib/pricing';
+ import { decodeTender, encodeTender } from '../../lib/saleCodec';
+ import { decodeAdjustments, encodeAdjustments } from '../../lib/adjustReason';
+-import type { SaleAdjustment, SaleRecord, Tender } from '../../lib/types';
++import type { SaleRecord, Tender } from '../../lib/types';
++import type { OrderDetail, OrderLine } from '../../alloykit/types';
+ 
+ const money = (c: number) => ({ shopMoney: { amount: toDecimal(c), currencyCode: CURRENCY } });
+ export const GATEWAY: Record<Tender['kind'], string> = { card: 'Zeller', cash: 'Cash', gift_card: 'Gift card', exchange_credit: 'Exchange credit' };
+@@ -55,16 +56,8 @@ export function buildOrderInput(sale: SaleRecord, ctx: OrderCtx) {
+ 
+ 
+ // ── reading orders ───────────────────────────────────────────────────────────
+-export type PosOrderLine = { id: string; title: string; variantTitle?: string; qty: number; refundableQty: number; unitCents: number; originalUnitCents: number; variantId?: string; costCents: number; discount?: string };
+-export type PosOrder = {
+-  id: string; name: string; createdAt: string; financial: string; fulfillment: string; totalCents: number; refundedCents: number;
+-  note?: string; tags: string[]; customer?: { id: string; name: string; email?: string; phone?: string };
+-  attrs: Record<string, string>; lines: PosOrderLine[]; tenders: Tender[]; saleUuid?: string; receiptLink?: string;
+-  transactions: { id: string; kind: string; status: string; gateway: string; amountCents: number }[];
+-  registerName?: string; staff?: string; roundingCents: number;
+-  /** A16.8: the price adjustments made on the sale, with reasons (read from the pos_adjustments attribute). */
+-  adjustments?: SaleAdjustment[];
+-};
++export type PosOrderLine = OrderLine;
++export type PosOrder = OrderDetail;
+ 
+ export function mapOrder(n: any): PosOrder {
+   const attrs: Record<string, string> = {};
+diff --git a/src/lib/refundFlow.ts b/src/lib/refundFlow.ts
+index 9a4dc48..7bf8603 100644
+--- a/src/lib/refundFlow.ts
++++ b/src/lib/refundFlow.ts
+@@ -5,7 +5,7 @@ import { recordSale } from './sync';
+ import { uid } from './ids';
+ import { planRefund, refundableByGateway, splitAcrossCards, splitAcrossGiftCards, type RefundMethod } from './returns';
+ import { startRefund, type TerminalLike } from './zeller';
+-import { refundOrderInShopify, type PosOrder } from './shopify/orders';
++import type { OrderDetail as PosOrder } from '../alloykit/types';
+ import { needFeature } from '../alloyhost/need';
+ import { newGiftCode } from './giftCode';
+ import { refundOperationKey } from './refundKey';
+@@ -90,7 +90,7 @@ export async function executeRefund(a: {
+     const money = Object.values(done).reduce((x, y) => x + (y ?? 0), 0);
+     if (abortIfNothing && !money) return { ok, message, done, cashOwedCents: 0 };
+     if (isTraining()) applyPracticeRefund(order.id, a.lines, done, a.restock); // practice: the practice order is updated and Shopify is never called
+-    else try { await refundOrderInShopify(order, a.lines.map(l => ({ lineItemId: l.lineId, quantity: l.qty, restock: a.restock })), done, `${a.reason} (POS)`, s.settings.locationId, refundKey); }
++    else try { await needFeature('orders', 'refund')(order, a.lines.map(l => ({ lineId: l.lineId, qty: l.qty })), { amounts: done, note: `${a.reason} (POS)`, key: refundKey, restock: a.restock }); }
+     catch (e: any) { void csv.event({ kind: 'error', saleUuid, message: `Shopify refund failed: ${e.message}`, staff }); useApp.getState().notify({ kind: 'refund', title: 'Refund not recorded in Shopify', body: `${order.name}: ${e.message}. The money was already returned.`, route: 'notifications' }); message = (message ? message + ' ' : '') + 'Refund taken but Shopify did not record it - see Notifications.'; }
+     const lines: SaleLine[] = a.lines.map(rl => {
+       const ol = order.lines.find(l => l.id === rl.lineId)!; const cost = a.restock ? Math.round((ol.costCents ?? 0)) * rl.qty : 0;
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index 17a095d..d866017 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -54,7 +54,6 @@ import type { TrainingNative } from './cloudkit/trainingSync';
+ import type { SquareNative } from './cloudkit/squareCloud';
+ import type { EventNative } from './cloudkit/eventCloud';
+ import { readCalibration, type ScannerCalibration } from './scanSpeed';
+-import { createOrderForSale } from './shopify/orders';
+ import { isAlloyUserError } from '../alloykit/errors';
+ import { ReceiptConfigError, receiptsEnabled, uploadReceipt } from './receiptSync';
+ import { adjustStock } from './shopify/inventory';
+@@ -294,7 +293,7 @@ async function runItem(o: OutboxItem): Promise<SaleRecord> {
+   };
+   await receiptStep('receipt');
+   if (!o.done.order) {
+-    const ord = await createOrderForSale(sale, { markFulfilled: true, locationId: cfg.locationId });
++    const ord = await needFeature('orders', 'record')(sale, { key: sale.uuid });
+     cur = { ...cur, orderGid: ord.id, orderName: ord.name };
+     patchItem(o.id, x => ({ ...x, sale: cur }));
+     st().patchPos({ sales: st().pos.sales.map(r => (r.uuid === cur.uuid ? { ...r, orderGid: ord.id, orderName: ord.name } : r)) });
+diff --git a/src/lib/trainingOrders.ts b/src/lib/trainingOrders.ts
+index 0b1ae80..0f16912 100644
+--- a/src/lib/trainingOrders.ts
++++ b/src/lib/trainingOrders.ts
+@@ -1,7 +1,7 @@
+ // Location: src/lib/trainingOrders.ts
+ // Practice orders for the refund course (B6): a few made-up past sales kept in memory, so Orders and Refund work in practice without Shopify.
+ // Every id starts with "train-". Nothing here is saved or sent: leaving training (or starting a part again) puts the orders back as they were.
+-import type { PosOrder } from './shopify/orderModel';
++import type { OrderDetail as PosOrder } from '../alloykit/types';
+ import type { Tender } from './types';
+ import { TRAIN_PREFIX } from './trainingSandbox';
+ 
+diff --git a/src/screens/Orders.tsx b/src/screens/Orders.tsx
+index 3317a4e..516f225 100644
+--- a/src/screens/Orders.tsx
++++ b/src/screens/Orders.tsx
+@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
+ import { RefreshControl, ScrollView, View } from 'react-native';
+ import { Btn, Card, Empty, Money, Page, Row, Segmented, Sheet, Txt, alertMsg } from '../ui/kit';
+ import { useNav } from '../ui/nav';
+-import { fulfillOrder, listOrders, type PosOrder } from '../lib/shopify/orders';
++import { needFeature } from '../alloyhost/need';
++import type { OrderDetail as PosOrder } from '../alloykit/types';
+ import RefundScreen from './Refund';
+ import { ReceiptPrompt } from './Receipt';
+ import { fmt } from '../lib/money';
+@@ -17,11 +18,11 @@ const Q = { open: 'tag:pos status:open', unfulfilled: 'tag:pos fulfillment_statu
+ /** Orders: Open | Unfulfilled | Completed - Mark fulfilled, refund and receipt. */
+ export default function Orders() {
+   const nav = useNav(); const [tab, setTab] = useState<keyof typeof Q>('open'); const [orders, setOrders] = useState<PosOrder[]>([]); const [busy, setBusy] = useState(false); const [sel, setSel] = useState<PosOrder | null>(null); const [refund, setRefund] = useState<PosOrder | null>(null); const [receipt, setReceipt] = useState<SaleRecord | null>(null);
+-  const load = useCallback(async () => { setBusy(true); try { setOrders(isTraining() ? listPracticeOrders(tab) : (await listOrders({ query: Q[tab], first: 30 })).orders); } // practice: made-up orders, never Shopify
++  const load = useCallback(async () => { setBusy(true); try { setOrders(isTraining() ? listPracticeOrders(tab) : (await needFeature('orders', 'list')({ query: Q[tab], limit: 30 })).rows); } // practice: made-up orders, never Shopify
+      catch (e: any) { alertMsg('Could not load orders', e.message, 'orders'); } setBusy(false); }, [tab]);
+   useEffect(() => { void load(); }, [tab]);
+   if (refund) return <RefundScreen order={refund} onClose={() => { setRefund(null); void load(); }} onGoPay={() => nav.push('pay')} />;
+-  const mark = async (o: PosOrder) => { if (!(await requireStepUp('shopify'))) return; try { if (isTraining()) markPracticeFulfilled(o.id); else await fulfillOrder(o.id); setSel(null); void load(); } catch (e: any) { alertMsg('Could not fulfil', e.message, 'orders'); } };
++  const mark = async (o: PosOrder) => { if (!(await requireStepUp('shopify'))) return; try { if (isTraining()) markPracticeFulfilled(o.id); else await needFeature('orders', 'fulfil')({ id: o.id, name: o.name }); setSel(null); void load(); } catch (e: any) { alertMsg('Could not fulfil', e.message, 'orders'); } };
+   return (
+     <Page title="Orders" onBack={nav.pop} helpId="orders" scroll={false}>
+       <View style={{ padding: 16 }}><Spot id={SPOT.ordersTabOpen}><Segmented value={tab} onChange={t => { const spots = { open: SPOT.ordersTabOpen, unfulfilled: SPOT.ordersTabUnfulfilled, completed: SPOT.ordersTabCompleted }; spotPressed(spots[t]); setTab(t); }} options={[{ v: 'open', label: 'Open' }, { v: 'unfulfilled', label: 'Unfulfilled' }, { v: 'completed', label: 'Completed' }]} /></Spot></View>
+diff --git a/src/screens/Refund.tsx b/src/screens/Refund.tsx
+index 974f59d..33dd470 100644
+--- a/src/screens/Refund.tsx
++++ b/src/screens/Refund.tsx
+@@ -17,7 +17,7 @@ import { GiveCashSheet } from './CashSheet';
+ import { postCashRefund } from '../lib/cashSale';
+ import { getTerminal } from '../zellerBridge';
+ import { uid } from '../lib/ids';
+-import type { PosOrder } from '../lib/shopify/orders';
++import type { OrderDetail as PosOrder } from '../alloykit/types';
+ import type { Cart, Variant } from '../lib/types';
+ import { requireStepUp } from '../lib/stepUpGate';
+ 
+diff --git a/src/screens/Transactions.tsx b/src/screens/Transactions.tsx
+index 70f5df1..cdb6b25 100644
+--- a/src/screens/Transactions.tsx
++++ b/src/screens/Transactions.tsx
+@@ -5,7 +5,8 @@ import { Btn, Card, Chip, Empty, Field, HelpButton, IconBtn, Money, Page, Row, T
+ import { useLayout, useTheme } from '../ui/theme';
+ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
+-import { listOrders, type PosOrder } from '../lib/shopify/orders';
++import { needFeature } from '../alloyhost/need';
++import type { OrderDetail as PosOrder } from '../alloykit/types';
+ import { hasCreds } from '../lib/shopify/client';
+ import { fmt } from '../lib/money';
+ import { maskedLast4 } from '../lib/cards';
+@@ -31,7 +32,7 @@ export default function Transactions() {
+ 
+   const load = useCallback(async (more = false) => {
+     if (!hasCreds()) return; setBusy(true);
+-    try { const r = await listOrders({ query: 'tag:pos', first: 25, after: more ? next : null }); setOrders(o => (more ? [...o, ...r.orders] : r.orders)); setNext(r.next); } catch (e: any) { if (!/network|connection/i.test(e.message)) alertMsg('Could not load orders', e.message, 'orders'); }
++    try { const r = await needFeature('orders', 'list')({ query: 'tag:pos', limit: 25, after: more ? next : null }); setOrders(o => (more ? [...o, ...r.rows] : r.rows)); setNext(r.next); } catch (e: any) { if (!/network|connection/i.test(e.message)) alertMsg('Could not load orders', e.message, 'orders'); }
+     setBusy(false);
+   }, [next]);
+   useEffect(() => { void load(false); void pullSalesHistory().catch(() => {}); }, []); // the other registers' sales (throttled)
+diff --git a/tests/alloyconformance.test.ts b/tests/alloyconformance.test.ts
+index 9ad55fe..fee1857 100644
+--- a/tests/alloyconformance.test.ts
++++ b/tests/alloyconformance.test.ts
+@@ -117,15 +117,16 @@ test('shopify: record uses the settings location and returns an OrderRef; find,
+   assert.deepEqual(await api.orders!.api.find!(ctx(), 'u'), { id: 'O1', name: '#1001' });
+   fake.on('orders(first:$first', fake.data({ orders: { pageInfo: { hasNextPage: true, endCursor: 'c' }, nodes: [orderNode({ customer: { id: 'U', displayName: 'Ann' } })] } }));
+   const page = await api.orders!.api.list!(ctx(), { limit: 5, query: 'name:#1001' });
+-  assert.deepEqual(page, { rows: [{ ref: { id: 'O1', name: '#1001' }, ts: '2026-11-01T00:00:00Z', totalCents: 1800, customerName: 'Ann', fulfilled: true }], next: 'c' });
++  assert.equal(page.next, 'c'); assert.equal(page.rows.length, 1);
++  assert.equal(page.rows[0].id, 'O1'); assert.equal(page.rows[0].customer?.name, 'Ann'); assert.equal(page.rows[0].totalCents, 1800); assert.equal(page.rows[0].fulfillment, 'FULFILLED');
+   assert.deepEqual(fake.lastCall().variables, { q: 'name:#1001', after: null, first: 5 });
+ });
+ 
+-test('shopify: refund reads the order, restocks by default at the settings location, and passes per-tender amounts and the key through', async () => {
++test('shopify: refund works from the order it is given, restocks by default at the settings location, and passes per-tender amounts and the key through', async () => {
+   fake.install(); await fake.signIn();
+-  fake.on('order(id:$id)', fake.data({ order: orderNode() }));
+   fake.on('refundCreate', ok('refundCreate', { refund: { id: 'R1' } }));
+-  assert.deepEqual(await api.orders!.api.refund!(ctx(), { id: 'O1' }, [{ lineId: 'LI1', qty: 1 }], { amounts: { cash: 500 }, note: 'n', key: 'rk' }), { id: 'R1' });
++  const { mapOrder } = await import('../src/alloys/shopify/orderModel');
++  assert.deepEqual(await api.orders!.api.refund!(ctx(), mapOrder(orderNode()), [{ lineId: 'LI1', qty: 1 }], { amounts: { cash: 500 }, note: 'n', key: 'rk' }), { id: 'R1' });
+   const i = fake.lastCall().variables.i;
+   assert.deepEqual(i.refundLineItems, [{ lineItemId: 'LI1', quantity: 1, restockType: 'RETURN', locationId: 'L1' }]);
+   assert.equal(i.transactions[0].amount, '5.00'); assert.ok(fake.lastCall().query.includes('@idempotent(key: "rk")'));
+diff --git a/tests/alloyp5orders.test.ts b/tests/alloyp5orders.test.ts
+new file mode 100644
+index 0000000..d450bb1
+--- /dev/null
++++ b/tests/alloyp5orders.test.ts
+@@ -0,0 +1,95 @@
++// Location: tests/alloyp5orders.test.ts
++// Alloys P5f: orders (the sale outbox, the Orders and Transactions screens and the refund flow) reach Shopify through the router. Pins that
++// the Shopify calls are the same as before (queries, variables, retry-by-tag, the fulfilment fallback), that screens get full orders,
++// that refunds work from the order on screen, and that no caller imports the Shopify order files any more.
++import './helpers/fakeShopify';
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import * as fake from './helpers/fakeShopify';
++import { setTrainingGuard } from '../src/lib/trainingGuard';
++import { WRITES } from '../src/alloyhost/router';
++import { useApp } from '../src/state/store';
++
++const ok = (f: string, extra: Record<string, unknown> = {}) => fake.data({ [f]: { ...extra, userErrors: [] } });
++const node = (o: any = {}) => ({ id: 'O1', name: '#1001', createdAt: '2026-11-01T00:00:00Z', displayFinancialStatus: 'PAID', displayFulfillmentStatus: 'UNFULFILLED', note: null, tags: ['pos'],
++  totalPriceSet: { shopMoney: { amount: '18.00' } }, totalRefundedSet: { shopMoney: { amount: '0.00' } }, customer: { id: 'U', displayName: 'Ann', email: null, phone: null }, customAttributes: [],
++  lineItems: { nodes: [{ id: 'LI1', title: 'D', variantTitle: null, quantity: 2, refundableQuantity: 2, variant: { id: 'V1' }, originalUnitPriceSet: { shopMoney: { amount: '5.00' } }, discountedUnitPriceSet: { shopMoney: { amount: '5.00' } }, customAttributes: [] }] },
++  transactions: [{ id: 'T1', kind: 'SALE', status: 'SUCCESS', gateway: 'Cash', amountSet: { shopMoney: { amount: '10.00' } } }], ...o });
++const sale: any = { uuid: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', type: 'sale', ts: '2026-11-01T00:00:00Z', lines: [], tenders: [], itemsCents: 0, discountCents: 0, netCents: 0, tipCents: 0, totalCents: 0, roundingCents: 0, cogsCents: 0, feesCents: 0, deals: [] };
++const trace = () => JSON.stringify(fake.gqlCalls().map(c => [c.query, c.variables]));
++const both = async <T>(queue: () => void, viaRouter: () => Promise<T>, direct: () => Promise<T>) => {
++  fake.install(); await fake.signIn(); useApp.getState().patchSettings({ locationId: 'L1' }); queue(); const a = await viaRouter(); const ta = trace();
++  fake.install(); await fake.signIn(); useApp.getState().patchSettings({ locationId: 'L1' }); queue(); const b = await direct(); const tb = trace();
++  assert.deepEqual(a, b); assert.equal(ta, tb); return a;
++};
++
++test('recording a sale makes the same calls as before, and a retry finds the order by its tag instead of making another', async () => {
++  const { needFeature } = await import('../src/alloyhost/need'); const o = await import('../src/lib/shopify/orders');
++  const made = () => { fake.on('orders(first: 1', fake.data({ orders: { nodes: [] } })); fake.on('orderCreate', ok('orderCreate', { order: { id: 'O1', name: '#1001' } })); };
++  const r = await both(made, () => needFeature('orders', 'record')(sale, { key: sale.uuid }), () => o.createOrderForSale(sale, { markFulfilled: true, locationId: 'L1' }));
++  assert.deepEqual(r, { id: 'O1', name: '#1001' });
++  fake.install(); await fake.signIn(); useApp.getState().patchSettings({ locationId: 'L1' });
++  fake.on('orders(first: 1', fake.data({ orders: { nodes: [{ id: 'O9', name: '#1009' }] } }));
++  assert.deepEqual(await needFeature('orders', 'record')(sale, { key: sale.uuid }), { id: 'O9', name: '#1009' });
++  assert.ok(!fake.gqlCalls().some(c => c.query.includes('orderCreate')));
++});
++
++test('with no location set the order is built the same as the old call with an empty location', async () => {
++  const { needFeature } = await import('../src/alloyhost/need'); const o = await import('../src/lib/shopify/orders');
++  const run = async (f: () => Promise<unknown>) => { fake.install(); await fake.signIn(); useApp.getState().patchSettings({ locationId: '' }); fake.on('orders(first: 1', fake.data({ orders: { nodes: [] } })); fake.on('orderCreate', ok('orderCreate', { order: { id: 'O1', name: '#1' } })); await f(); return trace(); };
++  assert.equal(await run(() => needFeature('orders', 'record')(sale, { key: 'k' })), await run(() => o.createOrderForSale(sale, { markFulfilled: true, locationId: '' })));
++});
++
++test('the fulfilment field fallback still retries without it when Shopify says it is unsupported', async () => {
++  const { needFeature } = await import('../src/alloyhost/need');
++  fake.install(); await fake.signIn(); useApp.getState().patchSettings({ locationId: 'L1' });
++  fake.on('orders(first: 1', fake.data({ orders: { nodes: [] } }));
++  fake.on('orderCreate', fake.data({ orderCreate: { order: null, userErrors: [{ field: ['order', 'fulfillment'], message: 'fulfillment is not supported' }] } }));
++  fake.on('orderCreate', ok('orderCreate', { order: { id: 'O2', name: '#2' } }));
++  assert.deepEqual(await needFeature('orders', 'record')(sale, { key: 'k' }), { id: 'O2', name: '#2' });
++  const creates = fake.gqlCalls().filter(c => c.query.includes('orderCreate'));
++  assert.equal(creates.length, 2); assert.ok(creates[0].variables.order.fulfillment); assert.equal(creates[1].variables.order.fulfillment, undefined);
++});
++
++test('listing gives the screens full orders, with the same query and paging as before', async () => {
++  const { needFeature } = await import('../src/alloyhost/need'); const o = await import('../src/lib/shopify/orders');
++  const q = () => fake.on('orders(first:$first', fake.data({ orders: { pageInfo: { hasNextPage: true, endCursor: 'c' }, nodes: [node()] } }));
++  const page = await both(q, () => needFeature('orders', 'list')({ query: 'tag:pos', limit: 25, after: null }), async () => { const r = await o.listOrders({ query: 'tag:pos', first: 25, after: null }); return { rows: r.orders, next: r.next }; });
++  assert.equal(page.next, 'c'); assert.equal(page.rows[0].lines[0].refundableQty, 2); assert.equal(page.rows[0].transactions[0].gateway, 'Cash');
++  const tab = await both(q, () => needFeature('orders', 'list')({ query: 'fulfillment_status:unfulfilled', limit: 30 }), async () => { const r = await o.listOrders({ query: 'fulfillment_status:unfulfilled', first: 30 }); return { rows: r.orders, next: r.next }; });
++  assert.equal(tab.rows.length, 1);
++});
++
++test('fulfilling makes the same calls as before', async () => {
++  const { needFeature } = await import('../src/alloyhost/need'); const o = await import('../src/lib/shopify/orders');
++  const q = () => { fake.on('fulfillmentOrders(first: 10', fake.data({ order: { fulfillmentOrders: { nodes: [{ id: 'F1', status: 'OPEN' }] } } })); fake.on('fulfillmentCreate', ok('fulfillmentCreate', { fulfillment: { id: 'X', status: 'SUCCESS' } })); };
++  await both(q, async () => { await needFeature('orders', 'fulfil')({ id: 'O1', name: '#1001' }); return null; }, async () => { await o.fulfillOrder('O1'); return null; });
++  assert.ok(fake.gqlCalls().some(c => c.query.includes('fulfillmentCreate')));
++});
++
++test('a refund works from the order on screen (no extra read), restocks as asked, at the settings location, under the given key', async () => {
++  const { needFeature } = await import('../src/alloyhost/need'); const o = await import('../src/lib/shopify/orders'); const { mapOrder } = await import('../src/lib/shopify/orderModel');
++  const order = mapOrder(node());
++  const q = () => fake.on('refundCreate', ok('refundCreate', { refund: { id: 'R1' } }));
++  for (const restock of [true, false]) {
++    const r = await both(q, () => needFeature('orders', 'refund')(order, [{ lineId: 'LI1', qty: 1 }], { amounts: { cash: 500 }, note: 'Returned Goods (POS)', key: 'rk', restock }),
++      async () => ({ id: await o.refundOrderInShopify(order, [{ lineItemId: 'LI1', quantity: 1, restock }], { cash: 500 }, 'Returned Goods (POS)', 'L1', 'rk') }));
++    assert.deepEqual(r, { id: 'R1' });
++    assert.equal(fake.gqlCalls().filter(c => !c.query.includes('refundCreate')).length, 0);
++  }
++});
++
++test('the router treats recording, fulfilling and refunding as writes in practice mode', async () => {
++  assert.deepEqual(WRITES.orders, ['record', 'fulfil', 'refund']);
++  const { needFeature } = await import('../src/alloyhost/need');
++  fake.install(); await fake.signIn(); setTrainingGuard(true);
++  try { assert.throws(() => needFeature('orders', 'list'), (e: any) => e.message === 'Training mode: Shopify is switched off.'); } finally { setTrainingGuard(false); }
++});
++
++test('no caller imports the Shopify order files; the order type comes from the Alloy contract', () => {
++  for (const f of ['src/lib/sync.ts', 'src/lib/refundFlow.ts', 'src/lib/trainingOrders.ts', 'src/screens/Orders.tsx', 'src/screens/Transactions.tsx', 'src/screens/Refund.tsx']) {
++    assert.ok(!/shopify\/order(s|Model)'/.test(readFileSync(f, 'utf8')), f);
++  }
++  assert.ok(readFileSync('src/screens/Orders.tsx', 'utf8').includes('isTraining() ? listPracticeOrders(tab)'));
++});
+diff --git a/tests/orderrecovery.test.ts b/tests/orderrecovery.test.ts
+index 550ae1b..0bcacf9 100644
+--- a/tests/orderrecovery.test.ts
++++ b/tests/orderrecovery.test.ts
+@@ -114,7 +114,7 @@ test('the outbox writes the sale to CloudKit before the Shopify order, for Cloud
+   const s = readFileSync('src/lib/sync.ts', 'utf8'); const run = s.slice(s.indexOf('async function runItem'), s.indexOf('/** Pull what other registers'));
+   assert.match(run, /!o\.done\.early && activeBackendKind\(\) === 'cloudkit' && !isTraining\(\) && sale\.type === 'sale'/);
+   assert.ok(run.indexOf("mark('early')") < run.indexOf("await receiptStep('receipt')"), 'before the receipt and the order');
+-  assert.ok(run.indexOf("mark('early')") < run.indexOf('createOrderForSale'));
++  assert.ok(run.indexOf("mark('early')") < run.indexOf("needFeature('orders', 'record')"));
+   assert.match(run, /putShared\('sale', cur\.uuid, saleEntryFields\(cur, detailed\)\)/, 'the final entry step uses the same fields and adds the order');
+   assert.match(s, /await orderRecovery\.run\(\);/);
+   assert.match(readFileSync('src/state/store.ts', 'utf8'), /done: \{ early\?: boolean;/);
+diff --git a/tests/trainingrefund.test.ts b/tests/trainingrefund.test.ts
+index 997dcc3..15aef00 100644
+--- a/tests/trainingrefund.test.ts
++++ b/tests/trainingrefund.test.ts
+@@ -45,7 +45,7 @@ test('the refund screens carry the spots the course points at', () => {
+ 
+ test('Orders and the refund run on practice data only while training: no Shopify call is reachable', () => {
+   const ord = fs.readFileSync('src/screens/Orders.tsx', 'utf8'); assert.ok(ord.indexOf('isTraining() ? listPracticeOrders') >= 0); assert.ok(ord.indexOf('if (isTraining()) markPracticeFulfilled') >= 0);
+-  const flow = fs.readFileSync('src/lib/refundFlow.ts', 'utf8'); assert.ok(flow.indexOf('if (isTraining()) applyPracticeRefund') < flow.indexOf('await refundOrderInShopify')); assert.ok(flow.indexOf('plan.gift_card && isTraining()') < flow.indexOf("needFeature('giftCards', 'creditOnce')"));
++  const flow = fs.readFileSync('src/lib/refundFlow.ts', 'utf8'); assert.ok(flow.indexOf('if (isTraining()) applyPracticeRefund') < flow.indexOf("needFeature('orders', 'refund')")); assert.ok(flow.indexOf('plan.gift_card && isTraining()') < flow.indexOf("needFeature('giftCards', 'creditOnce')"));
+ });
+ 
+ test('Guide steps are finished by the right press or state', () => {
+-- 
+2.43.0
+

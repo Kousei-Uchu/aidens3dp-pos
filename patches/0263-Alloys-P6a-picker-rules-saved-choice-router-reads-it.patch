@@ -1,0 +1,309 @@
+From 46ea77ccd3397bf204bd362a8884a48b3d8764dc Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Fri, 20 Nov 2026 09:50:14 +1100
+Subject: [PATCH] Alloys P6a: picker rules, saved choice, router reads it
+
+---
+ dev_docs/PROGRESS.md            |  1 +
+ dev_docs/QUEUE.md               |  2 +-
+ dev_docs/TO_DO.md               |  2 +-
+ src/alloyhost/appRouter.ts      |  3 +-
+ src/alloyhost/choice.ts         | 22 ++++++++++
+ src/alloyhost/savedSelection.ts | 13 ++++++
+ src/alloykit/picker.ts          | 78 +++++++++++++++++++++++++++++++++
+ src/state/store.ts              |  2 +
+ tests/alloypicker.test.ts       | 76 ++++++++++++++++++++++++++++++++
+ 9 files changed, 196 insertions(+), 3 deletions(-)
+ create mode 100644 src/alloyhost/choice.ts
+ create mode 100644 src/alloyhost/savedSelection.ts
+ create mode 100644 src/alloykit/picker.ts
+ create mode 100644 tests/alloypicker.test.ts
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 7aa7476..ba18938 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -222,6 +222,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0260 | 2026-11-19 | Alloys phase P5f: **Orders** move onto the router. The sale outbox records orders through `needFeature('orders', 'record')`, the Orders screen lists and fulfils, Transactions lists (paged), and the refund flow refunds, all through the router; the Shopify order files are no longer imported by any of them. The contract changed in two places the screens needed: `list` now returns whole orders (`OrderDetail`, the same shape as the old `PosOrder`, which is now an alias of it) instead of summaries, and `refund` takes the order on screen instead of re-reading it, so a refund sends exactly the calls it did before (no extra read). `PosOrder` is imported type-only from the contract by Refund, trainingOrders and refundFlow. New `tests/alloyp5orders.test.ts` compares each call with the old direct call (queries and variables identical): record (including retry by tag and the empty-location case), the fulfilment-field fallback, list for a tab and for Transactions paging, fulfil, refund with and without restock. Practice-mode pins updated to the new call text. No change to what the app does. | `src/alloykit/types.ts`, `src/alloys/shopify/{alloy,orderModel}.ts`, `src/lib/{sync,refundFlow,trainingOrders}.ts`, `src/screens/{Orders,Transactions,Refund}.tsx`, tests |
+ | 0261 | 2026-11-19 | Alloys phase P5g: **Shared state** moves onto the Alloys. The migration, the missing-order job and the sync seam reach a backend by kind (`loadBackend('metaobject' or 'cloudkit')`); that now asks the Alloy that holds the backend (Shopify for metaobjects, iCloud for CloudKit) through the new `src/alloyhost/sharedState.ts`, instead of importing the two backend files. Both still give the very same backend objects, still loaded only when first asked for (so node tests never load the native module), and writes still stop on the practice-mode guard in the seam. These callers cannot follow the router's single selection (the migration reads one backend while writing the other), so they ask by kind; the router's own `sharedState` answer for the backend in use is pinned equal. The ctx builder is now exported from `appRouter.ts` as `appCtxFor`. New `tests/alloyp5shared.test.ts`. Left for P9: `saleCardMode` is still imported from `cloudkitBackend.ts` by sync.ts. No change to what the app does. | `src/alloyhost/{sharedState,appRouter}.ts`, `src/lib/cloudkit/lazyBackend.ts`, tests |
+ | 0262 | 2026-11-20 | Alloys phase P5h: the **Card terminal** moves onto the router, which finishes P5. Pay, Refund and Diagnostics get the terminal from `currentTerminal()` (new `src/alloyhost/terminal.ts`) instead of `getTerminal()` from the Zeller bridge. It returns the very same terminal object (the pretend one in practice mode), and null while the reader has not started or when the Card terminal Element is off, which the screens already treat as reader not ready. The contract changed in one place: `terminal` may return null (it used to throw for a missing reader, which no caller wanted). Not moved yet, on purpose: the reader check, pairing and the Provider (`checkReader`, `pairReader`, `ZellerRoot`) carry app state and stay in the bridge until P6, where they become the Alloy's connect and host; the card helpers in `lib/zeller` (`startCharge`, `startRefund`, `describeEvent`, `attemptRef`, `reconcile`, `txnToCard`) work on any terminal and move to `src/lib` in P9. New `tests/alloyp5terminal.test.ts`. No change to what the app does. | `src/alloykit/types.ts`, `src/alloys/zeller/alloy.ts`, `src/alloyhost/terminal.ts`, `src/screens/{Pay,Refund,Diagnostics}.tsx`, tests |
++| 0263 | 2026-11-20 | Alloys phase P6a: the **picker's logic**, with no screen yet. `src/alloykit/picker.ts` (pure): `buildPicker` gives one row per Element with the Alloys that can do it, the features and limits each really has, what is chosen, a state (ok, unchosen, off, unknown Alloy, unsupported, missing permissions) and a plain-words warning; `choose` is the only way a selection changes (a required Element cannot be Off, the Alloy must exist and support the Element, the build policy applies); `pickerReady` and `pickerWarnings` say what blocks and what only warns; `alloysInUse` lists the Alloys whose sign-in fields Settings should show. App side: `settings.alloySelection` holds the saved choice, `src/alloyhost/savedSelection.ts` reads it (an empty object counts as never chosen), `src/alloyhost/choice.ts` saves and clears it and has `connectAlloy(id)`, which asks an Alloy to check its sign-in and never throws. `appRouter` now reads the saved choice. Nothing changes for anyone until a choice is saved: with none saved the router reads today's behaviour as before (pinned), and once one is saved an unset Element is off. Not changed on purpose: the Settings Shopify form still calls `fetchShop` directly (P6b rebuilds that screen on `connectAlloy`, which needs the connect report to carry the shop name and a detail line first). The choice is per device for now; whether it should be shared by all registers through shared state is a P6b decision. New `tests/alloypicker.test.ts`. | `src/alloykit/picker.ts`, `src/alloyhost/{savedSelection,choice,appRouter}.ts`, `src/state/store.ts`, tests |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index c4e728f..1d08dc9 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only
+ 
+ ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+ 
+-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259, orders 0260, shared state 0261, card terminal 0262; P5 is done). Next: P6, the picker; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
++Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259, orders 0260, shared state 0261, card terminal 0262; P5 is done; P6a 0263). Next: P6b, the picker screen; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index ae323c7..f702c2a 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -100,7 +100,7 @@ Everything here is built and unit tested. What is left on each is your device te
+ Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+ decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
+ the boundary test, with nothing calling them). P2 is built (0251: tests that pin what the Shopify and Zeller code does now).
+-P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258), gift cards (0259), orders (0260) and shared state (0261) and the card terminal (0262) are on the router, which finishes P5. Next: P6 (the picker), where the reader check and pairing (still the bridge's `checkReader`/`pairReader`, with `ZellerRoot`) become the Zeller Alloy's connect and host. P9 list also: `saleCardMode` in `cloudkitBackend.ts` is still reached directly by sync.ts. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
++P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258), gift cards (0259), orders (0260) and shared state (0261) and the card terminal (0262) are on the router, which finishes P5. P6a is built (0263: the picker rules, the saved choice, the router reading it). Next: P6b (the picker screen), where the reader check and pairing (still the bridge's `checkReader`/`pairReader`, with `ZellerRoot`) become the Zeller Alloy's connect and host. P9 list also: `saleCardMode` in `cloudkitBackend.ts` is still reached directly by sync.ts. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/src/alloyhost/appRouter.ts b/src/alloyhost/appRouter.ts
+index 96f38f9..01f81b9 100644
+--- a/src/alloyhost/appRouter.ts
++++ b/src/alloyhost/appRouter.ts
+@@ -11,6 +11,7 @@ import { useApp } from '../state/store';
+ import { makeCtx } from './ctx';
+ import { createRouter } from './router';
+ import { memoryStore } from './store';
++import { readSavedSelection } from './savedSelection';
+ 
+ const store = memoryStore(); // Shopify keeps nothing here; Pure Tillium (P7) gets a persistent one
+ 
+@@ -19,7 +20,7 @@ export const appCtxFor = (id: string) => makeCtx(id, { secrets: {}, settings: {
+ 
+ export const appRouter = createRouter({
+   alloys: ALLOYS,
+-  selection: () => undefined, // P6 reads the saved choice from settings here
++  selection: () => readSavedSelection(), // none saved (every install until the picker is used) reads as today's behaviour
+   legacyFacts: () => ({ shopifyConnected: hasCreds(), sharedBackend: activeBackendKind() === 'cloudkit' ? 'cloudkit' : 'metaobject', zellerPaired: true }),
+   ctxFor: appCtxFor,
+   isTraining,
+diff --git a/src/alloyhost/choice.ts b/src/alloyhost/choice.ts
+new file mode 100644
+index 0000000..dd988e2
+--- /dev/null
++++ b/src/alloyhost/choice.ts
+@@ -0,0 +1,22 @@
++// Location: src/alloyhost/choice.ts
++// Alloys P6a: the saved choice of Alloy per Element, and the connect check, on the app side. Nothing here changes what the app does until
++// a choice is saved: with none saved the router keeps reading today's behaviour (legacySelection).
++import { OFF, type ConnectReport, type Selection } from '../alloykit/types';
++import { ALLOYS } from '../alloys';
++import { useApp } from '../state/store';
++import { appCtxFor } from './appRouter';
++import { readSavedSelection } from './savedSelection';
++export { readSavedSelection };
++
++export const saveSelection = (sel: Selection): void => { useApp.getState().patchSettings({ alloySelection: { ...sel } }); };
++/** Goes back to reading today's behaviour. */
++export const clearSelection = (): void => { useApp.getState().patchSettings({ alloySelection: undefined }); };
++export const isOff = (v: string | undefined): boolean => v === OFF;
++
++/** Asks one Alloy to check its sign-in and say what it can do. Never throws: a failure is a report with a problem in plain words. */
++export async function connectAlloy(id: string): Promise<ConnectReport> {
++  const a = ALLOYS.find(x => x.id === id);
++  if (!a) return { ok: false, problem: `This version of the app has no connection called "${id}".` };
++  try { return await a.connect(appCtxFor(id)); }
++  catch (e) { return { ok: false, problem: e instanceof Error && e.message ? e.message : 'The connection could not be checked.' }; }
++}
+diff --git a/src/alloyhost/savedSelection.ts b/src/alloyhost/savedSelection.ts
+new file mode 100644
+index 0000000..8aa0910
+--- /dev/null
++++ b/src/alloyhost/savedSelection.ts
+@@ -0,0 +1,13 @@
++// Location: src/alloyhost/savedSelection.ts
++// Alloys P6a: reads the saved choice of Alloy per Element from settings. Kept apart from choice.ts so the router can read it without a cycle.
++import type { Selection } from '../alloykit/types';
++import { useApp } from '../state/store';
++
++/** The saved choice, or undefined when this install has never chosen (an empty object counts as never chosen). */
++export function readSavedSelection(settings: { alloySelection?: Record<string, string> } = useApp.getState().settings): Selection | undefined {
++  const s = settings.alloySelection;
++  if (!s || typeof s !== 'object') return undefined;
++  const out: Selection = {};
++  for (const [k, v] of Object.entries(s)) if (typeof v === 'string' && v) (out as Record<string, string>)[k] = v;
++  return Object.keys(out).length ? out : undefined;
++}
+diff --git a/src/alloykit/picker.ts b/src/alloykit/picker.ts
+new file mode 100644
+index 0000000..0b06ce2
+--- /dev/null
++++ b/src/alloykit/picker.ts
+@@ -0,0 +1,78 @@
++// Location: src/alloykit/picker.ts
++// Alloys P6a: the rules behind the setup picker and the Settings screen, with no screen in them. For each Element: which Alloys can do it,
++// what each offers and needs, what is chosen, and the plain-words warning when something is missing. `choose` is the only way a selection
++// changes, so the rules (required Elements cannot be Off, an Alloy must really support the Element) hold wherever the picker is shown.
++import { ELEMENTS, REQUIRED_ELEMENTS } from './elements';
++import { alloyFor, applyPolicy, featuresOf, supports } from './selection';
++import { ALLOY_POLICY, type AlloyPolicy } from './policy';
++import { OFF, type Alloy, type ConnectReport, type ElementId, type Selection } from './types';
++
++export type PickerOption = {
++  alloyId: string; name: string; blurb: string;
++  /** Optional functions this Alloy really has for the Element (an Alloy cannot claim more than it has). */
++  features: string[]; limits: string[];
++  /** Permissions the service says its login lacks for this Element, from the last connect. */
++  missing: string[];
++};
++export type PickerState = 'ok' | 'unchosen' | 'off' | 'unknown_alloy' | 'unsupported' | 'missing_permissions';
++export type PickerRow = {
++  element: ElementId; label: string; blurb: string; required: boolean; whenOff: string;
++  options: PickerOption[]; chosen: string | undefined; state: PickerState; warning?: string;
++};
++export type Reports = Record<string, ConnectReport | undefined>;
++
++const list = (xs: string[]) => xs.join(', ');
++
++export function buildPicker(allAlloys: Alloy[], sel: Selection, reports: Reports = {}, policy: AlloyPolicy = ALLOY_POLICY): PickerRow[] {
++  const alloys = applyPolicy(allAlloys, policy);
++  return ELEMENTS.map(info => {
++    const options: PickerOption[] = alloys.filter(a => supports(a, info.id)).map(a => ({
++      alloyId: a.id, name: a.name, blurb: a.blurb, features: featuresOf(a, info.id), limits: a.elements[info.id]?.limits ?? [],
++      missing: reports[a.id]?.missing?.[info.id] ?? [],
++    }));
++    const v = sel[info.id];
++    const row: PickerRow = { element: info.id, label: info.label, blurb: info.blurb, required: info.required, whenOff: info.whenOff, options, chosen: v === OFF ? undefined : v, state: 'ok' };
++    if (!v || v === OFF) {
++      if (info.required) { row.state = 'unchosen'; row.warning = `${info.label} is needed. Choose where it comes from before taking sales.`; }
++      else { row.state = 'off'; row.warning = info.whenOff || undefined; }
++      return row;
++    }
++    const a = alloyFor(alloys, v);
++    if (!a) { row.state = 'unknown_alloy'; row.warning = `${info.label} is set to "${v}", which this version of the app does not have. Choose another.`; return row; }
++    if (!supports(a, info.id)) { row.state = 'unsupported'; row.warning = `${a.name} cannot do ${info.label}. Choose another.`; return row; }
++    const missing = reports[a.id]?.missing?.[info.id];
++    if (missing?.length) { row.state = 'missing_permissions'; row.warning = `${a.name} has not given this app permission for ${info.label} (${list(missing)}). Add them in ${a.name}, then check again.`; }
++    return row;
++  });
++}
++
++export type ChooseResult = { ok: true; selection: Selection } | { ok: false; reason: string };
++
++/** Sets one Element's Alloy (or Off). The only way the picker changes a selection. */
++export function choose(sel: Selection, element: ElementId, alloyId: string, allAlloys: Alloy[], policy: AlloyPolicy = ALLOY_POLICY): ChooseResult {
++  const label = ELEMENTS.find(e => e.id === element)!.label;
++  if (alloyId === OFF) {
++    if (REQUIRED_ELEMENTS.includes(element)) return { ok: false, reason: `${label} cannot be switched off. The till needs it.` };
++    return { ok: true, selection: { ...sel, [element]: OFF } };
++  }
++  const a = alloyFor(applyPolicy(allAlloys, policy), alloyId);
++  if (!a) return { ok: false, reason: `This version of the app has no connection called "${alloyId}".` };
++  if (!supports(a, element)) return { ok: false, reason: `${a.name} cannot do ${label}.` };
++  return { ok: true, selection: { ...sel, [element]: alloyId } };
++}
++
++/** What setup needs before it lets the person carry on: nothing required left unchosen or broken. */
++export function pickerReady(rows: PickerRow[]): { ok: boolean; blocking: PickerRow[] } {
++  const blocking = rows.filter(r => r.required && r.state !== 'ok' && r.state !== 'missing_permissions');
++  return { ok: blocking.length === 0, blocking };
++}
++/** Warnings to show (not blocking): optional Elements that are off, and chosen Elements the login lacks permission for. */
++export const pickerWarnings = (rows: PickerRow[]): { element: ElementId; text: string; blocking: boolean }[] =>
++  rows.filter(r => r.warning).map(r => ({ element: r.element, text: r.warning!, blocking: r.required && r.state !== 'missing_permissions' }));
++
++/** The Alloys the selection uses, in the order they appear, so Settings can show each one's sign-in fields once. */
++export function alloysInUse(sel: Selection, alloys: Alloy[]): Alloy[] {
++  const ids: string[] = [];
++  for (const { id } of ELEMENTS) { const v = sel[id]; if (v && v !== OFF && !ids.includes(v)) ids.push(v); }
++  return ids.map(i => alloyFor(alloys, i)).filter((a): a is Alloy => !!a);
++}
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 8ee7a9b..0d35bef 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -26,6 +26,8 @@ import { AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_STEP_UP_MINUTES,
+ 
+ export type Settings = {
+   shopName: string; locationId?: string; locationName?: string;
++  /** Alloys P6: which Alloy supplies each Element. Absent on an install that never chose, which keeps today's behaviour exactly (see alloykit/selection.ts, legacySelection). */
++  alloySelection?: Record<string, string>;
+   registerId: string; registerName: string;
+   cashRounding: boolean; smartChange: boolean; consolidate: boolean; fees: FeeSettings; // smartChange: weighted change choice (B1c), shop-wide like the shared drawer ledger (CloudKit decisions item 23)
+   theme: 'brand' | 'light' | 'dark' | 'system'; accent: string; tileSize: 'S' | 'M' | 'L' | number;
+diff --git a/tests/alloypicker.test.ts b/tests/alloypicker.test.ts
+new file mode 100644
+index 0000000..de00b73
+--- /dev/null
++++ b/tests/alloypicker.test.ts
+@@ -0,0 +1,76 @@
++// Location: tests/alloypicker.test.ts
++// Alloys P6a: the picker's rules (no screen), the saved choice, and the router reading it. Pins that an install that never chose behaves
++// exactly as before, that a saved choice takes over, and that the rules (required Elements cannot be Off, an Alloy must support the Element,
++// missing permissions are named) hold.
++import './helpers/fakeShopify';
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { buildPicker, choose, pickerReady, pickerWarnings, alloysInUse } from '../src/alloykit/picker';
++import { OFF, type Alloy } from '../src/alloykit/types';
++import { useApp } from '../src/state/store';
++
++const alloys = async (): Promise<Alloy[]> => (await import('../src/alloys')).ALLOYS;
++
++test('with nothing chosen the three required Elements block, and optional ones read as off with what is lost', async () => {
++  const rows = buildPicker(await alloys(), {});
++  const by = Object.fromEntries(rows.map(r => [r.element, r]));
++  for (const e of ['catalogue', 'orders', 'sharedState']) { assert.equal(by[e].state, 'unchosen'); assert.match(by[e].warning!, /is needed/); }
++  assert.equal(by.stock.state, 'off'); assert.equal(by.stock.warning, 'Items are not tracked and stock screens are hidden.');
++  const r = pickerReady(rows); assert.equal(r.ok, false); assert.deepEqual(r.blocking.map(x => x.element).sort(), ['catalogue', 'orders', 'sharedState']);
++});
++
++test('each Element lists only the Alloys that can do it, with the features they really have', async () => {
++  const rows = buildPicker(await alloys(), {});
++  const by = Object.fromEntries(rows.map(r => [r.element, r]));
++  assert.deepEqual(by.sharedState.options.map(o => o.alloyId).sort(), ['icloud', 'shopify']);
++  assert.deepEqual(by.cardTerminal.options.map(o => o.alloyId), ['zeller']);
++  assert.deepEqual(by.catalogue.options.map(o => o.alloyId), ['shopify']);
++  assert.ok(by.orders.options[0].features.includes('refund') && by.orders.options[0].features.includes('fulfil'));
++  assert.ok(by.stock.options[0].limits[0].includes('One Shopify location'));
++});
++
++test('a full Shopify and Zeller choice is ready; missing permissions are named but do not block', async () => {
++  const sel = { catalogue: 'shopify', stock: 'shopify', discounts: 'shopify', customers: 'shopify', orders: 'shopify', giftCards: 'shopify', sharedState: 'shopify', cardTerminal: 'zeller' };
++  const ok = buildPicker(await alloys(), sel); assert.equal(pickerReady(ok).ok, true); assert.deepEqual(pickerWarnings(ok).map(w => w.element).sort(), ['tapToPay']);
++  const rows = buildPicker(await alloys(), sel, { shopify: { ok: true, missing: { giftCards: ['write_gift_cards'] } } });
++  const g = rows.find(r => r.element === 'giftCards')!; assert.equal(g.state, 'missing_permissions'); assert.match(g.warning!, /Shopify has not given this app permission for Gift cards \(write_gift_cards\)/);
++  assert.equal(pickerReady(rows).ok, true);
++  assert.equal(pickerWarnings(rows).find(w => w.element === 'giftCards')!.blocking, false);
++});
++
++test('choose: required cannot be off, the Alloy must exist and support the Element, optional can be off', async () => {
++  const a = await alloys();
++  assert.deepEqual(choose({}, 'orders', OFF, a), { ok: false, reason: 'Orders cannot be switched off. The till needs it.' });
++  assert.equal((choose({}, 'orders', 'zeller', a) as any).reason, 'Zeller cannot do Orders.');
++  assert.match((choose({}, 'orders', 'nope', a) as any).reason, /no connection called "nope"/);
++  assert.deepEqual(choose({ stock: 'shopify' }, 'stock', OFF, a), { ok: true, selection: { stock: OFF } });
++  assert.deepEqual(choose({}, 'sharedState', 'icloud', a), { ok: true, selection: { sharedState: 'icloud' } });
++});
++
++test('the build policy decides whether iCloud may be offered for Customers', async () => {
++  const a = await alloys();
++  assert.ok(buildPicker(a, {}, {}, { icloudCustomers: 'disabled' }).find(r => r.element === 'customers')!.options.every(o => o.alloyId !== 'icloud'));
++  assert.equal((choose({}, 'customers', 'icloud', a, { icloudCustomers: 'disabled' }) as any).ok, false);
++});
++
++test('alloysInUse lists each chosen Alloy once, in Element order', async () => {
++  assert.deepEqual(alloysInUse({ catalogue: 'shopify', orders: 'shopify', sharedState: 'icloud', cardTerminal: 'zeller', stock: OFF }, await alloys()).map(a => a.id), ['shopify', 'icloud', 'zeller']);
++});
++
++test('nothing saved reads as today; a saved choice takes over; clearing goes back', async () => {
++  const { appRouter } = await import('../src/alloyhost/appRouter'); const { saveSelection, clearSelection } = await import('../src/alloyhost/choice');
++  const { readSavedSelection } = await import('../src/alloyhost/savedSelection');
++  clearSelection(); assert.equal(readSavedSelection(), undefined); assert.equal(appRouter.current().source, 'legacy');
++  useApp.getState().patchSettings({ alloySelection: {} }); assert.equal(readSavedSelection(), undefined, 'an empty object is never chosen');
++  saveSelection({ catalogue: 'shopify', orders: 'shopify', sharedState: 'shopify', stock: OFF });
++  assert.equal(appRouter.current().source, 'saved'); assert.equal(appRouter.api('stock'), null); assert.ok(appRouter.api('orders'));
++  assert.equal(appRouter.api('cardTerminal'), null, 'unset means off once a choice is saved');
++  clearSelection(); assert.equal(appRouter.current().source, 'legacy');
++});
++
++test('connectAlloy never throws: an unknown Alloy and a missing login come back as plain words', async () => {
++  const { connectAlloy } = await import('../src/alloyhost/choice');
++  assert.match((await connectAlloy('nope')).problem!, /no connection called "nope"/);
++  const fake = await import('./helpers/fakeShopify'); fake.install(); const client = await import('../src/alloys/shopify/client'); await client.clearCreds();
++  assert.deepEqual(await connectAlloy('shopify'), { ok: false, problem: 'Enter the shop address, client ID and client secret.' });
++});
+-- 
+2.43.0
+

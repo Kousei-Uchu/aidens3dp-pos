@@ -1,0 +1,163 @@
+From c28a9bafd94e8a70d318a8c4e4be2f6ea1caeffc Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Thu, 19 Nov 2026 22:35:28 +1100
+Subject: [PATCH] Alloys P5g: shared state through the Alloys
+
+---
+ dev_docs/PROGRESS.md            |  1 +
+ dev_docs/QUEUE.md               |  2 +-
+ dev_docs/TO_DO.md               |  2 +-
+ src/alloyhost/appRouter.ts      |  5 +++-
+ src/alloyhost/sharedState.ts    | 18 +++++++++++++++
+ src/lib/cloudkit/lazyBackend.ts |  4 ++--
+ tests/alloyp5shared.test.ts     | 41 +++++++++++++++++++++++++++++++++
+ 7 files changed, 68 insertions(+), 5 deletions(-)
+ create mode 100644 src/alloyhost/sharedState.ts
+ create mode 100644 tests/alloyp5shared.test.ts
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 9f4ab81..1c7d23e 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -220,6 +220,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0258 | 2026-11-19 | Alloys phase P5d: **Stock** moves onto the router, **and a gap from 0255 and 0257 is fixed**. Stock: the half-hourly poll asks what changed through `stockChanges` (new `src/alloyhost/stock.ts`, same query, same guards, the cursor now comes back from the Alloy), and Receive, Adjust and Count in Inventory and the Scan stock panel go through `needFeature('stock', 'adjust' / 'set')`, keeping the panel's retry key (Inventory makes a fresh key per tap, as before). On the legacy selection a missing login fails with the old words; with Stock switched off on a chosen setup the poll just skips the step. **The gap:** Shopify network errors are translated to `AlloyNetworkError` at the Alloy boundary, but the app's `isNetworkError` only recognised the Shopify class, so a dropped connection on a routed call (discounts, catalogue) would have set the poll to "error" instead of "offline", and the stock screens' "No connection" branch would have been missed. `isNetworkError` now recognises both, which also covers every later Element. The Shopify-specific `instanceof ShopifyUserError` in the order outbox (`sync.ts`) is not affected yet and is on the list for the Orders step. `AdjustReason` now comes from `alloykit/types` (the old export stays). 7 new tests in `tests/alloyp5stock.test.ts` (including one that a dropped connection reads as a network error through discounts and stock), and the practice-mode pin in `traininginventory.test.ts` follows the new call text. Full suite 2147 passing. |
+ | 0259 | 2026-11-19 | Alloys phase P5e: **Gift cards** move onto the router. Every place that touched a gift card in Shopify now asks for it through `needFeature('giftCards', ...)`: Pay (charge and cancel-credit), the cart scan box, the Gift cards screen (balance and history), the new-card sheet, Reports (outstanding liability), the refund flow (original-card credits, which read the whole history first, and refunds to a new card) and the order outbox (cards bought in a sale). Against Shopify the calls and their inputs are identical (tests compare each against calling Shopify directly), including the once-only debit and credit that skip what is already on the card and refuse a different amount, and the recipient on a new card. With no login the screens say the same "not set up" words, and in practice mode the same practice words. **Outbox:** a Shopify refusal now arrives as an Alloy user error, so the check that marks a queued sale "needs attention" (rather than retrying forever) now accepts both kinds. Contract: two optional functions added (`allHistory`, `outstanding`), `verified` and the transaction `id` are required, and the router counts the once-only debit and credit as writes in practice mode. `newGiftCode` (a plain 16-character code maker) moved to `src/lib/giftCode.ts`, with the old export kept; the card type and transaction type now come from `alloykit/types`. The `debitNote` helper in the Shopify folder is still imported by Pay and is on the P9 list with the other plain helpers. 7 new tests in `tests/alloyp5giftcards.test.ts`; two source pins (`giftcardonce`, `trainingrefund`) follow the new call text. Full suite 2154 passing. |
+ | 0260 | 2026-11-19 | Alloys phase P5f: **Orders** move onto the router. The sale outbox records orders through `needFeature('orders', 'record')`, the Orders screen lists and fulfils, Transactions lists (paged), and the refund flow refunds, all through the router; the Shopify order files are no longer imported by any of them. The contract changed in two places the screens needed: `list` now returns whole orders (`OrderDetail`, the same shape as the old `PosOrder`, which is now an alias of it) instead of summaries, and `refund` takes the order on screen instead of re-reading it, so a refund sends exactly the calls it did before (no extra read). `PosOrder` is imported type-only from the contract by Refund, trainingOrders and refundFlow. New `tests/alloyp5orders.test.ts` compares each call with the old direct call (queries and variables identical): record (including retry by tag and the empty-location case), the fulfilment-field fallback, list for a tab and for Transactions paging, fulfil, refund with and without restock. Practice-mode pins updated to the new call text. No change to what the app does. | `src/alloykit/types.ts`, `src/alloys/shopify/{alloy,orderModel}.ts`, `src/lib/{sync,refundFlow,trainingOrders}.ts`, `src/screens/{Orders,Transactions,Refund}.tsx`, tests |
++| 0261 | 2026-11-19 | Alloys phase P5g: **Shared state** moves onto the Alloys. The migration, the missing-order job and the sync seam reach a backend by kind (`loadBackend('metaobject' or 'cloudkit')`); that now asks the Alloy that holds the backend (Shopify for metaobjects, iCloud for CloudKit) through the new `src/alloyhost/sharedState.ts`, instead of importing the two backend files. Both still give the very same backend objects, still loaded only when first asked for (so node tests never load the native module), and writes still stop on the practice-mode guard in the seam. These callers cannot follow the router's single selection (the migration reads one backend while writing the other), so they ask by kind; the router's own `sharedState` answer for the backend in use is pinned equal. The ctx builder is now exported from `appRouter.ts` as `appCtxFor`. New `tests/alloyp5shared.test.ts`. Left for P9: `saleCardMode` is still imported from `cloudkitBackend.ts` by sync.ts. No change to what the app does. | `src/alloyhost/{sharedState,appRouter}.ts`, `src/lib/cloudkit/lazyBackend.ts`, tests |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index 740d67c..7880205 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only
+ 
+ ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+ 
+-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259, orders 0260). Next: the remaining callers onto the router one Element per patch (shared state, card terminal); each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
++Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259, orders 0260, shared state 0261). Next: the card terminal onto the router; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index b39d549..9cf1ca3 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -100,7 +100,7 @@ Everything here is built and unit tested. What is left on each is your device te
+ Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+ decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
+ the boundary test, with nothing calling them). P2 is built (0251: tests that pin what the Shopify and Zeller code does now).
+-P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258), gift cards (0259) and orders (0260) are on the router. Next in P5, one Element per patch: shared state, card terminal. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
++P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258), gift cards (0259), orders (0260) and shared state (0261) are on the router. Next in P5: card terminal. P9 list also: `saleCardMode` in `cloudkitBackend.ts` is still reached directly by sync.ts. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/src/alloyhost/appRouter.ts b/src/alloyhost/appRouter.ts
+index 265c1da..96f38f9 100644
+--- a/src/alloyhost/appRouter.ts
++++ b/src/alloyhost/appRouter.ts
+@@ -14,10 +14,13 @@ import { memoryStore } from './store';
+ 
+ const store = memoryStore(); // Shopify keeps nothing here; Pure Tillium (P7) gets a persistent one
+ 
++/** The Ctx an Alloy's functions get in this app (also used to reach one Alloy's backend directly, see sharedState.ts). */
++export const appCtxFor = (id: string) => makeCtx(id, { secrets: {}, settings: { shopify: { locationId: useApp.getState().settings.locationId ?? '' } }, store, uid });
++
+ export const appRouter = createRouter({
+   alloys: ALLOYS,
+   selection: () => undefined, // P6 reads the saved choice from settings here
+   legacyFacts: () => ({ shopifyConnected: hasCreds(), sharedBackend: activeBackendKind() === 'cloudkit' ? 'cloudkit' : 'metaobject', zellerPaired: true }),
+-  ctxFor: id => makeCtx(id, { secrets: {}, settings: { shopify: { locationId: useApp.getState().settings.locationId ?? '' } }, store, uid }),
++  ctxFor: appCtxFor,
+   isTraining,
+ });
+diff --git a/src/alloyhost/sharedState.ts b/src/alloyhost/sharedState.ts
+new file mode 100644
+index 0000000..79ef25b
+--- /dev/null
++++ b/src/alloyhost/sharedState.ts
+@@ -0,0 +1,18 @@
++// Location: src/alloyhost/sharedState.ts
++// Alloys P5g: how the app reaches one Alloy's shared-state backend by name. The sync seam keeps its own "active backend", and the
++// migration reads one backend while writing the other, so neither can follow the router's single selection. They ask here instead, which
++// finds the Alloy that holds that kind of backend and asks it. The backends themselves are unchanged (the same objects as before).
++import { ALLOYS } from '../alloys';
++import type { SharedBackend } from '../lib/syncBackend';
++import { appCtxFor } from './appRouter';
++
++export type BackendKind = 'metaobject' | 'cloudkit';
++/** Which Alloy holds each kind of backend. */
++export const ALLOY_OF_KIND: Record<BackendKind, string> = { metaobject: 'shopify', cloudkit: 'icloud' };
++
++export function backendFor(kind: BackendKind): SharedBackend {
++  const id = ALLOY_OF_KIND[kind];
++  const impl = ALLOYS.find(a => a.id === id)?.elements.sharedState;
++  if (!impl) throw new Error(`No shared state is built for ${id}.`);
++  return impl.api.backend(appCtxFor(id));
++}
+diff --git a/src/lib/cloudkit/lazyBackend.ts b/src/lib/cloudkit/lazyBackend.ts
+index f89049e..d8e6837 100644
+--- a/src/lib/cloudkit/lazyBackend.ts
++++ b/src/lib/cloudkit/lazyBackend.ts
+@@ -9,8 +9,8 @@ import type { VerifyTarget } from './migrationVerify';
+ 
+ export type BackendKind = 'metaobject' | 'cloudkit';
+ 
+-export const loadBackend = async (kind: BackendKind): Promise<SharedBackend> =>
+-  kind === 'cloudkit' ? (await import('./cloudkitBackend')).cloudkitBackend : (await import('../shopify/metaobjectBackend')).metaobjectBackend;
++// Reached through the Alloy that holds each backend (loaded here, on first use, so a node test never loads the native module or the Shopify client).
++export const loadBackend = async (kind: BackendKind): Promise<SharedBackend> => (await import('../../alloyhost/sharedState')).backendFor(kind);
+ 
+ /** The list, get and put the migration needs, over a backend loaded when first used. `put` stops on the guard. */
+ export const lazyBackend = (kind: BackendKind): VerifyTarget => ({
+diff --git a/tests/alloyp5shared.test.ts b/tests/alloyp5shared.test.ts
+new file mode 100644
+index 0000000..ed4647f
+--- /dev/null
++++ b/tests/alloyp5shared.test.ts
+@@ -0,0 +1,41 @@
++// Location: tests/alloyp5shared.test.ts
++// Alloys P5g: shared state. The migration, the order recovery job and the sync seam reach a backend by kind; that now goes through the
++// Alloy that holds it. Pins that each kind still gives the very same backend object, that the router's own answer agrees with it for the
++// backend in use, and that nothing outside the Alloys imports a backend file directly any more.
++import './helpers/fakeShopify';
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import Module from 'node:module';
++
++test('the Shopify kind gives the same metaobject backend object the app always used', async () => {
++  const { loadBackend } = await import('../src/lib/cloudkit/lazyBackend'); const { metaobjectBackend } = await import('../src/lib/shopify/metaobjectBackend');
++  assert.equal(await loadBackend('metaobject'), metaobjectBackend);
++  const { backendFor, ALLOY_OF_KIND } = await import('../src/alloyhost/sharedState');
++  assert.equal(backendFor('metaobject'), metaobjectBackend); assert.deepEqual(ALLOY_OF_KIND, { metaobject: 'shopify', cloudkit: 'icloud' });
++});
++
++test('the iCloud kind gives the CloudKit backend, loaded only when asked for', async () => {
++  const sentinel = { kind: 'cloudkit', marker: 'x' }; const m: any = Module; const real = m._load; let loaded = 0;
++  m._load = function (req: string, ...rest: unknown[]) { if (/cloudkit\/cloudkitBackend$/.test(req)) { loaded++; return { cloudkitBackend: sentinel }; } return real.call(this, req, ...rest); };
++  try {
++    const { backendFor } = await import('../src/alloyhost/sharedState'); const { loadBackend } = await import('../src/lib/cloudkit/lazyBackend');
++    assert.equal(loaded, 0, 'importing the helpers does not load CloudKit');
++    assert.equal(backendFor('cloudkit') as any, sentinel); assert.equal(await loadBackend('cloudkit') as any, sentinel); assert.equal(loaded, 2);
++  } finally { m._load = real; }
++});
++
++test('the router answers with the same backend for the one in use (Shopify metaobjects when no CloudKit sync is on)', async () => {
++  const { appRouter } = await import('../src/alloyhost/appRouter'); const { metaobjectBackend } = await import('../src/lib/shopify/metaobjectBackend');
++  const { activeBackendKind } = await import('../src/lib/syncBackend');
++  assert.notEqual(activeBackendKind(), 'cloudkit');
++  assert.equal(appRouter.api('sharedState')!.backend(), metaobjectBackend);
++});
++
++test('lazyBackend and the seam no longer import a backend file directly; writes still stop on the guard', () => {
++  const lazy = readFileSync('src/lib/cloudkit/lazyBackend.ts', 'utf8');
++  assert.ok(!/import\('\.\/cloudkitBackend'\)|metaobjectBackend'\)/.test(lazy));
++  assert.ok(lazy.includes('if (!backendWritable()) throw new BackendBlockedError'));
++  const sync = readFileSync('src/lib/sync.ts', 'utf8');
++  assert.ok(!/shopify\/metaobjectBackend|cloudkit\/cloudkitBackend'\)\)\.cloudkitBackend/.test(sync));
++});
+-- 
+2.43.0
+

@@ -1,0 +1,391 @@
+From ce22586a41591c4ae12f6f39d8f78e7640512be8 Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Fri, 20 Nov 2026 10:03:26 +1100
+Subject: [PATCH] Alloys P6b: Connections screen, Shopify form on connectAlloy
+
+---
+ dev_docs/PROGRESS.md         |  1 +
+ dev_docs/QUEUE.md            |  2 +-
+ dev_docs/TO_DO.md            |  2 +-
+ help/help.json               | 37 +++++++++++++++++++-
+ help/settings/connections.md | 40 +++++++++++++++++++++
+ help/settings/index.md       |  2 +-
+ src/alloykit/picker.ts       |  5 +++
+ src/alloykit/types.ts        |  4 +++
+ src/alloys/shopify/alloy.ts  |  2 +-
+ src/screens/Connections.tsx  | 68 ++++++++++++++++++++++++++++++++++++
+ src/screens/Settings.tsx     | 15 ++++----
+ tests/alloypicker.test.ts    | 27 ++++++++++++++
+ 12 files changed, 194 insertions(+), 11 deletions(-)
+ create mode 100644 help/settings/connections.md
+ create mode 100644 src/screens/Connections.tsx
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index ba18938..8982ce5 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -223,6 +223,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0261 | 2026-11-19 | Alloys phase P5g: **Shared state** moves onto the Alloys. The migration, the missing-order job and the sync seam reach a backend by kind (`loadBackend('metaobject' or 'cloudkit')`); that now asks the Alloy that holds the backend (Shopify for metaobjects, iCloud for CloudKit) through the new `src/alloyhost/sharedState.ts`, instead of importing the two backend files. Both still give the very same backend objects, still loaded only when first asked for (so node tests never load the native module), and writes still stop on the practice-mode guard in the seam. These callers cannot follow the router's single selection (the migration reads one backend while writing the other), so they ask by kind; the router's own `sharedState` answer for the backend in use is pinned equal. The ctx builder is now exported from `appRouter.ts` as `appCtxFor`. New `tests/alloyp5shared.test.ts`. Left for P9: `saleCardMode` is still imported from `cloudkitBackend.ts` by sync.ts. No change to what the app does. | `src/alloyhost/{sharedState,appRouter}.ts`, `src/lib/cloudkit/lazyBackend.ts`, tests |
+ | 0262 | 2026-11-20 | Alloys phase P5h: the **Card terminal** moves onto the router, which finishes P5. Pay, Refund and Diagnostics get the terminal from `currentTerminal()` (new `src/alloyhost/terminal.ts`) instead of `getTerminal()` from the Zeller bridge. It returns the very same terminal object (the pretend one in practice mode), and null while the reader has not started or when the Card terminal Element is off, which the screens already treat as reader not ready. The contract changed in one place: `terminal` may return null (it used to throw for a missing reader, which no caller wanted). Not moved yet, on purpose: the reader check, pairing and the Provider (`checkReader`, `pairReader`, `ZellerRoot`) carry app state and stay in the bridge until P6, where they become the Alloy's connect and host; the card helpers in `lib/zeller` (`startCharge`, `startRefund`, `describeEvent`, `attemptRef`, `reconcile`, `txnToCard`) work on any terminal and move to `src/lib` in P9. New `tests/alloyp5terminal.test.ts`. No change to what the app does. | `src/alloykit/types.ts`, `src/alloys/zeller/alloy.ts`, `src/alloyhost/terminal.ts`, `src/screens/{Pay,Refund,Diagnostics}.tsx`, tests |
+ | 0263 | 2026-11-20 | Alloys phase P6a: the **picker's logic**, with no screen yet. `src/alloykit/picker.ts` (pure): `buildPicker` gives one row per Element with the Alloys that can do it, the features and limits each really has, what is chosen, a state (ok, unchosen, off, unknown Alloy, unsupported, missing permissions) and a plain-words warning; `choose` is the only way a selection changes (a required Element cannot be Off, the Alloy must exist and support the Element, the build policy applies); `pickerReady` and `pickerWarnings` say what blocks and what only warns; `alloysInUse` lists the Alloys whose sign-in fields Settings should show. App side: `settings.alloySelection` holds the saved choice, `src/alloyhost/savedSelection.ts` reads it (an empty object counts as never chosen), `src/alloyhost/choice.ts` saves and clears it and has `connectAlloy(id)`, which asks an Alloy to check its sign-in and never throws. `appRouter` now reads the saved choice. Nothing changes for anyone until a choice is saved: with none saved the router reads today's behaviour as before (pinned), and once one is saved an unset Element is off. Not changed on purpose: the Settings Shopify form still calls `fetchShop` directly (P6b rebuilds that screen on `connectAlloy`, which needs the connect report to carry the shop name and a detail line first). The choice is per device for now; whether it should be shared by all registers through shared state is a P6b decision. New `tests/alloypicker.test.ts`. | `src/alloykit/picker.ts`, `src/alloyhost/{savedSelection,choice,appRouter}.ts`, `src/state/store.ts`, tests |
++| 0264 | 2026-11-20 | Alloys phase P6b: the **Connections screen** (More ▸ Settings ▸ Connections, `src/screens/Connections.tsx`). One section per Element with a chip for each connection that can do it (and Off for optional ones), the features and limits of the chosen one, the plain-words warning, **Check connections** (asks each connection in use and shows what each is missing) and **Save choice**. It opens on the saved choice or else on what the app does today, so looking changes nothing; Save asks first and says no data is moved; **Go back to the current setup** removes the saved choice. Save is blocked while Catalogue, Orders or Shared state is unchosen. The Shopify form in Settings now checks the connection with `connectAlloy('shopify')` instead of reading the shop itself; the success message is word for word the same, and so is every error except one: a network failure now reads "Could not connect: Could not reach Shopify. Check the internet connection and try again." instead of the raw network message. To make that possible the connect report gained `name` (the shop name) and `detail` (the permissions line). New help page `settings/connections` (help bundle rebuilt). Still open for P6c: the reader check, pairing and the `ZellerRoot` provider move onto the Zeller Alloy; whether the choice is shared by all registers is not decided (it is per iPad). Tests added to `tests/alloypicker.test.ts`. | `src/screens/{Connections,Settings}.tsx`, `src/alloykit/{picker,types}.ts`, `src/alloys/shopify/alloy.ts`, `help/settings/connections.md`, `help/help.json`, tests |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index 1d08dc9..ad226d5 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only
+ 
+ ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+ 
+-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259, orders 0260, shared state 0261, card terminal 0262; P5 is done; P6a 0263). Next: P6b, the picker screen; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
++Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259, orders 0260, shared state 0261, card terminal 0262; P5 is done; P6a 0263, P6b 0264). Next: P6c, the Zeller reader check, pairing and provider onto the Zeller Alloy; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index f702c2a..68cb4a5 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -100,7 +100,7 @@ Everything here is built and unit tested. What is left on each is your device te
+ Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+ decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
+ the boundary test, with nothing calling them). P2 is built (0251: tests that pin what the Shopify and Zeller code does now).
+-P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258), gift cards (0259), orders (0260) and shared state (0261) and the card terminal (0262) are on the router, which finishes P5. P6a is built (0263: the picker rules, the saved choice, the router reading it). Next: P6b (the picker screen), where the reader check and pairing (still the bridge's `checkReader`/`pairReader`, with `ZellerRoot`) become the Zeller Alloy's connect and host. P9 list also: `saleCardMode` in `cloudkitBackend.ts` is still reached directly by sync.ts. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
++P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258), gift cards (0259), orders (0260) and shared state (0261) and the card terminal (0262) are on the router, which finishes P5. P6a is built (0263: the picker rules, the saved choice, the router reading it) and P6b (0264: the Connections screen, and the Shopify form on `connectAlloy`). Next: P6c, where the reader check and pairing (still the bridge's `checkReader`/`pairReader`, with `ZellerRoot`) become the Zeller Alloy's connect and host. P9 list also: `saleCardMode` in `cloudkitBackend.ts` is still reached directly by sync.ts. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/help/help.json b/help/help.json
+index 0f19b8d..1106919 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "2f946f19",
++ "version": "1d228d42",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1559,6 +1559,7 @@
+     "theme"
+    ],
+    "related": [
++    "settings/connections",
+     "settings/shopify",
+     "settings/payments",
+     "settings/hardware",
+@@ -1754,6 +1755,40 @@
+     "<figure class=\"sf\"><div class=\"sf-frame\"><div class=\"sf-bar\"><span class=\"sf-title\">Cloud sync</span></div><div class=\"sf-body\"><div class=\"sf-label-head\">Back up everything in iCloud</div><div class=\"sf-text\">Makes one zip of JSON files with everything the shop keeps in iCloud.</div><div class=\"sf-button sf-primary\"><span class=\"sf-badge\">1</span>Back up everything</div><div class=\"sf-label-head\">Events from every register</div><div class=\"sf-button\"><span class=\"sf-badge\">2</span>Export all events</div></div></div><figcaption class=\"sf-note\">Keep the zip private. It is as sensitive as the Shopify login.</figcaption></figure>"
+    ]
+   },
++  {
++   "id": "settings/connections",
++   "title": "Connections",
++   "parent": "settings",
++   "summary": "Choose which connection supplies each part of the till, check them, and go back to the current setup.",
++   "tags": [
++    "connections",
++    "Alloys",
++    "Shopify",
++    "Zeller",
++    "iCloud",
++    "catalogue",
++    "orders",
++    "shared state",
++    "setup"
++   ],
++   "related": [
++    "settings",
++    "settings/shopify",
++    "settings/cloud-sync",
++    "settings/hardware"
++   ],
++   "updated": "2026-11-20",
++   "roles": [
++    "manager",
++    "owner"
++   ],
++   "lead": "Open **More ▸ Settings ▸ Connections** to see where each part of the till gets its data, such as the catalogue, orders, stock, gift cards and the card reader.",
++   "sections": {
++    "basic": "### What the screen shows\nEach part of the till has a row. The chips under it are the connections that can do that part, plus **Off** for the parts that are optional. A part marked *needed* (Catalogue, Orders and Shared state) cannot be switched off.\n\nThe screen opens on what the till is doing today, so looking at it changes nothing. Nothing is saved until you tap **Save choice**, and saving never moves or deletes any data. Anything already held in an older service stays there.\n\n### Check connections\nTap **Check connections** to ask every connection in use whether it is signed in and what it is missing. A part the login has no permission for shows a warning naming the permission to add.\n\n### Go back\nOnce a choice is saved, **Go back to the current setup** removes it, and the till reads its setup the way it did before.",
++    "deep": "### Warnings\nA needed part with nothing chosen blocks **Save choice**. An optional part that is off shows what the shop loses, for example that stock screens are hidden. A missing permission warns but does not block, because the rest of the till still works.",
++    "advanced": "| Job | Where |\n|---|---|\n| The screen | `Connections` in `src/screens/Connections.tsx` |\n| Rows, warnings and the rules for changing a choice | `buildPicker`, `choose`, `pickerReady` in `src/alloykit/picker.ts` |\n| Saved choice and the connection check | `saveSelection`, `connectAlloy` in `src/alloyhost/choice.ts` |\n| Reading the saved choice | `readSavedSelection` in `src/alloyhost/savedSelection.ts`, used by `src/alloyhost/appRouter.ts` |\n\nFor the Shopify sign-in and location, see [[settings/shopify]]."
++   }
++  },
+   {
+    "id": "settings/hardware",
+    "title": "Hardware and the scanner test",
+diff --git a/help/settings/connections.md b/help/settings/connections.md
+new file mode 100644
+index 0000000..8dc1247
+--- /dev/null
++++ b/help/settings/connections.md
+@@ -0,0 +1,40 @@
++---
++id: settings/connections
++title: Connections
++parent: settings
++summary: Choose which connection supplies each part of the till, check them, and go back to the current setup.
++tags: [connections, Alloys, Shopify, Zeller, iCloud, catalogue, orders, shared state, setup]
++related: [settings, settings/shopify, settings/cloud-sync, settings/hardware]
++updated: 2026-11-20
++roles: [manager, owner]
++---
++Open **More ▸ Settings ▸ Connections** to see where each part of the till gets its data, such as the catalogue, orders, stock, gift cards and the card reader.
++
++## Basic
++
++### What the screen shows
++Each part of the till has a row. The chips under it are the connections that can do that part, plus **Off** for the parts that are optional. A part marked *needed* (Catalogue, Orders and Shared state) cannot be switched off.
++
++The screen opens on what the till is doing today, so looking at it changes nothing. Nothing is saved until you tap **Save choice**, and saving never moves or deletes any data. Anything already held in an older service stays there.
++
++### Check connections
++Tap **Check connections** to ask every connection in use whether it is signed in and what it is missing. A part the login has no permission for shows a warning naming the permission to add.
++
++### Go back
++Once a choice is saved, **Go back to the current setup** removes it, and the till reads its setup the way it did before.
++
++## Deep
++
++### Warnings
++A needed part with nothing chosen blocks **Save choice**. An optional part that is off shows what the shop loses, for example that stock screens are hidden. A missing permission warns but does not block, because the rest of the till still works.
++
++## Advanced
++
++| Job | Where |
++|---|---|
++| The screen | `Connections` in `src/screens/Connections.tsx` |
++| Rows, warnings and the rules for changing a choice | `buildPicker`, `choose`, `pickerReady` in `src/alloykit/picker.ts` |
++| Saved choice and the connection check | `saveSelection`, `connectAlloy` in `src/alloyhost/choice.ts` |
++| Reading the saved choice | `readSavedSelection` in `src/alloyhost/savedSelection.ts`, used by `src/alloyhost/appRouter.ts` |
++
++For the Shopify sign-in and location, see [[settings/shopify]].
+diff --git a/help/settings/index.md b/help/settings/index.md
+index d1cf964..1b0d8f4 100644
+--- a/help/settings/index.md
++++ b/help/settings/index.md
+@@ -4,7 +4,7 @@ title: Settings
+ parent: start
+ summary: Find Shopify, payment, hardware, data, receipt, backup, display and other register settings.
+ tags: [settings, Shopify, payments, fees, rounding, hardware, scanner, receipts, backup, theme]
+-related: [settings/shopify, settings/payments, settings/hardware, settings/scanner-codes, settings/receipts, settings/backup, settings/theme, settings/cloud-sync, start/setup, device-mode, staff/screensaver, staff, sales/bundles, sales/cart-warnings, settings/assistant]
++related: [settings/connections, settings/shopify, settings/payments, settings/hardware, settings/scanner-codes, settings/receipts, settings/backup, settings/theme, settings/cloud-sync, start/setup, device-mode, staff/screensaver, staff, sales/bundles, sales/cart-warnings, settings/assistant]
+ updated: 2026-10-11
+ roles: [manager, owner]
+ ---
+diff --git a/src/alloykit/picker.ts b/src/alloykit/picker.ts
+index 0b06ce2..09dd3f2 100644
+--- a/src/alloykit/picker.ts
++++ b/src/alloykit/picker.ts
+@@ -76,3 +76,8 @@ export function alloysInUse(sel: Selection, alloys: Alloy[]): Alloy[] {
+   for (const { id } of ELEMENTS) { const v = sel[id]; if (v && v !== OFF && !ids.includes(v)) ids.push(v); }
+   return ids.map(i => alloyFor(alloys, i)).filter((a): a is Alloy => !!a);
+ }
++
++/** What the picker starts from: the saved choice, or else what the app is doing today, so opening it changes nothing until Save. */
++export const startingDraft = (saved: Selection | undefined, today: Selection): Selection => ({ ...(saved ?? today) });
++/** Whether two selections mean the same thing (an unset Element and Off are the same). */
++export const sameSelection = (a: Selection, b: Selection): boolean => ELEMENTS.every(({ id }) => (a[id] ?? OFF) === (b[id] ?? OFF));
+diff --git a/src/alloykit/types.ts b/src/alloykit/types.ts
+index 455ef85..5683a45 100644
+--- a/src/alloykit/types.ts
++++ b/src/alloykit/types.ts
+@@ -134,6 +134,10 @@ export type ConnectReport = {
+   missing?: Partial<Record<ElementId, string[]>>;
+   /** Lists for `pickFrom` fields. */
+   lists?: Record<string, { id: string; name: string }[]>;
++  /** What the service calls this account (the shop name), for "Connected to ...". */
++  name?: string;
++  /** One line of extra detail to show after connecting (Shopify: the permissions the login holds). */
++  detail?: string;
+ };
+ export type ElementImpl<E extends ElementId> = {
+   api: ElementApi[E];
+diff --git a/src/alloys/shopify/alloy.ts b/src/alloys/shopify/alloy.ts
+index 0139de2..af85c59 100644
+--- a/src/alloys/shopify/alloy.ts
++++ b/src/alloys/shopify/alloy.ts
+@@ -55,7 +55,7 @@ const alloy: Alloy = {
+       const shop = await fetchShop();
+       const granted = tokenScopes(); const missing: Partial<Record<ElementId, string[]>> = {};
+       for (const [el, needs] of Object.entries(NEEDS) as [ElementId, string[]][]) { const m = needs.filter(n => !has(granted, n)); if (m.length) missing[el] = m; }
+-      return { ok: true, missing, lists: { locationId: shop.locations } };
++      return { ok: true, missing, lists: { locationId: shop.locations }, name: shop.name, detail: tokenScopes().join(', ') };
+     } catch (e) {
+       if (e instanceof ShopifyNetworkError) return { ok: false, problem: 'Could not reach Shopify. Check the internet connection and try again.' };
+       if (e instanceof ShopifyUserError) return { ok: false, problem: e.message };
+diff --git a/src/screens/Connections.tsx b/src/screens/Connections.tsx
+new file mode 100644
+index 0000000..508a27e
+--- /dev/null
++++ b/src/screens/Connections.tsx
+@@ -0,0 +1,68 @@
++// Location: src/screens/Connections.tsx
++// Alloys P6b: Settings ▸ Connections. For each part of the till (Element), which connection (Alloy) supplies it. It opens on what the app
++// does today, changes nothing until Save, and never moves any data: choosing another service only changes where new work goes.
++import React, { useState } from 'react';
++import { View } from 'react-native';
++import { Btn, Chip, Section, Txt, alertMsg, confirm } from '../ui/kit';
++import { ALLOYS } from '../alloys';
++import { appRouter } from '../alloyhost/appRouter';
++import { clearSelection, connectAlloy, readSavedSelection, saveSelection } from '../alloyhost/choice';
++import { alloysInUse, buildPicker, choose, pickerReady, sameSelection, startingDraft, type Reports } from '../alloykit/picker';
++import { OFF, type Selection } from '../alloykit/types';
++
++export function Connections() {
++  const saved = readSavedSelection();
++  const [draft, setDraft] = useState<Selection>(() => startingDraft(saved, appRouter.current().selection));
++  const [reports, setReports] = useState<Reports>({}); const [busy, setBusy] = useState(false); const [note, setNote] = useState(''); const [hasSaved, setHasSaved] = useState(!!saved);
++  const rows = buildPicker(ALLOYS, draft, reports); const ready = pickerReady(rows);
++  const changed = !sameSelection(draft, readSavedSelection() ?? appRouter.current().selection);
++  const pick = (element: (typeof rows)[number]['element'], alloyId: string) => {
++    const r = choose(draft, element, alloyId, ALLOYS);
++    if (!r.ok) { alertMsg('Cannot change that', r.reason); return; }
++    setDraft(r.selection); setNote('');
++  };
++  const check = async () => {
++    setBusy(true); setNote('');
++    const next: Reports = {};
++    for (const a of alloysInUse(draft, ALLOYS)) next[a.id] = await connectAlloy(a.id);
++    setReports(next); setBusy(false);
++    const bad = Object.entries(next).filter(([, r]) => r && !r.ok).map(([id, r]) => `${ALLOYS.find(a => a.id === id)?.name ?? id}: ${r!.problem}`);
++    setNote(bad.length ? bad.join('\n') : 'Every connection in use answered.');
++  };
++  const save = async () => {
++    if (!ready.ok) { alertMsg('Not yet', 'Choose where Catalogue, Orders and Shared state come from first.'); return; }
++    if (!(await confirm('Save this choice?', 'Only where the till gets its data from changes. No data is moved or deleted. Anything already in the old service stays there.', 'Save'))) return;
++    saveSelection(draft); setHasSaved(true); setNote('Saved.');
++  };
++  const reset = async () => {
++    if (!(await confirm('Go back to the current setup?', 'The saved choice is removed and the till reads its setup the way it did before this screen existed.', 'Go back', true))) return;
++    clearSelection(); setHasSaved(false); setDraft(startingDraft(undefined, appRouter.current().selection)); setReports({}); setNote('Back to the current setup.');
++  };
++  return (
++    <View style={{ padding: 16, gap: 12 }}>
++      <Txt size={13} sub>{hasSaved ? 'Using your saved choice.' : 'Nothing saved: the till is using its current setup, shown below.'}</Txt>
++      {rows.map(r => (
++        <Section key={r.element} title={`${r.label}${r.required ? ' (needed)' : ''}`}>
++          <View style={{ padding: 16, gap: 8 }}>
++            <Txt size={13} sub>{r.blurb}</Txt>
++            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
++              {r.options.map(o => <Chip key={o.alloyId} label={o.name} active={r.chosen === o.alloyId} onPress={() => pick(r.element, o.alloyId)} />)}
++              {!r.required ? <Chip label="Off" active={!r.chosen} onPress={() => pick(r.element, OFF)} /> : null}
++            </View>
++            {r.chosen ? r.options.filter(o => o.alloyId === r.chosen).map(o => (
++              <View key={o.alloyId} style={{ gap: 2 }}>
++                {o.features.length ? <Txt size={12} sub>Can also: {o.features.join(', ')}</Txt> : null}
++                {o.limits.map(l => <Txt key={l} size={12} sub>{l}</Txt>)}
++              </View>
++            )) : null}
++            {r.warning ? <Txt size={12} style={{ color: r.state === 'off' ? undefined : '#B45309' }} sub={r.state === 'off'}>{r.warning}</Txt> : null}
++          </View>
++        </Section>
++      ))}
++      <Btn title="Check connections" icon="refresh" kind="secondary" busy={busy} onPress={() => void check()} />
++      <Btn title="Save choice" onPress={() => void save()} disabled={!ready.ok || (!changed && hasSaved)} />
++      {hasSaved ? <Btn title="Go back to the current setup" kind="ghost" onPress={() => void reset()} /> : null}
++      {note ? <Txt size={13} sub>{note}</Txt> : null}
++    </View>
++  );
++}
+diff --git a/src/screens/Settings.tsx b/src/screens/Settings.tsx
+index bdda466..a0ee7ea 100644
+--- a/src/screens/Settings.tsx
++++ b/src/screens/Settings.tsx
+@@ -8,7 +8,8 @@ import { Btn, Card, Chip, Field, Page, Row, Section, Segmented, Sheet, Slider, T
+ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
+ import { getReceiptSecret, setReceiptSecret, getPassSecret, setPassSecret, getClaimSecret, setClaimSecret, clearCreds, getToken, hasCreds, loadCreds, saveCreds, shopDomain, tokenScopes, normaliseDomain } from '../lib/shopify/client';
+-import { fetchShop } from '../lib/shopify/catalogue';
++import { connectAlloy } from '../alloyhost/choice';
++import { Connections } from './Connections';
+ import { ensureShared } from '../lib/syncBackend';
+ import { importFromShopify, pushLayout, pushSharedSettings, pollShared } from '../lib/sync';
+ import { uploadSampleReceipt } from '../lib/receiptSync';
+@@ -31,21 +32,22 @@ import { GIFT_CARD_PASSES } from '../lib/features';
+ import { TILE_COLORS, useTheme } from '../ui/theme';
+ import { requireStepUp } from '../lib/stepUpGate';
+ 
+-type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'square' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about' | 'warnings' | 'assistant';
++type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'square' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about' | 'warnings' | 'assistant' | 'connections';
+ const HELP_PAGE: Record<Sub, string> = {
+   menu: 'settings', shopify: 'settings/shopify', payments: 'settings/payments', discounts: 'sales/bundles', hardware: 'settings/hardware',
+   data: 'settings/backup', square: 'orders/square-history', grid: 'sales/grid', gift: 'gift', receipts: 'settings/receipts',
+-  backup: 'settings/backup', display: 'staff/screensaver', theme: 'settings/theme', about: 'start', warnings: 'sales/cart-warnings', assistant: 'settings/assistant',
++  backup: 'settings/backup', display: 'staff/screensaver', theme: 'settings/theme', about: 'start', warnings: 'sales/cart-warnings', assistant: 'settings/assistant', connections: 'settings/connections',
+ };
+ 
+ export default function Settings({ open }: { open?: Sub } = {}) {
+   const nav = useNav(); const [sub, setSub] = useState<Sub>(open ?? 'menu'); const back = () => (sub === 'menu' || open ? nav.pop() : setSub('menu')); // opened straight onto a page (from the chat): Back returns to where it came from
+   const s = useApp(st => st.settings); const patch = useApp(st => st.patchSettings); const canAssistant = useCanEditAssistant();
+-  const titles: Record<Sub, string> = { menu: 'Settings', shopify: 'Shopify', payments: 'Payments', discounts: 'Discounts & bundles', hardware: 'Hardware', data: 'Data', square: 'Square history', grid: 'Grid import / export', gift: 'Gift cards', receipts: 'Receipts', backup: 'Backup & transfer', display: 'Screensaver & display', theme: 'Theme', about: 'About', warnings: 'Cart warnings', assistant: 'AI assistant' };
++  const titles: Record<Sub, string> = { menu: 'Settings', shopify: 'Shopify', payments: 'Payments', discounts: 'Discounts & bundles', hardware: 'Hardware', data: 'Data', square: 'Square history', grid: 'Grid import / export', gift: 'Gift cards', receipts: 'Receipts', backup: 'Backup & transfer', display: 'Screensaver & display', theme: 'Theme', about: 'About', warnings: 'Cart warnings', assistant: 'AI assistant', connections: 'Connections' };
+   return (
+     <Page title={titles[sub]} onBack={back} helpId={HELP_PAGE[sub]}>
+       {sub === 'menu' ? <>
+         <Section>
++          <Row icon="git-network-outline" title="Connections" sub="Where each part of the till gets its data" onPress={() => setSub('connections')} />
+           <Row icon="storefront-outline" title="Shopify" sub={hasCreds() ? shopDomain() : 'Not connected'} onPress={() => setSub('shopify')} />
+           <Row icon="card-outline" title="Payments" sub={`Cash rounding ${s.cashRounding ? 'on' : 'off'} · fees ${(s.fees.cardPresentRate * 100).toFixed(1)}%`} onPress={() => setSub('payments')} />
+           <Row icon="pricetags-outline" title="Discounts & bundles" onPress={() => setSub('discounts')} />
+@@ -63,6 +65,7 @@ export default function Settings({ open }: { open?: Sub } = {}) {
+           <Row icon="information-circle-outline" title="About" last onPress={() => setSub('about')} /></Section>
+         <Section title="Checkout"><Toggle label="Consolidate identical items" sub="Tapping the same item again adds to its quantity" value={s.consolidate} onChange={v => patch({ consolidate: v })} />
+           <Row title="Tax" sub="Off - prices are tax-inclusive and no tax is added" last /></Section></> : null}
++      {sub === 'connections' ? <Connections /> : null}
+       {sub === 'shopify' ? <ShopifySettings /> : null}
+       {sub === 'receipts' ? <ReceiptSettings /> : null}
+       {sub === 'backup' ? <BackupSettings /> : null}
+@@ -123,8 +126,8 @@ function ShopifySettings() {
+   useEffect(() => { void loadCreds().then(c => c && setF({ domain: c.domain, id: c.clientId, secret: c.clientSecret })); }, []);
+   const connect = async () => {
+     setBusy(true); setMsg('');
+-    try { const domain = normaliseDomain(f.domain); await saveCreds({ domain, clientId: f.id.trim(), clientSecret: f.secret.trim() }); await getToken(true); const shop = await fetchShop(); setLocs(shop.locations); patch({ shopName: shop.name, locationId: s.locationId ?? shop.locations[0]?.id, locationName: s.locationName ?? shop.locations[0]?.name });
+-      setMsg(`Connected to ${shop.name}. Scopes: ${tokenScopes().join(', ') || '(none reported)'}`); }
++    try { const domain = normaliseDomain(f.domain); await saveCreds({ domain, clientId: f.id.trim(), clientSecret: f.secret.trim() }); await getToken(true); const rep = await connectAlloy('shopify'); if (!rep.ok) throw new Error(rep.problem); const locations = rep.lists?.locationId ?? []; setLocs(locations); patch({ shopName: rep.name ?? '', locationId: s.locationId ?? locations[0]?.id, locationName: s.locationName ?? locations[0]?.name });
++      setMsg(`Connected to ${rep.name}. Scopes: ${rep.detail || '(none reported)'}`); }
+     catch (e: any) { setMsg(`Could not connect: ${e.message}`); }
+     setBusy(false);
+   };
+diff --git a/tests/alloypicker.test.ts b/tests/alloypicker.test.ts
+index de00b73..69cf77b 100644
+--- a/tests/alloypicker.test.ts
++++ b/tests/alloypicker.test.ts
+@@ -74,3 +74,30 @@ test('connectAlloy never throws: an unknown Alloy and a missing login come back
+   const fake = await import('./helpers/fakeShopify'); fake.install(); const client = await import('../src/alloys/shopify/client'); await client.clearCreds();
+   assert.deepEqual(await connectAlloy('shopify'), { ok: false, problem: 'Enter the shop address, client ID and client secret.' });
+ });
++
++test('the picker opens on what is saved or else what the app does today, and unset equals off', async () => {
++  const { startingDraft, sameSelection } = await import('../src/alloykit/picker');
++  assert.deepEqual(startingDraft(undefined, { orders: 'shopify' }), { orders: 'shopify' });
++  assert.deepEqual(startingDraft({ orders: 'x' }, { orders: 'shopify' }), { orders: 'x' });
++  assert.equal(sameSelection({ stock: OFF }, {}), true); assert.equal(sameSelection({ stock: 'shopify' }, {}), false);
++});
++
++test('connect reports the shop name and the permissions line, so Settings can say what it always said', async () => {
++  const fake = await import('./helpers/fakeShopify'); fake.install(); await fake.signIn();
++  fake.on('locations(first: 20)', fake.data({ shop: { name: 'My Shop', currencyCode: 'AUD' }, locations: { nodes: [{ id: 'L1', name: 'Home', isActive: true }] } }));
++  const { connectAlloy } = await import('../src/alloyhost/choice'); const r = await connectAlloy('shopify');
++  assert.equal(r.ok, true); assert.equal(r.name, 'My Shop'); assert.equal(typeof r.detail, 'string'); assert.ok(r.detail!.includes('read_products'));
++});
++
++test('Settings uses the connection check instead of reading the shop itself, and Connections only saves after Save is confirmed', async () => {
++  const { readFileSync } = await import('node:fs');
++  const set = readFileSync('src/screens/Settings.tsx', 'utf8');
++  assert.ok(!set.includes('fetchShop') && set.includes("connectAlloy('shopify')"));
++  assert.ok(set.includes("setMsg(`Connected to ${rep.name}. Scopes: ${rep.detail || '(none reported)'}`)"));
++  assert.ok(set.includes("connections: 'settings/connections'"));
++  const scr = readFileSync('src/screens/Connections.tsx', 'utf8');
++  assert.ok(scr.includes('startingDraft(saved, appRouter.current().selection)'));
++  assert.ok(scr.indexOf("'Save this choice?'") < scr.indexOf('saveSelection(draft)'), 'the confirm comes before the save');
++  assert.equal((scr.match(/saveSelection\(/g) ?? []).length, 1);
++  assert.ok(scr.includes('choose(draft, element, alloyId, ALLOYS)'));
++});
+-- 
+2.43.0
+
