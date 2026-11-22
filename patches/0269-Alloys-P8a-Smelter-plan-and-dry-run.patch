@@ -1,0 +1,374 @@
+From a08d23bd92ee921158c3ec272877cdcc14cef687 Mon Sep 17 00:00:00 2001
+From: a <a@a>
+Date: Sun, 22 Nov 2026 11:43:57 +1100
+Subject: [PATCH] Alloys P8a: Smelter plan and dry run
+
+---
+ dev_docs/PROGRESS.md        |   1 +
+ dev_docs/QUEUE.md           |   2 +-
+ dev_docs/TO_DO.md           |   2 +-
+ src/alloyhost/smelter.ts    |  40 ++++++++++++
+ src/alloykit/elements.ts    |   2 +-
+ src/alloykit/smelter.ts     | 123 ++++++++++++++++++++++++++++++++++++
+ src/alloykit/types.ts       |   2 +
+ src/alloys/tillium/alloy.ts |   7 +-
+ tests/alloysmelter.test.ts  |  81 ++++++++++++++++++++++++
+ 9 files changed, 256 insertions(+), 4 deletions(-)
+ create mode 100644 src/alloyhost/smelter.ts
+ create mode 100644 src/alloykit/smelter.ts
+ create mode 100644 tests/alloysmelter.test.ts
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 689e260..ab4c3d5 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -228,6 +228,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0266 | 2026-11-21 | Alloys phase P7a: **Pure Tillium**, a built-in Alloy (`src/alloys/tillium/alloy.ts`) that keeps the shop's data on the device with no outside service: Catalogue (items, collections, create and update), Stock (levels, adjust and set, changes since a cursor), Discounts (reads what is stored), Customers (search by name, email or phone digits, create, update, order counts), Orders (record once per sale, numbered #T1001 onward, list by tab and page, fulfil, refund with restock) and Gift cards (create, look up by a scanned code, debit and credit, safe-to-repeat versions, history, outstanding balance). It follows the contract exactly, so the till cannot tell it from Shopify: orders carry the same gateway names the refund screen reads (`Zeller`, `Cash`, `Gift card`), every write that takes a key is safe to repeat, and practice mode refuses its writes through the router like any other Alloy. It imports only types and does no network. It is **not offered yet**: its store is in memory until P7b, so `PURE_TILLIUM_READY` in `src/alloys/index.ts` is false and the picker does not list it; the conformance suite and the new `tests/alloytillium.test.ts` (11 tests, including a whole shop through the router) run it anyway. Shared state is not part of it: a Pure Tillium shop takes Shared state from iCloud (P7b). Orders under Open show everything, since there is no archive. No change to the app. | `src/alloys/tillium/alloy.ts`, `src/alloys/index.ts`, tests |
+ | 0267 | 2026-11-21 | Alloys phase P7b: Pure Tillium's **store survives a restart**, and the app stops assuming Shopify is the only thing that can be ready. (1) `src/alloyhost/persistentStore.ts`: a LocalStore over AsyncStorage, one key per record (`tl1:<collection>:<id>`) so a write touches only its own record; a failed write is an error the Alloy sees (never a silent loss); in a node test it falls back to memory. The app's Ctx now uses it, and every Alloy gets its own corner of it (`scopedStore`), so two Alloys can use the same collection names. (2) Pure Tillium's writes take turns (one at a time), so two sales finishing together never take the same order number, parallel stock adjustments all count, and a gift card is never spent past its balance. (3) A new optional `Alloy.ready()` (Shopify: signed in; iCloud: Cloud sync is the backend in use; absent: always ready) and `alloyReady(element)` in `src/alloyhost/ready.ts`. The sync code, Transactions and Reports used `hasCreds()` (Shopify signed in) to decide whether to do anything; they now ask `alloyReady('orders' or 'sharedState' or 'giftCards')`. With today's setup (nothing saved) the answer is exactly `hasCreds()` for every part, pinned in a test, so nothing changes; once a choice is saved it asks the Alloy that supplies the part, so a Pure Tillium shop is not held back for want of a Shopify login. Pure Tillium is **still not offered** (`PURE_TILLIUM_READY` false). What P7c must still do before it can be: the first-run Setup checklist, the Settings Shopify rows, and `assistantStatusIO` still treat Shopify as the shop; the catalogue's first load and the Items and Stock screens need a look for a shop with no Shopify. Two guard tests were updated for the new call text (practice outbox and the CloudKit `put()` scan). Tests: `tests/alloypersist.test.ts` (8, including a restart and parallel writes). | `src/alloyhost/{persistentStore,ready,ctx,appRouter}.ts`, `src/alloys/{tillium/alloy,shopify/alloy,icloud}.ts`, `src/alloykit/types.ts`, `src/lib/sync.ts`, `src/screens/{Transactions,Reports}.tsx`, tests |
+ | 0268 | 2026-11-21 | Alloys phase P7c: **Pure Tillium is switched on** (`PURE_TILLIUM_READY` true), so Connections offers it for Catalogue, Stock, Discounts, Customers, Orders and Gift cards, and a shop can run on it with no Shopify account. What it took: (1) **Shared state is now optional** (a design change from the plan, which had Pure Tillium supply a one-device Shared state): Off means each register works alone, which is exactly a one-iPad Pure Tillium shop; Shopify and iCloud shops are unaffected because today's setup always sets it. The required Elements are now Catalogue and Orders. (2) **A built-in location**: stock, the half-hourly catalogue refresh and several screens only work when `settings.locationId` is set, and Pure Tillium has no locations, so saving a choice whose catalogue connection has none sets `locationId` to `local` (name "This iPad") and sets any real Shopify location aside in `settings.priorLocation`; going back (Go back to the current setup, or choosing Shopify) restores it exactly. `local` is never sent to other registers (outgoing skip, incoming ignore), which may be on Shopify. New optional `Alloy.needsLocation` (Shopify true). (3) After switching, the next poll reloads the catalogue from the new connection (the location differs, so the refresh is due). (4) **Setup** checklist step 1 reads "Choose where the shop's data lives" with a link to Connections when the connection is not Shopify, and is done without a Shopify login; Shopify's wording is unchanged. `Refresh stock from <name>` on the Inventory screen names the connection. (5) Saving a choice that moves an Element to a different connection now warns, in plain words, that what is in the old one is **not** copied (the Smelter, P8, will do that). (6) The picker shows Pure Tillium's limit: held on this iPad only, not shared with other registers. Not done, on purpose: sharing Pure Tillium data between registers; the QR setup copies settings but not Pure Tillium data; reports and the assistant still say Shopify in places. In a node run AsyncStorage loads its web build and cannot save, so tests use `localStoreUseMemory()`. Tests: `tests/alloyp7c.test.ts` (5); three existing tests updated (registry list, picker options, required list). Device test T121. | `src/alloys/index.ts`, `src/alloyhost/{choice,names,persistentStore}.ts`, `src/alloykit/{elements,types}.ts`, `src/lib/{setupFlow,sharedSettings}.ts`, `src/screens/{Connections,Setup,Inventory}.tsx`, `src/state/store.ts`, tests |
++| 0269 | 2026-11-22 | Alloys phase P8a: **the Smelter's plan and dry run**. `src/alloykit/smelter.ts` (pure `buildPlan`) says what copying a shop from one connection to another would do: items matched by SKU, then barcode, then name and price; archived and draft items left behind; options become their own named items; stock carried with the item; collections matched by title; customers matched by email, phone, then name; and an always-shown list of what is not moved (order history, gift cards, discounts, pictures). `src/alloyhost/smelter.ts` reads both Alloys directly and never writes. Catalogue gained an optional `createCollection`, built in Pure Tillium. Nothing runs yet (P8b). Device test: none, no screen yet. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index a78670a..dec7aea 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only
+ 
+ ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+ 
+-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259, orders 0260, shared state 0261, card terminal 0262; P5 is done; P6a 0263, P6b 0264, P6c 0265; P6 is done; P7a 0266, P7b 0267, P7c 0268; Pure Tillium is on). Next: P8, the Smelter; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
++Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P8a is done (0269, Smelter plan and dry run); P8b (the run and a Move my data screen) is next. P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259, orders 0260, shared state 0261, card terminal 0262; P5 is done; P6a 0263, P6b 0264, P6c 0265; P6 is done; P7a 0266, P7b 0267, P7c 0268; Pure Tillium is on). Next: P8, the Smelter; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index 7e82582..3038366 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -100,7 +100,7 @@ Everything here is built and unit tested. What is left on each is your device te
+ Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+ decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
+ the boundary test, with nothing calling them). P2 is built (0251: tests that pin what the Shopify and Zeller code does now).
+-P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258), gift cards (0259), orders (0260) and shared state (0261) and the card terminal (0262) are on the router, which finishes P5. P6a is built (0263: the picker rules, the saved choice, the router reading it) and P6b (0264: the Connections screen, and the Shopify form on `connectAlloy`). P6c (0265) moved the reader check, pairing and host onto the Zeller Alloy, which finishes P6. Device tests needed: T119 (Connections, 0264) and T120 (reader, 0265). P7a (0266) built Pure Tillium and P7b (0267) gave it a store that survives a restart and made the sync code ask each Alloy whether it is ready. P7c (0268) turned it on. Device test T121. Known gap: Pure Tillium data lives on one iPad and is not shared between registers (a later patch could share it through iCloud records). Next: P8, the Smelter (move a shop's data between connections). P9 list also: `saleCardMode` in `cloudkitBackend.ts` is still reached directly by sync.ts. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
++P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P8a (0269) is built: the Smelter plan and dry run, no writes; P8b is the run and its screen. P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258), gift cards (0259), orders (0260) and shared state (0261) and the card terminal (0262) are on the router, which finishes P5. P6a is built (0263: the picker rules, the saved choice, the router reading it) and P6b (0264: the Connections screen, and the Shopify form on `connectAlloy`). P6c (0265) moved the reader check, pairing and host onto the Zeller Alloy, which finishes P6. Device tests needed: T119 (Connections, 0264) and T120 (reader, 0265). P7a (0266) built Pure Tillium and P7b (0267) gave it a store that survives a restart and made the sync code ask each Alloy whether it is ready. P7c (0268) turned it on. Device test T121. Known gap: Pure Tillium data lives on one iPad and is not shared between registers (a later patch could share it through iCloud records). Next: P8, the Smelter (move a shop's data between connections). P9 list also: `saleCardMode` in `cloudkitBackend.ts` is still reached directly by sync.ts. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/src/alloyhost/smelter.ts b/src/alloyhost/smelter.ts
+new file mode 100644
+index 0000000..d055a92
+--- /dev/null
++++ b/src/alloyhost/smelter.ts
+@@ -0,0 +1,40 @@
++// Location: src/alloyhost/smelter.ts
++// Alloys P8a: reads both sides for the Smelter and builds the plan (the dry run). Reads only: it never writes, in practice mode or out of it.
++// It talks to each Alloy directly rather than through the router, because the router answers for the one connection in use and the Smelter
++// needs the connection being left and the one being joined at the same moment.
++import { ALLOYS } from '../alloys';
++import { buildPlan, type SmeltPlan, type SmeltSide } from '../alloykit/smelter';
++import type { Alloy, Ctx } from '../alloykit/types';
++import { appCtxFor } from './appRouter';
++import { readAllPages } from './catalogue';
++import type { Collection, Customer, Variant } from '../lib/types';
++
++export type SideResult = { ok: true; side: SmeltSide } | { ok: false; problem: string };
++
++export async function readSide(id: string, onProgress?: (s: string) => void, alloys: Alloy[] = ALLOYS, ctxFor: (id: string) => Ctx = appCtxFor): Promise<SideResult> {
++  const a = alloys.find(x => x.id === id);
++  if (!a) return { ok: false, problem: `This version of the app has no connection called "${id}".` };
++  const cat = a.elements.catalogue?.api;
++  if (!cat) return { ok: false, problem: `${a.name} holds no catalogue.` };
++  const ctx = ctxFor(id);
++  try {
++    onProgress?.(`Reading items from ${a.name}…`);
++    const items: Variant[] = await readAllPages(r => cat.listItems(ctx, r), onProgress);
++    const collections: Collection[] = await readAllPages(r => cat.listCollections(ctx, r), onProgress);
++    const cu = a.elements.customers?.api;
++    onProgress?.(`Reading customers from ${a.name}…`);
++    const customers: Customer[] | null = cu?.listAll ? await cu.listAll(ctx, { onProgress }) : null;
++    return { ok: true, side: { id, name: a.name, items, collections, customers,
++      can: { createItem: !!cat.createItem, createCollection: !!cat.createCollection, createCustomer: !!cu?.create, setStock: !!a.elements.stock?.api.set } } };
++  } catch (e) { return { ok: false, problem: `Could not read ${a.name}: ${e instanceof Error && e.message ? e.message : 'unknown problem'}` }; }
++}
++
++export type DryRun = { ok: true; plan: SmeltPlan } | { ok: false; problem: string };
++
++/** What copying everything from one connection to another would do, without doing any of it. */
++export async function dryRun(fromId: string, toId: string, onProgress?: (s: string) => void, alloys: Alloy[] = ALLOYS, ctxFor: (id: string) => Ctx = appCtxFor): Promise<DryRun> {
++  if (fromId === toId) return { ok: false, problem: 'Choose two different connections.' };
++  const from = await readSide(fromId, onProgress, alloys, ctxFor); if (!from.ok) return from;
++  const to = await readSide(toId, onProgress, alloys, ctxFor); if (!to.ok) return to;
++  return { ok: true, plan: buildPlan(from.side, to.side) };
++}
+diff --git a/src/alloykit/elements.ts b/src/alloykit/elements.ts
+index f3becfc..dcc5b88 100644
+--- a/src/alloykit/elements.ts
++++ b/src/alloykit/elements.ts
+@@ -25,7 +25,7 @@ export const elementInfo = (id: ElementId): ElementInfo => ELEMENTS.find(e => e.
+  * neither list is an error, so an Alloy cannot quietly add API the app does not know about.
+  */
+ export const ELEMENT_FUNCTIONS: Record<ElementId, { required: string[]; optional: string[] }> = {
+-  catalogue: { required: ['listItems', 'listCollections'], optional: ['createItem', 'updateItem'] },
++  catalogue: { required: ['listItems', 'listCollections'], optional: ['createItem', 'updateItem', 'createCollection'] },
+   stock: { required: ['changesSince', 'adjust'], optional: ['set'] },
+   discounts: { required: ['listAutomatic', 'listPresets'], optional: [] },
+   customers: { required: ['search'], optional: ['listAll', 'create', 'update'] },
+diff --git a/src/alloykit/smelter.ts b/src/alloykit/smelter.ts
+new file mode 100644
+index 0000000..c60187d
+--- /dev/null
++++ b/src/alloykit/smelter.ts
+@@ -0,0 +1,123 @@
++// Location: src/alloykit/smelter.ts
++// Alloys P8a: the Smelter's plan. The Smelter copies a shop's catalogue, stock levels and customers from one connection to another (for
++// example Shopify to Pure Tillium). This file is the plan and the dry run: given what both sides hold, it says exactly what would be created,
++// what is already there, what will be left behind and why. It reads nothing and writes nothing itself, so it is pure and cheap to test, and
++// the run in P8b takes this very plan as its work list, so what the person was shown is what happens.
++import type { Collection, Customer, Variant } from '../lib/types';
++import type { ItemInput } from './types';
++
++/** Everything the plan needs to know about one connection. `customers` is null when that connection cannot list them all. */
++export type SmeltSide = {
++  id: string; name: string;
++  items: Variant[]; collections: Collection[]; customers: Customer[] | null;
++  can: { createItem: boolean; createCollection: boolean; createCustomer: boolean; setStock: boolean };
++};
++export type SmeltItem = { sourceVariantId: string; sourceProductId: string; input: ItemInput; collectionTitles: string[] };
++export type SmeltCollection = { title: string; sourceProductIds: string[] };
++export type SmeltCustomer = { sourceId: string; name: string; email?: string; phone?: string; note?: string };
++export type PartState = 'ready' | 'nothing' | 'blocked';
++export type PartPlan = { part: 'items' | 'collections' | 'customers'; label: string; state: PartState; toCreate: number; alreadyThere: number; leftBehind: number; note: string };
++export type NotMoved = { what: string; why: string };
++export type SmeltPlan = {
++  from: { id: string; name: string }; to: { id: string; name: string };
++  parts: PartPlan[]; notMoved: NotMoved[]; warnings: string[];
++  work: { items: SmeltItem[]; collections: SmeltCollection[]; customers: SmeltCustomer[] };
++  /** Stock units that will arrive with the items, for the summary line. */
++  stockUnits: number;
++  /** True when there is something to do and nothing blocks it. */
++  canRun: boolean;
++};
++
++const norm = (s: string | undefined) => (s ?? '').trim().toLowerCase();
++const digits = (s: string | undefined) => (s ?? '').replace(/\D/g, '');
++const titleOf = (v: Variant) => (v.variantTitle && norm(v.variantTitle) !== 'default title' ? `${v.productTitle} - ${v.variantTitle}` : v.productTitle).trim();
++const live = (v: Variant) => v.active !== false && (!v.status || v.status === 'ACTIVE');
++
++/** How an item in the destination is recognised as the same as one in the source: SKU, then barcode, then name and price. */
++function itemKeys(v: Variant): string[] {
++  const k: string[] = [];
++  if (norm(v.sku)) k.push(`sku:${norm(v.sku)}`);
++  if (norm(v.barcode)) k.push(`bc:${norm(v.barcode)}`);
++  if (!k.length) k.push(`np:${norm(titleOf(v))}|${v.priceCents}`);
++  return k;
++}
++function customerKeys(c: { name: string; email?: string; phone?: string }): string[] {
++  const k: string[] = [];
++  if (norm(c.email)) k.push(`e:${norm(c.email)}`);
++  if (digits(c.phone).length >= 6) k.push(`p:${digits(c.phone).slice(-9)}`);
++  if (!k.length) k.push(`n:${norm(c.name)}`);
++  return k;
++}
++
++export function buildPlan(src: SmeltSide, dst: SmeltSide): SmeltPlan {
++  const notMoved: NotMoved[] = [
++    { what: 'Order history', why: `Past orders stay in ${src.name}. A copy would not be the real sale, so reports for earlier dates still come from ${src.name}.` },
++    { what: 'Gift cards', why: `${src.name} does not give out the full codes of cards already sold, so they could not be redeemed on ${dst.name}. Let them run down there, or keep ${src.name} for gift cards.` },
++    { what: 'Automatic discounts and presets', why: `${dst.name} has no way to create them from outside, so set them up again there.` },
++    { what: 'Pictures and sales channels', why: 'Only names, prices, codes, costs, stock and collections are copied.' },
++  ];
++  const warnings: string[] = [];
++  const parts: PartPlan[] = [];
++
++  // Items
++  const dstItemKeys = new Set(dst.items.flatMap(itemKeys));
++  const seenNow = new Set<string>();
++  const items: SmeltItem[] = []; let already = 0; let left = 0; let stockUnits = 0; let optionItems = 0; let noCode = 0;
++  const colsByProduct = new Map<string, string[]>();
++  for (const c of src.collections) for (const p of c.productIds) colsByProduct.set(p, [...(colsByProduct.get(p) ?? []), c.title]);
++  for (const v of src.items) {
++    if (!live(v)) { left++; continue; }
++    const keys = itemKeys(v);
++    if (keys.some(k => dstItemKeys.has(k) || seenNow.has(k))) { already++; continue; }
++    keys.forEach(k => seenNow.add(k));
++    if (v.variantTitle && norm(v.variantTitle) !== 'default title') optionItems++;
++    if (!norm(v.sku) && !norm(v.barcode)) noCode++;
++    const stock = v.tracked && typeof v.stock === 'number' ? v.stock : undefined;
++    if (stock && stock > 0) stockUnits += stock;
++    items.push({ sourceVariantId: v.id, sourceProductId: v.productId, collectionTitles: colsByProduct.get(v.productId) ?? [],
++      input: { title: titleOf(v), priceCents: v.priceCents, sku: v.sku, barcode: v.barcode, costCents: v.costCents, stock } });
++  }
++  const itemState: PartState = !dst.can.createItem ? 'blocked' : items.length ? 'ready' : 'nothing';
++  parts.push({ part: 'items', label: 'Items and stock', state: itemState, toCreate: items.length, alreadyThere: already, leftBehind: left,
++    note: itemState === 'blocked' ? `${dst.name} cannot create items from outside.` : items.length ? `${items.length} to copy with ${stockUnits} units of stock${left ? `; ${left} archived or draft left behind` : ''}${already ? `; ${already} already there` : ''}.` : already ? 'Everything is already there.' : 'No items to copy.' });
++  if (optionItems) warnings.push(`${optionItems} item${optionItems === 1 ? ' has' : 's have'} options (size, colour). Each becomes its own item named like "Shirt - Large".`);
++  if (noCode) warnings.push(`${noCode} item${noCode === 1 ? ' has' : 's have'} no SKU or barcode, so running this twice could copy ${noCode === 1 ? 'it' : 'them'} again if the name or price changed.`);
++  if (dst.items.length) warnings.push(`${dst.name} already holds ${dst.items.length} item${dst.items.length === 1 ? '' : 's'}. Matching ones (same SKU, barcode, or name and price) are skipped, never overwritten.`);
++
++  // Collections
++  const wantCols: SmeltCollection[] = [];
++  const dstTitles = new Set(dst.collections.map(c => norm(c.title)));
++  let colAlready = 0;
++  for (const c of src.collections) {
++    if (dstTitles.has(norm(c.title))) { colAlready++; continue; }
++    const carried = new Set(items.map(i => i.sourceProductId));
++    const ids = c.productIds.filter(p => carried.has(p));
++    wantCols.push({ title: c.title, sourceProductIds: ids });
++  }
++  const colState: PartState = !dst.can.createCollection || itemState === 'blocked' ? 'blocked' : wantCols.length ? 'ready' : 'nothing';
++  parts.push({ part: 'collections', label: 'Collections', state: colState, toCreate: wantCols.length, alreadyThere: colAlready, leftBehind: 0,
++    note: colState === 'blocked' ? (itemState === 'blocked' ? 'Collections hold items, and the items cannot be copied.' : `${dst.name} cannot create collections from outside.`) : wantCols.length ? `${wantCols.length} to copy${colAlready ? `; ${colAlready} already there` : ''}.` : 'No collections to copy.' });
++
++  // Customers
++  let custs: SmeltCustomer[] = []; let custAlready = 0; let custState: PartState; let custNote: string;
++  if (src.customers === null) { custState = 'blocked'; custNote = `${src.name} cannot list all its customers.`; }
++  else if (!dst.can.createCustomer) { custState = 'blocked'; custNote = `${dst.name} cannot create customers from outside.`; }
++  else {
++    const have = new Set((dst.customers ?? []).flatMap(customerKeys)); const seen = new Set<string>();
++    for (const c of src.customers) {
++      const ks = customerKeys(c);
++      if (ks.some(k => have.has(k) || seen.has(k))) { custAlready++; continue; }
++      ks.forEach(k => seen.add(k)); custs.push({ sourceId: c.id, name: c.name, email: c.email, phone: c.phone, note: c.note });
++    }
++    custState = custs.length ? 'ready' : 'nothing';
++    custNote = custs.length ? `${custs.length} to copy${custAlready ? `; ${custAlready} already there` : ''}. Their order counts and totals start again.` : custAlready ? 'Everyone is already there.' : 'No customers to copy.';
++  }
++  if (dst.customers === null && src.customers) warnings.push(`${dst.name} cannot list its customers, so matching ones cannot be skipped.`);
++  parts.push({ part: 'customers', label: 'Customers', state: custState, toCreate: custs.length, alreadyThere: custAlready, leftBehind: 0, note: custNote });
++  if (custState === 'blocked') custs = [];
++
++  const runnable = parts.filter(p => p.state === 'ready');
++  return { from: { id: src.id, name: src.name }, to: { id: dst.id, name: dst.name }, parts, notMoved, warnings,
++    work: { items: itemState === 'ready' ? items : [], collections: colState === 'ready' ? wantCols : [], customers: custs },
++    stockUnits: itemState === 'ready' ? stockUnits : 0, canRun: runnable.length > 0 };
++}
+diff --git a/src/alloykit/types.ts b/src/alloykit/types.ts
+index a02cd1c..03ef505 100644
+--- a/src/alloykit/types.ts
++++ b/src/alloykit/types.ts
+@@ -48,6 +48,8 @@ export type CatalogueApi = {
+   listCollections(ctx: Ctx, page: PageReq): Promise<Page<Collection>>;
+   createItem?(ctx: Ctx, input: ItemInput): Promise<ItemRef>;
+   updateItem?(ctx: Ctx, item: { productId: string; variantId: string }, patch: ItemPatch): Promise<void>;
++  /** A collection holding the given products (by the ids `createItem` returned). */
++  createCollection?(ctx: Ctx, input: { title: string; productIds: string[] }): Promise<{ id: string }>;
+ };
+ export type StockApi = {
+   /** Levels changed since the cursor (null = everything). The app keeps the cursor and the refresh timing. */
+diff --git a/src/alloys/tillium/alloy.ts b/src/alloys/tillium/alloy.ts
+index 079e797..f5dbb2b 100644
+--- a/src/alloys/tillium/alloy.ts
++++ b/src/alloys/tillium/alloy.ts
+@@ -60,6 +60,11 @@ const catalogue = {
+     if (input.collectionId) { const col = await ctx.store.get<Collection>(C.collections, input.collectionId); if (col) await ctx.store.put(C.collections, col.id, { ...col, productIds: [...col.productIds, ref.productId] }); }
+     return ref;
+   },
++  async createCollection(ctx: Ctx, input: { title: string; productIds: string[] }): Promise<{ id: string }> {
++    if (!input.title.trim()) throw new AlloyUserError('Give the collection a name.', 'title');
++    const col: Collection = { id: newId(ctx, 'col'), title: input.title.trim(), productIds: [...input.productIds] };
++    await ctx.store.put(C.collections, col.id, col); return { id: col.id };
++  },
+   async updateItem(ctx: Ctx, item: { productId: string; variantId: string }, patch: ItemPatch) {
+     const v = await ctx.store.get<Variant>(C.items, item.variantId);
+     if (!v || v.productId !== item.productId) throw new AlloyUserError('That item is not in the catalogue.', 'variantId');
+@@ -195,7 +200,7 @@ const giftCards = {
+ 
+ // Every function that changes something takes its turn; reads do not wait.
+ const L = locked;
+-catalogue.createItem = L(catalogue.createItem); catalogue.updateItem = L(catalogue.updateItem);
++catalogue.createItem = L(catalogue.createItem); catalogue.updateItem = L(catalogue.updateItem); catalogue.createCollection = L(catalogue.createCollection);
+ stock.adjust = L(stock.adjust); stock.set = L(stock.set);
+ customers.create = L(customers.create); customers.update = L(customers.update);
+ orders.record = L(orders.record); orders.fulfil = L(orders.fulfil); orders.refund = L(orders.refund);
+diff --git a/tests/alloysmelter.test.ts b/tests/alloysmelter.test.ts
+new file mode 100644
+index 0000000..d5f3628
+--- /dev/null
++++ b/tests/alloysmelter.test.ts
+@@ -0,0 +1,81 @@
++// Location: tests/alloysmelter.test.ts
++// Alloys P8a: the Smelter's plan and dry run. The plan is pure, so most of this feeds it two sides and checks what it says it would do.
++// The dry run reads both Alloys directly and is checked to write nothing.
++import './helpers/fakeShopify';
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { buildPlan, type SmeltSide } from '../src/alloykit/smelter';
++import { dryRun, readSide } from '../src/alloyhost/smelter';
++import tillium from '../src/alloys/tillium/alloy';
++import { makeCtx } from '../src/alloyhost/ctx';
++import { memoryStore } from '../src/alloyhost/store';
++
++const v = (o: any = {}): any => ({ id: 'v1', productId: 'p1', productTitle: 'Dino', variantTitle: 'Default Title', priceCents: 1000, sku: 'D1', barcode: '', costCents: 300, stock: 4, tracked: true, active: true, status: 'ACTIVE', ...o });
++const side = (o: Partial<SmeltSide> = {}): SmeltSide => ({ id: 's', name: 'Src', items: [], collections: [], customers: [], can: { createItem: true, createCollection: true, createCustomer: true, setStock: true }, ...o });
++const part = (p: any, k: string) => p.parts.find((x: any) => x.part === k);
++
++test('items: copied with stock, archived and draft left behind', () => {
++  const p = buildPlan(side({ items: [v(), v({ id: 'v2', sku: 'D2', status: 'ARCHIVED' }), v({ id: 'v3', sku: 'D3', status: 'DRAFT' }), v({ id: 'v4', sku: 'D4', stock: 6 })] }), side({ id: 'd', name: 'Dst' }));
++  const i = part(p, 'items'); assert.deepEqual([i.state, i.toCreate, i.leftBehind], ['ready', 2, 2]);
++  assert.equal(p.stockUnits, 10); assert.equal(p.work.items[0].input.stock, 4); assert.equal(p.canRun, true);
++});
++
++test('items: matched by SKU, barcode, then name and price; duplicates in the source collapse', () => {
++  const dst = side({ id: 'd', name: 'Dst', items: [v({ id: 'x1', sku: 'D1' }), v({ id: 'x2', sku: '', barcode: 'B2', productTitle: 'Other' }), v({ id: 'x3', sku: '', productTitle: 'Plain', priceCents: 500 })] });
++  const src = side({ items: [v({ id: 'a', sku: 'd1' }), v({ id: 'b', sku: '', barcode: 'b2', productTitle: 'Renamed' }), v({ id: 'c', sku: '', productTitle: 'plain', priceCents: 500 }), v({ id: 'd', sku: '', productTitle: 'plain', priceCents: 700 }), v({ id: 'e', sku: 'N1' }), v({ id: 'f', sku: 'N1' })] });
++  const i = part(buildPlan(src, dst), 'items'); assert.deepEqual([i.toCreate, i.alreadyThere], [2, 4]);
++});
++
++test('items: options become their own named items, and untracked stock is not invented', () => {
++  const p = buildPlan(side({ items: [v({ variantTitle: 'Large', sku: 'S-L' }), v({ id: 'v9', sku: 'S-M', tracked: false, stock: null })] }), side({ id: 'd', name: 'Dst' }));
++  assert.equal(p.work.items[0].input.title, 'Dino - Large'); assert.equal(p.work.items[1].input.stock, undefined);
++  assert.ok(p.warnings.some(w => /options/.test(w)));
++});
++
++test('items without a code are warned about; a non-empty destination is warned about', () => {
++  const p = buildPlan(side({ items: [v({ sku: '', barcode: '' })] }), side({ id: 'd', name: 'Dst', items: [v({ id: 'q', sku: 'Z' })] }));
++  assert.ok(p.warnings.some(w => /no SKU or barcode/.test(w))); assert.ok(p.warnings.some(w => /already holds 1 item/.test(w)));
++});
++
++test('collections: only items that are carried, matched by title, blocked when items are', () => {
++  const src = side({ items: [v(), v({ id: 'v2', productId: 'p2', sku: 'D2', status: 'ARCHIVED' })], collections: [{ id: 'c1', title: 'Toys', productIds: ['p1', 'p2'] }, { id: 'c2', title: 'Old', productIds: [] }] as any });
++  const p = buildPlan(src, side({ id: 'd', name: 'Dst', collections: [{ id: 'z', title: ' old ', productIds: [] }] as any }));
++  assert.deepEqual(p.work.collections, [{ title: 'Toys', sourceProductIds: ['p1'] }]); assert.equal(part(p, 'collections').alreadyThere, 1);
++  const b = buildPlan(src, side({ id: 'd', name: 'Dst', can: { createItem: false, createCollection: true, createCustomer: true, setStock: true } }));
++  assert.equal(part(b, 'items').state, 'blocked'); assert.equal(part(b, 'collections').state, 'blocked'); assert.deepEqual(b.work.items, []);
++});
++
++test('customers: matched by email, phone digits, else name; blocked when a side cannot', () => {
++  const c = (o: any) => ({ id: 'c', name: 'A', ...o });
++  const src = side({ customers: [c({ id: '1', email: 'A@x.com' }), c({ id: '2', name: 'B', phone: '+61 400 111 222' }), c({ id: '3', name: 'C' }), c({ id: '4', name: 'D', email: 'd@x.com' })] });
++  const dst = side({ id: 'd', name: 'Dst', customers: [c({ id: 'z', email: 'a@x.com' }), c({ id: 'y', name: 'B', phone: '0400111222' }), c({ id: 'w', name: 'c' })] });
++  const p = buildPlan(src, dst); assert.deepEqual([part(p, 'customers').toCreate, part(p, 'customers').alreadyThere], [1, 3]);
++  assert.equal(part(buildPlan(side({ customers: null }), dst), 'customers').state, 'blocked');
++  assert.equal(part(buildPlan(src, side({ id: 'd', name: 'Dst', can: { createItem: true, createCollection: true, createCustomer: false, setStock: true } })), 'customers').state, 'blocked');
++});
++
++test('empty and fully copied cases say so, and cannot run; what is not moved is always listed', () => {
++  const p = buildPlan(side(), side({ id: 'd', name: 'Dst' })); assert.equal(p.canRun, false); assert.ok(p.parts.every(x => x.state === 'nothing'));
++  assert.deepEqual(p.notMoved.map(n => n.what), ['Order history', 'Gift cards', 'Automatic discounts and presets', 'Pictures and sales channels']);
++  const same = buildPlan(side({ items: [v()] }), side({ id: 'd', name: 'Dst', items: [v()] })); assert.equal(same.canRun, false); assert.match(part(same, 'items').note, /already there/);
++});
++
++test('dry run: reads two Alloys directly, writes nothing, refuses same side and unknown ids', async () => {
++  const src = makeCtx('tillium', { secrets: {}, settings: {}, store: memoryStore(), uid: () => 'abcdef12' });
++  const cat = (tillium.elements.catalogue as any).api; await cat.createItem(src, { title: 'Dino', priceCents: 1000, sku: 'D1', stock: 3 });
++  const dstCtx = makeCtx('other', { secrets: {}, settings: {}, store: memoryStore(), uid: () => 'abcdef12' });
++  const other: any = { ...tillium, id: 'other', name: 'Other' };
++  const ctxFor = (id: string) => (id === 'tillium' ? src : dstCtx);
++  const before = JSON.stringify(await src.store.list?.('items' as any).catch(() => null));
++  const r = await dryRun('tillium', 'other', undefined, [tillium, other], ctxFor);
++  assert.ok(r.ok); if (r.ok) { assert.equal(r.plan.work.items.length, 1); assert.equal(r.plan.stockUnits, 3); assert.equal(r.plan.work.items[0].input.title, 'Dino'); }
++  assert.equal(JSON.stringify(await src.store.list?.('items' as any).catch(() => null)), before);
++  assert.equal((await dryRun('tillium', 'tillium', undefined, [tillium], ctxFor)).ok, false);
++  const u = await readSide('nope', undefined, [tillium], ctxFor); assert.equal(u.ok, false);
++});
++
++test('dry run: a failed read becomes a plain problem, not a crash', async () => {
++  const bad: any = { ...tillium, id: 'bad', name: 'Bad', elements: { ...tillium.elements, catalogue: { ...tillium.elements.catalogue, api: { ...(tillium.elements.catalogue as any).api, listItems: async () => { throw new Error('offline'); } } } } };
++  const r = await readSide('bad', undefined, [bad], () => makeCtx('bad', { secrets: {}, settings: {}, store: memoryStore(), uid: () => 'abcdef12' }));
++  assert.ok(!r.ok && /Could not read Bad: offline/.test(r.problem));
++});
+-- 
+2.43.0
+

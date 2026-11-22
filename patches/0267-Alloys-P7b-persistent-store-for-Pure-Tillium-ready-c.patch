@@ -1,0 +1,548 @@
+From 9ddf77ccd253ea56111192e7badfc28a24ca408e Mon Sep 17 00:00:00 2001
+From: Aiden <fleck@aspens.page>
+Date: Sat, 21 Nov 2026 16:36:46 +1100
+Subject: [PATCH] Alloys P7b: persistent store for Pure Tillium, ready check in
+ place of Shopify login check
+
+---
+ dev_docs/PROGRESS.md             |   1 +
+ dev_docs/QUEUE.md                |   2 +-
+ dev_docs/TO_DO.md                |   2 +-
+ src/alloyhost/appRouter.ts       |   5 +-
+ src/alloyhost/ctx.ts             |   3 +-
+ src/alloyhost/persistentStore.ts |  44 +++++++++++++
+ src/alloyhost/ready.ts           |  16 +++++
+ src/alloykit/types.ts            |   2 +
+ src/alloys/icloud.ts             |   2 +
+ src/alloys/shopify/alloy.ts      |   1 +
+ src/alloys/tillium/alloy.ts      |  12 ++++
+ src/lib/sync.ts                  |  23 +++----
+ src/screens/Reports.tsx          |   6 +-
+ src/screens/Transactions.tsx     |   4 +-
+ tests/alloypersist.test.ts       | 110 +++++++++++++++++++++++++++++++
+ tests/demoguard.test.ts          |   2 +-
+ tests/trainingoffline.test.ts    |   2 +-
+ 17 files changed, 213 insertions(+), 24 deletions(-)
+ create mode 100644 src/alloyhost/persistentStore.ts
+ create mode 100644 src/alloyhost/ready.ts
+ create mode 100644 tests/alloypersist.test.ts
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 7711668..22bce1b 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -226,6 +226,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0264 | 2026-11-20 | Alloys phase P6b: the **Connections screen** (More ▸ Settings ▸ Connections, `src/screens/Connections.tsx`). One section per Element with a chip for each connection that can do it (and Off for optional ones), the features and limits of the chosen one, the plain-words warning, **Check connections** (asks each connection in use and shows what each is missing) and **Save choice**. It opens on the saved choice or else on what the app does today, so looking changes nothing; Save asks first and says no data is moved; **Go back to the current setup** removes the saved choice. Save is blocked while Catalogue, Orders or Shared state is unchosen. The Shopify form in Settings now checks the connection with `connectAlloy('shopify')` instead of reading the shop itself; the success message is word for word the same, and so is every error except one: a network failure now reads "Could not connect: Could not reach Shopify. Check the internet connection and try again." instead of the raw network message. To make that possible the connect report gained `name` (the shop name) and `detail` (the permissions line). New help page `settings/connections` (help bundle rebuilt). Still open for P6c: the reader check, pairing and the `ZellerRoot` provider move onto the Zeller Alloy; whether the choice is shared by all registers is not decided (it is per iPad). Tests added to `tests/alloypicker.test.ts`. | `src/screens/{Connections,Settings}.tsx`, `src/alloykit/{picker,types}.ts`, `src/alloys/shopify/alloy.ts`, `help/settings/connections.md`, `help/help.json`, tests |
+ | 0265 | 2026-11-20 | Alloys phase P6c: the **Zeller reader hand-off** moves onto the Zeller Alloy, which finishes P6. Pay and Diagnostics check the reader with `checkTerminal()` and Diagnostics pairs it with `pairTerminal()` (both in `src/alloyhost/terminal.ts`): the check is the Alloy's `connect`, which calls the same bridge check and so updates the reader state and message exactly as before, and pairing is the Alloy's new optional `pair`. `App.tsx` mounts `AlloyHosts` (new, `src/alloyhost/AlloyHosts.tsx`) where `ZellerRoot` was: it mounts the native host of every registered Alloy that has one (only Zeller), whatever is chosen, in a fixed order worked out once, because dropping the reader host mid-payment by changing the choice would lose the payment. No screen imports the Zeller bridge now. Two small differences: a reader check that throws now comes back as a plain not-ready instead of an error, and with the Card terminal Element off, pairing says to choose a reader in Settings. Device test T120 (Connections is T119): open the app cold, take a card payment on the reader, a card refund, Diagnostics ▸ Check reader and Setup (pair terminal), and practice mode's pretend reader; all should look and behave as before. Tests in `tests/alloyp5terminal.test.ts`. | `App.tsx`, `src/alloyhost/{terminal,AlloyHosts}.ts(x)`, `src/alloys/zeller/alloy.ts`, `src/alloykit/types.ts`, `src/screens/{Pay,Diagnostics}.tsx`, tests |
+ | 0266 | 2026-11-21 | Alloys phase P7a: **Pure Tillium**, a built-in Alloy (`src/alloys/tillium/alloy.ts`) that keeps the shop's data on the device with no outside service: Catalogue (items, collections, create and update), Stock (levels, adjust and set, changes since a cursor), Discounts (reads what is stored), Customers (search by name, email or phone digits, create, update, order counts), Orders (record once per sale, numbered #T1001 onward, list by tab and page, fulfil, refund with restock) and Gift cards (create, look up by a scanned code, debit and credit, safe-to-repeat versions, history, outstanding balance). It follows the contract exactly, so the till cannot tell it from Shopify: orders carry the same gateway names the refund screen reads (`Zeller`, `Cash`, `Gift card`), every write that takes a key is safe to repeat, and practice mode refuses its writes through the router like any other Alloy. It imports only types and does no network. It is **not offered yet**: its store is in memory until P7b, so `PURE_TILLIUM_READY` in `src/alloys/index.ts` is false and the picker does not list it; the conformance suite and the new `tests/alloytillium.test.ts` (11 tests, including a whole shop through the router) run it anyway. Shared state is not part of it: a Pure Tillium shop takes Shared state from iCloud (P7b). Orders under Open show everything, since there is no archive. No change to the app. | `src/alloys/tillium/alloy.ts`, `src/alloys/index.ts`, tests |
++| 0267 | 2026-11-21 | Alloys phase P7b: Pure Tillium's **store survives a restart**, and the app stops assuming Shopify is the only thing that can be ready. (1) `src/alloyhost/persistentStore.ts`: a LocalStore over AsyncStorage, one key per record (`tl1:<collection>:<id>`) so a write touches only its own record; a failed write is an error the Alloy sees (never a silent loss); in a node test it falls back to memory. The app's Ctx now uses it, and every Alloy gets its own corner of it (`scopedStore`), so two Alloys can use the same collection names. (2) Pure Tillium's writes take turns (one at a time), so two sales finishing together never take the same order number, parallel stock adjustments all count, and a gift card is never spent past its balance. (3) A new optional `Alloy.ready()` (Shopify: signed in; iCloud: Cloud sync is the backend in use; absent: always ready) and `alloyReady(element)` in `src/alloyhost/ready.ts`. The sync code, Transactions and Reports used `hasCreds()` (Shopify signed in) to decide whether to do anything; they now ask `alloyReady('orders' or 'sharedState' or 'giftCards')`. With today's setup (nothing saved) the answer is exactly `hasCreds()` for every part, pinned in a test, so nothing changes; once a choice is saved it asks the Alloy that supplies the part, so a Pure Tillium shop is not held back for want of a Shopify login. Pure Tillium is **still not offered** (`PURE_TILLIUM_READY` false). What P7c must still do before it can be: the first-run Setup checklist, the Settings Shopify rows, and `assistantStatusIO` still treat Shopify as the shop; the catalogue's first load and the Items and Stock screens need a look for a shop with no Shopify. Two guard tests were updated for the new call text (practice outbox and the CloudKit `put()` scan). Tests: `tests/alloypersist.test.ts` (8, including a restart and parallel writes). | `src/alloyhost/{persistentStore,ready,ctx,appRouter}.ts`, `src/alloys/{tillium/alloy,shopify/alloy,icloud}.ts`, `src/alloykit/types.ts`, `src/lib/sync.ts`, `src/screens/{Transactions,Reports}.tsx`, tests |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index d777b88..5e75df2 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only
+ 
+ ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+ 
+-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259, orders 0260, shared state 0261, card terminal 0262; P5 is done; P6a 0263, P6b 0264, P6c 0265; P6 is done; P7a 0266). Next: P7b, Pure Tillium persistence and switching it on; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
++Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259, orders 0260, shared state 0261, card terminal 0262; P5 is done; P6a 0263, P6b 0264, P6c 0265; P6 is done; P7a 0266, P7b 0267). Next: P7c, switching Pure Tillium on and the screens that still assume Shopify; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index c03988a..38cf79a 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -100,7 +100,7 @@ Everything here is built and unit tested. What is left on each is your device te
+ Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+ decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
+ the boundary test, with nothing calling them). P2 is built (0251: tests that pin what the Shopify and Zeller code does now).
+-P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258), gift cards (0259), orders (0260) and shared state (0261) and the card terminal (0262) are on the router, which finishes P5. P6a is built (0263: the picker rules, the saved choice, the router reading it) and P6b (0264: the Connections screen, and the Shopify form on `connectAlloy`). P6c (0265) moved the reader check, pairing and host onto the Zeller Alloy, which finishes P6. Device tests needed: T119 (Connections, 0264) and T120 (reader, 0265). P7a (0266) built Pure Tillium but keeps it hidden. Next: P7b, which makes its store persistent, turns it on in the picker and gives it shared state through iCloud. P9 list also: `saleCardMode` in `cloudkitBackend.ts` is still reached directly by sync.ts. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
++P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258), gift cards (0259), orders (0260) and shared state (0261) and the card terminal (0262) are on the router, which finishes P5. P6a is built (0263: the picker rules, the saved choice, the router reading it) and P6b (0264: the Connections screen, and the Shopify form on `connectAlloy`). P6c (0265) moved the reader check, pairing and host onto the Zeller Alloy, which finishes P6. Device tests needed: T119 (Connections, 0264) and T120 (reader, 0265). P7a (0266) built Pure Tillium and P7b (0267) gave it a store that survives a restart and made the sync code ask each Alloy whether it is ready. It is still hidden. Next: P7c, which turns it on in the picker and makes the first run, Settings and Setup work without Shopify. P9 list also: `saleCardMode` in `cloudkitBackend.ts` is still reached directly by sync.ts. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/src/alloyhost/appRouter.ts b/src/alloyhost/appRouter.ts
+index 01f81b9..7737fa7 100644
+--- a/src/alloyhost/appRouter.ts
++++ b/src/alloyhost/appRouter.ts
+@@ -10,13 +10,12 @@ import { activeBackendKind } from '../lib/syncBackend';
+ import { useApp } from '../state/store';
+ import { makeCtx } from './ctx';
+ import { createRouter } from './router';
+-import { memoryStore } from './store';
++import { appLocalStore } from './persistentStore';
+ import { readSavedSelection } from './savedSelection';
+ 
+-const store = memoryStore(); // Shopify keeps nothing here; Pure Tillium (P7) gets a persistent one
+ 
+ /** The Ctx an Alloy's functions get in this app (also used to reach one Alloy's backend directly, see sharedState.ts). */
+-export const appCtxFor = (id: string) => makeCtx(id, { secrets: {}, settings: { shopify: { locationId: useApp.getState().settings.locationId ?? '' } }, store, uid });
++export const appCtxFor = (id: string) => makeCtx(id, { secrets: {}, settings: { shopify: { locationId: useApp.getState().settings.locationId ?? '' } }, store: appLocalStore(), uid }); // Shopify keeps nothing in the store; Pure Tillium keeps everything there, on the device
+ 
+ export const appRouter = createRouter({
+   alloys: ALLOYS,
+diff --git a/src/alloyhost/ctx.ts b/src/alloyhost/ctx.ts
+index 272b086..f77eec1 100644
+--- a/src/alloyhost/ctx.ts
++++ b/src/alloyhost/ctx.ts
+@@ -3,6 +3,7 @@
+ // Secrets are read ahead of time into a plain object (the Keychain is async, `ctx.secret` is not), and each Alloy sees only its own.
+ import { AlloyNetworkError, AlloyUserError } from '../alloykit/errors';
+ import type { Ctx, Http, LocalStore } from '../alloykit/types';
++import { scopedStore } from './persistentStore';
+ 
+ export type CtxDeps = {
+   /** Secrets and settings by Alloy id, then key. Missing means empty text, never undefined. */
+@@ -51,7 +52,7 @@ export function makeCtx(alloyId: string, d: CtxDeps): Ctx {
+     http,
+     secret: key => d.secrets[alloyId]?.[key] ?? '',
+     setting: key => d.settings[alloyId]?.[key] ?? '',
+-    store: d.store,
++    store: scopedStore(d.store, alloyId),
+     idempotencyKey: d.uid,
+     log: m => d.log?.(alloyId, m),
+   };
+diff --git a/src/alloyhost/persistentStore.ts b/src/alloyhost/persistentStore.ts
+new file mode 100644
+index 0000000..853383b
+--- /dev/null
++++ b/src/alloyhost/persistentStore.ts
+@@ -0,0 +1,44 @@
++// Location: src/alloyhost/persistentStore.ts
++// Alloys P7b: the LocalStore that survives a restart, over AsyncStorage, for Pure Tillium. One key per record, `tl1:<collection>:<id>`, so
++// a write touches only its own record and a crash can lose at most the write in flight. Reads of a whole collection list the keys with
++// that prefix. It never swallows a failed write: an Alloy must know the record was not saved (the memory store throws nothing either, but
++// real storage can be full). Values are JSON, so what is read back is never the same object that was written.
++import type { LocalStore } from '../alloykit/types';
++
++/** The part of AsyncStorage this uses, so a test can supply its own. */
++export type KV = {
++  getItem(k: string): Promise<string | null>; setItem(k: string, v: string): Promise<void>; removeItem(k: string): Promise<void>;
++  getAllKeys(): Promise<readonly string[]>; multiGet(keys: readonly string[]): Promise<readonly (readonly [string, string | null])[]>;
++};
++const PREFIX = 'tl1:';
++const key = (collection: string, id: string) => `${PREFIX}${collection}:${id}`;
++
++export function asyncStorageStore(kv: KV): LocalStore {
++  return {
++    async get<T>(c: string, id: string) { const v = await kv.getItem(key(c, id)); return v === null ? null : JSON.parse(v) as T; },
++    async put<T>(c: string, id: string, value: T) { await kv.setItem(key(c, id), JSON.stringify(value)); },
++    async remove(c: string, id: string) { await kv.removeItem(key(c, id)); },
++    async list<T>(c: string) {
++      const p = `${PREFIX}${c}:`; const keys = (await kv.getAllKeys()).filter(k => k.startsWith(p)).sort();
++      if (!keys.length) return [];
++      const out: T[] = []; for (let i = 0; i < keys.length; i += 200) for (const [, v] of await kv.multiGet(keys.slice(i, i + 200))) if (v !== null) out.push(JSON.parse(v) as T);
++      return out;
++    },
++  };
++}
++
++/** Each Alloy gets its own corner of the store, so two Alloys can use the same collection names without meeting. */
++export function scopedStore(base: LocalStore, alloyId: string): LocalStore {
++  const c = (collection: string) => `${alloyId}.${collection}`;
++  return { get: (col, id) => base.get(c(col), id), put: (col, id, v) => base.put(c(col), id, v), remove: (col, id) => base.remove(c(col), id), list: col => base.list(c(col)) };
++}
++
++let real: LocalStore | null = null;
++/** The app's store: AsyncStorage when it can be loaded (always on a device), else memory (a node test). */
++export function appLocalStore(): LocalStore {
++  if (real) return real;
++  let AS: KV | null = null;
++  try { AS = require('@react-native-async-storage/async-storage').default as KV; } catch { AS = null; }
++  real = AS ? asyncStorageStore(AS) : require('./store').memoryStore() as LocalStore;
++  return real;
++}
+diff --git a/src/alloyhost/ready.ts b/src/alloyhost/ready.ts
+new file mode 100644
+index 0000000..685c969
+--- /dev/null
++++ b/src/alloyhost/ready.ts
+@@ -0,0 +1,16 @@
++// Location: src/alloyhost/ready.ts
++// Alloys P7b: "can this part of the till do work right now?", which the sync code used to answer with `hasCreds()` (Shopify is signed in).
++// Today's setup (nothing saved) still answers exactly that for every part, so nothing changes. Once a choice is saved it asks the Alloy that
++// supplies the part, so a shop on Pure Tillium is not held back for want of a Shopify login.
++import { ALLOYS } from '../alloys';
++import type { Alloy, ElementId } from '../alloykit/types';
++import { hasCreds } from '../lib/shopify/client';
++import { appRouter } from './appRouter';
++import type { Router } from './router';
++
++export function alloyReady(element: ElementId, router: Router = appRouter, shopifySignedIn: () => boolean = hasCreds, alloys: Alloy[] = ALLOYS): boolean {
++  if (router.current().source === 'legacy') return shopifySignedIn();
++  const id = router.alloyId(element); if (!id || !router.has(element)) return false;
++  const a = alloys.find(x => x.id === id);
++  return !!a && (a.ready ? a.ready() : true);
++}
+diff --git a/src/alloykit/types.ts b/src/alloykit/types.ts
+index f9ef64a..e9bb436 100644
+--- a/src/alloykit/types.ts
++++ b/src/alloykit/types.ts
+@@ -154,6 +154,8 @@ export type Alloy = {
+   contract: typeof ALLOY_CONTRACT;
+   settings: SettingField[];
+   connect(ctx: Ctx): Promise<ConnectReport>;
++  /** Whether this Alloy can do work right now (signed in, set up). Checked often and without waiting, so it reads local state only. Absent means always ready. */
++  ready?(): boolean;
+   elements: { [E in ElementId]?: ElementImpl<E> };
+   /** Pairs or sets up the device this Alloy talks to (a card reader). Null when it worked, else what to tell the person. Only for Alloys with such a device. */
+   pair?(ctx: Ctx): Promise<string | null>;
+diff --git a/src/alloys/icloud.ts b/src/alloys/icloud.ts
+index 69277aa..136d9bb 100644
+--- a/src/alloys/icloud.ts
++++ b/src/alloys/icloud.ts
+@@ -12,6 +12,8 @@ const alloy: Alloy = {
+   contract: 1,
+   settings: [],
+   async connect() { return { ok: true }; },
++  // Ready once Cloud sync has been set up here, which is when the CloudKit backend is the one in use.
++  ready: () => (require('../lib/syncBackend') as typeof import('../lib/syncBackend')).activeBackendKind() === 'cloudkit',
+   elements: {
+     sharedState: {
+       limits: ['Every register must be signed in to the same Apple account.'],
+diff --git a/src/alloys/shopify/alloy.ts b/src/alloys/shopify/alloy.ts
+index af85c59..4a84ecd 100644
+--- a/src/alloys/shopify/alloy.ts
++++ b/src/alloys/shopify/alloy.ts
+@@ -43,6 +43,7 @@ const alloy: Alloy = {
+   name: 'Shopify',
+   blurb: 'Products, stock, customers, orders and gift cards from your Shopify shop.',
+   contract: 1,
++  ready: () => hasCreds(),
+   settings: [
+     { key: 'domain', label: 'Shop address', placeholder: 'your-shop.myshopify.com' },
+     { key: 'clientId', label: 'Client ID' },
+diff --git a/src/alloys/tillium/alloy.ts b/src/alloys/tillium/alloy.ts
+index d102414..cdb1fbf 100644
+--- a/src/alloys/tillium/alloy.ts
++++ b/src/alloys/tillium/alloy.ts
+@@ -21,6 +21,10 @@ type Op = { key: string; result?: unknown };
+ type CardRow = GiftCard & { code: string; saleUuid?: string };
+ type TxnRow = GiftCardTxn & { cardId: string };
+ 
++/** One write at a time. Two sales finishing together must not both take the same order number, and two adjustments must not overwrite each other. */
++let chain: Promise<unknown> = Promise.resolve();
++const locked = <A extends unknown[], R>(f: (...a: A) => Promise<R>) => (...a: A): Promise<R> => { const run = chain.then(() => f(...a)); chain = run.catch(() => undefined); return run; };
++
+ async function once<T>(ctx: Ctx, key: string, run: () => Promise<T>): Promise<T> {
+   const seen = await ctx.store.get<Op>(C.ops, key);
+   if (seen) return seen.result as T;
+@@ -189,6 +193,14 @@ const giftCards = {
+   async outstanding(ctx: Ctx) { const live = (await ctx.store.list<CardRow>(C.cards)).filter(c => c.enabled && c.balanceCents > 0); return { cards: live.length, cents: live.reduce((a, c) => a + c.balanceCents, 0) }; },
+ };
+ 
++// Every function that changes something takes its turn; reads do not wait.
++const L = locked;
++catalogue.createItem = L(catalogue.createItem); catalogue.updateItem = L(catalogue.updateItem);
++stock.adjust = L(stock.adjust); stock.set = L(stock.set);
++customers.create = L(customers.create); customers.update = L(customers.update);
++orders.record = L(orders.record); orders.fulfil = L(orders.fulfil); orders.refund = L(orders.refund);
++giftCards.create = L(giftCards.create); giftCards.debit = L(giftCards.debit); giftCards.credit = L(giftCards.credit); giftCards.debitOnce = L(giftCards.debitOnce); giftCards.creditOnce = L(giftCards.creditOnce);
++
+ const alloy: Alloy = {
+   id: 'tillium',
+   name: 'Pure Tillium',
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index d866017..538cf43 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -14,7 +14,8 @@ import { readLedger } from './cashLedger';
+ import { mergeDrawer, missingEntries } from './drawerSync';
+ import { buildWarningListEntries, mergeWarningList } from './warningList';
+ import { isTraining } from './trainingGuard';
+-import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
++import { isNetworkError, ShopifyUserError } from './shopify/client';
++import { alloyReady } from '../alloyhost/ready';
+ import { loadDiscounts } from '../alloyhost/discounts';
+ import { listAllCollections, listAllCustomers, listAllItems } from '../alloyhost/catalogue';
+ import { stockChanges } from '../alloyhost/stock';
+@@ -208,7 +209,7 @@ export const migrationControl = createMigrationControl({
+ const orderRecovery = createOrderRecovery({
+   active: () => activeBackendKind() === 'cloudkit',
+   training: isTraining,
+-  canCreateOrders: hasCreds,
++  canCreateOrders: () => alloyReady('orders'),
+   who: () => ({ id: st().settings.registerId, name: st().settings.registerName }),
+   native: async () => (await import('../../modules/cloudkit-sync')) as unknown as EventNative,
+   readSales: async () => {
+@@ -336,7 +337,7 @@ async function runItem(o: OutboxItem): Promise<SaleRecord> {
+ }
+ 
+ export async function processOutbox() {
+-  if (running || !hasCreds()) return;
++  if (running || !alloyReady('orders')) return;
+   running = true;
+   try {
+     for (const o of st().pos.outbox.filter(x => !x.blocked)) {
+@@ -391,7 +392,7 @@ export async function refreshCatalogue(): Promise<void> { try { await refreshOnc
+ const pollOnce = singleFlight(pollSharedWork);
+ export async function pollShared(): Promise<void> { return pollOnce(); }
+ async function pollSharedWork(): Promise<void> {
+-  const s = st(); if (!hasCreds()) return;
++  const s = st(); if (!alloyReady('sharedState')) return;
+   const t0 = Date.now(); let tl = t0; const laps: [string, number][] = []; const lap = (name: string) => { const n = Date.now(); laps.push([name, n - tl]); tl = n; }; // how long each part took, for Diagnostics (0239)
+   try {
+     // Practice data is never sent: the seam refuses these writes in training anyway, and skipping them here keeps a course
+@@ -462,7 +463,7 @@ let salesPulledAt = 0;
+ /** Pull the other tills' sales and daily totals. Throttled (SALES_PULL_MS) so the 25 s poll does not fetch every time. */
+ export async function pullSalesHistory(force = false): Promise<void> {
+   const s = st();
+-  if (isTraining() || !hasCreds()) return;
++  if (isTraining() || !alloyReady('sharedState')) return;
+   if (!force && Date.now() - salesPulledAt < SALES_PULL_MS) return;
+   salesPulledAt = Date.now();
+   const own = s.settings.registerId;
+@@ -520,7 +521,7 @@ let pushingSaved = false; let pushSavedAgain = false;
+  * going asks for another pass when it ends.
+  */
+ export async function pushSaved() {
+-  if (!hasCreds()) return;
++  if (!alloyReady('sharedState')) return;
+   if (pushingSaved) { pushSavedAgain = true; return; }
+   pushingSaved = true;
+   try {
+@@ -564,7 +565,7 @@ async function pullSaved() {
+ 
+ // ── layout + shared settings ─────────────────────────────────────────────────────────────────────
+ export async function pushLayout() {
+-  if (!hasCreds()) return;
++  if (!alloyReady('sharedState')) return;
+   if (sharedKind() === 'cloudkit') { await reconcileLayout(); return; }
+   const s = st(); const version = s.gridVersion + 1;
+   await putShared('layout', 'main', { layout_key: 'main', layout_json: JSON.stringify(s.grid), version, updated_by: s.settings.registerName, updated_at: new Date().toISOString() });
+@@ -614,7 +615,7 @@ export async function pushSharedSettings() {
+   const snapshot = st().settings;
+   const shared = pickShared(snapshot, kind);
+   st().patchSettings({ sharedSettingsPending: true });
+-  if (!hasCreds()) return;
++  if (!alloyReady('sharedState')) return;
+   let version = snapshot.sharedVersion + 1; let outgoing = shared;
+   try {
+     if (kind === 'cloudkit') { // another register may have written since we last looked: merge their edits in rather than overwrite them
+@@ -654,7 +655,7 @@ export async function saveScannerCalibration(cal: ScannerCalibration | null) {
+   await pushScannerCalibration();
+ }
+ export async function pushScannerCalibration() {
+-  if (!hasCreds()) return;
++  if (!alloyReady('sharedState')) return;
+   const cal = st().settings.scannerCal ?? null;
+   try {
+     // Number it after whatever is already there, so another register's newer copy is never mistaken for older.
+@@ -698,7 +699,7 @@ export async function pushDrawer() {
+   // A companion without the Cash drawer group never writes the shared drawer, except to finish an unsent change it made earlier as a register.
+   if (!drawerOn() && !s.settings.drawerPending) return;
+   s.patchSettings({ drawerPending: true });
+-  if (!hasCreds()) return;
++  if (!alloyReady('sharedState')) return;
+   const pos = st().pos;
+   if (activeBackendKind() === 'cloudkit') { // 6b: the drawer is records in the shop's CloudKit zone, not one settings blob
+     try {
+@@ -809,7 +810,7 @@ export async function pushWarningList() {
+   const s = st();
+   if (isTraining()) return; // practice data is never sent
+   s.patchSettings({ warningListPending: true });
+-  if (!hasCreds()) return;
++  if (!alloyReady('sharedState')) return;
+   let list = st().settings.warningList ?? [];
+   let version = (st().settings.warningListVersion ?? 0) + 1;
+   try {
+diff --git a/src/screens/Reports.tsx b/src/screens/Reports.tsx
+index 3f8ad24..1317feb 100644
+--- a/src/screens/Reports.tsx
++++ b/src/screens/Reports.tsx
+@@ -7,7 +7,7 @@ import { useTheme } from '../ui/theme';
+ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
+ import { listShared } from '../lib/syncBackend';
+-import { hasCreds } from '../lib/shopify/client';
++import { alloyReady } from '../alloyhost/ready';
+ import { needFeature } from '../alloyhost/need';
+ import { applyRecord, derived, emptyTotals, lastYearRange, parseDay, pctChange, periodRange, previousRange, rollupKey, staffSummary, sumRange, type Period, type Range, type RollupRow, type Totals, adjustmentSummary } from '../lib/rollup';
+ import { fmt } from '../lib/money';
+@@ -21,7 +21,7 @@ export function useRollups() {
+   const [remote, setRemote] = useState<RollupRow[]>([]); const [busy, setBusy] = useState(false); const outbox = useApp(s => s.pos.outbox); const local = useApp(s => s.pos.rollups); const [square, setSquare] = useState<RollupRow[]>([]);
+   useEffect(() => { void loadSquareRollups().then(setSquare); }, []);
+   const load = useCallback(async () => {
+-    if (!hasCreds()) return; setBusy(true);
++    if (!alloyReady('orders')) return; setBusy(true);
+     try { const rows: RollupRow[] = []; let after: string | null = null;
+       for (let i = 0; i < 8; i++) { const r = await listShared('rollup', { first: 100, after }); for (const x of r.rows) { try { rows.push({ registerId: x.f.register_id, date: x.f.date, totals: { ...emptyTotals(), ...JSON.parse(x.f.totals_json) } }); } catch {} } if (!r.next) break; after = r.next; }
+       setRemote(rows); } catch (e: any) { if (!/network|connection/i.test(e.message)) alertMsg('Could not load reports', e.message, 'orders/reports'); }
+@@ -48,7 +48,7 @@ export default function Reports() {
+   const now = useMemo(() => sumRange(rows, range, dev), [rows, range.from, range.to, dev]); const d = derived(now);
+   const cr = cmp === 'prev' ? previousRange(range) : cmp === 'year' ? lastYearRange(range) : null; const was = cr ? derived(sumRange(rows, cr, dev)) : null;
+   const devices = [...new Set(rows.map(r => r.registerId))];
+-  useEffect(() => { if (tab === 'gift' && hasCreds()) needFeature('giftCards', 'outstanding')().then(setGift).catch(() => {}); }, [tab]);
++  useEffect(() => { if (tab === 'gift' && alloyReady('giftCards')) needFeature('giftCards', 'outstanding')().then(setGift).catch(() => {}); }, [tab]);
+   const adj = adjustmentSummary(now);
+   const staff = staffSummary(now);
+   const cats = Object.entries(now.byCategory).sort((a, b) => b[1].grossCents - a[1].grossCents).slice(0, 12);
+diff --git a/src/screens/Transactions.tsx b/src/screens/Transactions.tsx
+index cdb6b25..be79bfb 100644
+--- a/src/screens/Transactions.tsx
++++ b/src/screens/Transactions.tsx
+@@ -7,7 +7,7 @@ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
+ import { needFeature } from '../alloyhost/need';
+ import type { OrderDetail as PosOrder } from '../alloykit/types';
+-import { hasCreds } from '../lib/shopify/client';
++import { alloyReady } from '../alloyhost/ready';
+ import { fmt } from '../lib/money';
+ import { maskedLast4 } from '../lib/cards';
+ import { ReceiptPrompt, receiptText } from './Receipt';
+@@ -31,7 +31,7 @@ export default function Transactions() {
+   const [sel, setSel] = useState<Entry | null>(null); const [refund, setRefund] = useState<PosOrder | null>(null); const [receipt, setReceipt] = useState<SaleRecord | null>(null);
+ 
+   const load = useCallback(async (more = false) => {
+-    if (!hasCreds()) return; setBusy(true);
++    if (!alloyReady('orders')) return; setBusy(true);
+     try { const r = await needFeature('orders', 'list')({ query: 'tag:pos', limit: 25, after: more ? next : null }); setOrders(o => (more ? [...o, ...r.rows] : r.rows)); setNext(r.next); } catch (e: any) { if (!/network|connection/i.test(e.message)) alertMsg('Could not load orders', e.message, 'orders'); }
+     setBusy(false);
+   }, [next]);
+diff --git a/tests/alloypersist.test.ts b/tests/alloypersist.test.ts
+new file mode 100644
+index 0000000..cba551b
+--- /dev/null
++++ b/tests/alloypersist.test.ts
+@@ -0,0 +1,110 @@
++// Location: tests/alloypersist.test.ts
++// Alloys P7b: Pure Tillium's data survives a restart, two writes never collide, Alloys keep out of each other's data, and the sync code asks
++// "is this part ready" through the Alloy instead of "is Shopify signed in" (with today's setup giving the very same answer as before).
++import './helpers/fakeShopify';
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { asyncStorageStore, scopedStore, type KV } from '../src/alloyhost/persistentStore';
++import { makeCtx } from '../src/alloyhost/ctx';
++import { createRouter } from '../src/alloyhost/router';
++import { alloyReady } from '../src/alloyhost/ready';
++import { memoryStore } from '../src/alloyhost/store';
++import tillium from '../src/alloys/tillium/alloy';
++import shopify from '../src/alloys/shopify/alloy';
++import icloud from '../src/alloys/icloud';
++
++const fakeKV = (): KV & { data: Map<string, string>; failNext: boolean } => {
++  const data = new Map<string, string>(); const kv: any = { data, failNext: false,
++    async getItem(k: string) { return data.get(k) ?? null; },
++    async setItem(k: string, v: string) { if (kv.failNext) { kv.failNext = false; throw new Error('Storage is full'); } data.set(k, v); },
++    async removeItem(k: string) { data.delete(k); }, async getAllKeys() { return [...data.keys()]; },
++    async multiGet(keys: string[]) { return keys.map(k => [k, data.get(k) ?? null] as const); } };
++  return kv;
++};
++let n = 0; const uid = () => `u${++n}`.padStart(8, '0');
++const ctxOn = (kv: KV) => makeCtx('tillium', { secrets: {}, settings: {}, store: asyncStorageStore(kv), uid });
++const api = (k: string) => (tillium.elements as any)[k].api;
++const sale = (uuid: string, o: any = {}): any => ({ uuid, type: 'sale', ts: '2026-11-21T01:00:00Z', registerId: 'r', registerName: 'F', lines: [{ variantId: 'V', title: 'D', qty: 1, baseUnitCents: 500, grossCents: 500, discountCents: 0, netCents: 500, costCents: 0, discountLabels: [], kind: 'item' }], itemsCents: 500, discountCents: 0, netCents: 500, tipCents: 0, totalCents: 500, cogsCents: 0, feesCents: 0, roundingCents: 0, tenders: [{ id: 't', kind: 'cash', amountCents: 500 }], deals: [], ...o });
++
++test('the store keeps one record per key, lists a collection, copies values and keeps collections apart', async () => {
++  const kv = fakeKV(); const s = asyncStorageStore(kv);
++  const v = { a: 1 }; await s.put('items', 'x', v); v.a = 2; assert.deepEqual(await s.get('items', 'x'), { a: 1 });
++  await s.put('items', 'y', { a: 3 }); await s.put('items2', 'z', { a: 9 }); await s.put('other', 'x:with:colons', { a: 4 });
++  assert.deepEqual((await s.list<any>('items')).map(r => r.a), [1, 3]); assert.deepEqual((await s.list<any>('items2')).map(r => r.a), [9]);
++  assert.deepEqual((await s.list<any>('other')).map(r => r.a), [4]); assert.deepEqual([...kv.data.keys()].sort(), ['tl1:items2:z', 'tl1:items:x', 'tl1:items:y', 'tl1:other:x:with:colons']);
++  await s.remove('items', 'x'); assert.equal(await s.get('items', 'x'), null); assert.deepEqual(await s.list('nothing'), []);
++});
++
++test('a failed write is an error the Alloy sees, never a silent loss', async () => {
++  const kv = fakeKV(); const ctx = ctxOn(kv); kv.failNext = true;
++  await assert.rejects(api('catalogue').createItem(ctx, { title: 'A', priceCents: 1 }), /Storage is full/);
++  assert.equal((await api('catalogue').listItems(ctx, {})).rows.length, 0);
++  await api('catalogue').createItem(ctx, { title: 'A', priceCents: 1 }); assert.equal((await api('catalogue').listItems(ctx, {})).rows.length, 1, 'the next write works');
++});
++
++test('Alloys keep to their own corner of the store', async () => {
++  const base = memoryStore(); const a = scopedStore(base, 'one'); const b = scopedStore(base, 'two');
++  await a.put('items', 'x', { who: 'one' }); await b.put('items', 'x', { who: 'two' });
++  assert.deepEqual(await a.get('items', 'x'), { who: 'one' }); assert.deepEqual((await b.list<any>('items')).map(r => r.who), ['two']);
++  const c1 = makeCtx('one', { secrets: {}, settings: {}, store: base, uid }); await c1.store.put('items', 'y', { q: 1 }); assert.deepEqual(await base.get('one.items', 'y'), { q: 1 });
++});
++
++test('a restart loses nothing: items, stock, customers, orders, order numbers and gift cards are all still there', async () => {
++  const kv = fakeKV(); let ctx = ctxOn(kv);
++  const ref = await api('catalogue').createItem(ctx, { title: 'Dino', priceCents: 500, stock: 7 });
++  const cust = await api('customers').create(ctx, { firstName: 'Ann', email: 'a@x.com' });
++  const first = await api('orders').record(ctx, sale('s1', { lines: [{ ...sale('x').lines[0], variantId: ref.variantId }], customer: { id: cust.id, name: 'Ann' } }), { key: 'k1' });
++  const card = await api('giftCards').create(ctx, { valueCents: 2000, code: 'WXYZ1234', saleUuid: 's1' }); await api('giftCards').debit(ctx, card.id, 500, 'sale');
++  await api('stock').adjust(ctx, { itemId: ref.inventoryItemId, delta: -2, reason: 'other', key: 'adj1' });
++
++  ctx = ctxOn(kv); // a fresh store over the same storage: the app was closed and reopened
++  const items = (await api('catalogue').listItems(ctx, {})).rows; assert.deepEqual([items.length, items[0].productTitle, items[0].stock], [1, 'Dino', 5]);
++  assert.equal((await api('customers').search(ctx, 'ann'))[0].orders, 1);
++  assert.deepEqual(await api('orders').find(ctx, 's1'), first);
++  assert.deepEqual(await api('orders').record(ctx, sale('s1'), { key: 'k1' }), first, 'recording the same sale again after a restart finds it');
++  assert.equal((await api('orders').record(ctx, sale('s2'), { key: 'k2' })).name, '#T1002', 'order numbers carry on');
++  assert.equal((await api('giftCards').lookup(ctx, 'WXYZ1234')).balanceCents, 1500);
++  await api('stock').adjust(ctx, { itemId: ref.inventoryItemId, delta: -2, reason: 'other', key: 'adj1' });
++  assert.equal((await api('catalogue').listItems(ctx, {})).rows[0].stock, 5, 'a repeated adjustment is still recognised after a restart');
++});
++
++test('writes take turns: parallel sales get distinct numbers and parallel adjustments all count', async () => {
++  const ctx = ctxOn(fakeKV());
++  const recs = await Promise.all(Array.from({ length: 12 }, (_, i) => api('orders').record(ctx, sale(`p${i}`), { key: `k${i}` })));
++  assert.equal(new Set(recs.map((r: any) => r.name)).size, 12); assert.equal(new Set(recs.map((r: any) => r.id)).size, 12);
++  const ref = await api('catalogue').createItem(ctx, { title: 'A', priceCents: 1, stock: 0 });
++  await Promise.all(Array.from({ length: 20 }, (_, i) => api('stock').adjust(ctx, { itemId: ref.inventoryItemId, delta: 1, reason: 'other', key: `a${i}` })));
++  assert.equal((await api('catalogue').listItems(ctx, {})).rows[0].stock, 20);
++  const gc = await api('giftCards').create(ctx, { valueCents: 1000, code: 'CODE9999', saleUuid: 'g' });
++  const res = await Promise.allSettled(Array.from({ length: 5 }, (_, i) => api('giftCards').debit(ctx, gc.id, 300, `d${i}`)));
++  assert.deepEqual([res.filter(r => r.status === 'fulfilled').length, (await api('giftCards').lookup(ctx, 'CODE9999')).balanceCents], [3, 100], 'never spends more than the card holds');
++  await assert.rejects(api('orders').record(ctx, { uuid: 'bad' } as any, { key: 'x' }), () => true); await api('orders').record(ctx, sale('after'), { key: 'ka' });
++});
++
++const fullSel = (a: string) => ({ catalogue: a, stock: a, customers: a, orders: a, giftCards: a, discounts: a, sharedState: 'icloud' }) as any;
++const ALL = [tillium, shopify, icloud];
++const routerFor = (sel: any, alloys = [tillium, shopify, icloud]) => createRouter({ alloys, selection: () => sel, legacyFacts: () => ({ shopifyConnected: false, sharedBackend: 'metaobject', zellerPaired: false }), ctxFor: id => makeCtx(id, { secrets: {}, settings: {}, store: memoryStore(), uid }), isTraining: () => false });
++
++test('ready: today\'s setup answers exactly "is Shopify signed in" for every part; a saved choice asks the Alloy', () => {
++  for (const el of ['orders', 'sharedState', 'giftCards'] as const) {
++    assert.equal(alloyReady(el, routerFor(undefined), () => true), true); assert.equal(alloyReady(el, routerFor(undefined), () => false), false);
++  }
++  const t = routerFor(fullSel('tillium'));
++  assert.equal(alloyReady('orders', t, () => false, ALL), true, 'Pure Tillium needs no Shopify login');
++  assert.equal(alloyReady('giftCards', t, () => false, ALL), true);
++  assert.equal(alloyReady('cardTerminal', t, () => true, ALL), false, 'a part nobody supplies is not ready');
++  assert.equal(alloyReady('orders', routerFor(fullSel('shopify')), () => true, ALL), false, 'Shopify chosen but not signed in here (its own check, not the argument)');
++  assert.equal(alloyReady('orders', routerFor({ ...fullSel('tillium'), orders: 'off' }), () => true, ALL), false);
++});
++
++test('ready: iCloud is ready only once Cloud sync is the backend in use', async () => {
++  assert.equal(typeof icloud.ready, 'function'); assert.equal(icloud.ready!(), false, 'no CloudKit backend is active in a fresh node run');
++  assert.equal(tillium.ready, undefined); assert.equal(typeof shopify.ready, 'function');
++});
++
++test('the sync code no longer asks about Shopify credentials directly', () => {
++  const sync = readFileSync('src/lib/sync.ts', 'utf8');
++  assert.ok(!/hasCreds/.test(sync)); assert.equal((sync.match(/alloyReady\('sharedState'\)/g) ?? []).length, 8); assert.equal((sync.match(/alloyReady\('orders'\)/g) ?? []).length, 2);
++  for (const f of ['src/screens/Transactions.tsx', 'src/screens/Reports.tsx']) assert.ok(!/hasCreds/.test(readFileSync(f, 'utf8')), f);
++});
+diff --git a/tests/demoguard.test.ts b/tests/demoguard.test.ts
+index 09d02a4..e0a8dd5 100644
+--- a/tests/demoguard.test.ts
++++ b/tests/demoguard.test.ts
+@@ -70,7 +70,7 @@ test('CloudKit is only reached through the sync seam, whose writes check the gua
+   assert.match(seam, /if \(!backendWritable\(\)\) throw new BackendBlockedError\(`Writing \$\{type\}`\);\s*return requireBackend\(\)\.put\(/);
+   assert.match(seam, /if \(!backendWritable\(\)\) throw new BackendBlockedError\('Deleting a record'\)/);
+   assert.match(seam, /export const backendWritable = \(\): boolean => !isTraining\(\)/);
+-  const callers = walk('src').filter(f => !/^src\/lib\/(cloudkit|shopify\/metaobjectBackend)/.test(f) && !f.startsWith('src/alloys/tillium/') /* its put() is the device's LocalStore (ctx.store), and the router refuses all its writes in practice mode: tests/alloytillium.test.ts */ && f !== 'src/lib/syncBackend.ts' && /\.put\(/.test(read(f)));
++  const callers = walk('src').filter(f => !/^src\/lib\/(cloudkit|shopify\/metaobjectBackend)/.test(f) && !f.startsWith('src/alloys/tillium/') && f !== 'src/alloyhost/persistentStore.ts' /* persistentStore.ts is the LocalStore's own put(), never a CloudKit backend; and its put() is the device's LocalStore (ctx.store), and the router refuses all its writes in practice mode: tests/alloytillium.test.ts */ && f !== 'src/lib/syncBackend.ts' && /\.put\(/.test(read(f)));
+   assert.deepEqual(callers, [], 'only the seam may call a backend\'s put()');
+   const screen = read('src/screens/CloudSync.tsx');
+   for (const spot of ['cloudSyncSetup', 'cloudSyncShare', 'cloudSyncJoin', 'cloudSyncEvents']) assert.match(screen, new RegExp(`spot=\\{SPOT\\.${spot}\\}[^>]*practice`), `the ${spot} button is off while practising`);
+diff --git a/tests/trainingoffline.test.ts b/tests/trainingoffline.test.ts
+index 413c3c6..20f5294 100644
+--- a/tests/trainingoffline.test.ts
++++ b/tests/trainingoffline.test.ts
+@@ -97,5 +97,5 @@ test('the offline spots live on the right pages, and the retry spot is on Notifi
+ test('in practice the outbox is never uploaded', () => {
+   const sync = fs.readFileSync('src/lib/sync.ts', 'utf8');
+   const send = sync.slice(sync.indexOf('export async function processOutbox'), sync.indexOf('export const retryBlocked'));
+-  assert.ok(send.includes('hasCreds()') && send.indexOf('hasCreds()') < send.indexOf('for (const o of'), 'processOutbox does nothing without credentials, so practice sales never upload');
++  assert.ok(send.includes("alloyReady('orders')") && send.indexOf("alloyReady('orders')") < send.indexOf('for (const o of'), 'processOutbox does nothing unless the orders Alloy is ready (today: Shopify signed in, which practice never is), and the router refuses an order write in practice mode anyway, so practice sales never upload');
+ });
+-- 
+2.43.0
+
