@@ -1,0 +1,117 @@
+From 61bf0db4758663976bfb398fc985d42e17db496d Mon Sep 17 00:00:00 2001
+From: a <a@a>
+Date: Tue, 24 Nov 2026 08:06:23 +1100
+Subject: [PATCH] Alloys P11c: Square discounts
+
+---
+ dev_docs/DEVICE_TESTS.md   |  3 ++-
+ dev_docs/PROGRESS.md       |  1 +
+ src/alloys/square/alloy.ts | 24 ++++++++++++++++++++++--
+ tests/alloysquare.test.ts  |  9 ++++++++-
+ 4 files changed, 33 insertions(+), 4 deletions(-)
+
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index 920f220..92fe3e5 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1646,7 +1646,8 @@ Use Square's sandbox if you can: in your Square developer dashboard open your ap
+ 8. Check the stock of the item in Square. Pass: it went down by one.
+ 9. Open Orders in the app. Pass: the sale is listed. Tap it: the lines and total match. Refunds are tested in T124.
+ 10. Settings, Connections, **Forget this sign-in**. Pass: the token and location are cleared and the Check button reports a missing token.
+-11. Move my data: copy from Shopify (or Pure Tillium) to Square and see what would be copied. Pass: the plan lists items, collections and customers. Run it only on a sandbox.
++11. Set Discounts to Square as well. In Square create one fixed percentage discount and one fixed amount discount (Dashboard, Items, Discounts). Pass: both appear as manual discount presets at the till with the right value.
++12. Move my data: copy from Shopify (or Pure Tillium) to Square and see what would be copied. Pass: the plan lists items, collections and customers. Run it only on a sandbox.
+ 
+ Tell me pass or fail for each, and the exact text of any error.
+ 
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 4a57f63..5dc08cc 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -237,6 +237,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0275 | 2026-11-23 | Alloys phase P10b: **the Square Alloy** (the first Alloy that is not one of today's three). Catalogue (items with options as separate lines, categories as collections, create and update, collections created by assigning items), Stock (counts at one location, adjust, set, changes since a time), Customers (search by email or phone, by name through the list, list all, create, update) and Orders (a sale is recorded as a Square order with each tender as an external payment, rounding and tips as their own charges, safe to repeat on the key; list; find) through Square's REST API with an access token and a chosen location, sandbox optional. Not offered, and the picker says so: gift cards, discounts, refunds, the card reader. Sign-in uses the 0274 store and form. Tested against a fake Square (no network). It cannot be tried against Square from here, so **T123 is the real test**: expect to send me back any field Square answers differently. |
+ | 0276 | 2026-11-24 | Alloys phase P11a: **wording that no longer assumes Shopify**, where it shows with any connection: the location hint (Settings ▸ Connections), the missing-order notices ("Created a missing order", "Sales with no order"), the refund error log line, and the PIN prompt for changing the shop. Kept on purpose: the practice-mode lessons (they teach a Shopify shop), the iCloud and migration pages (they are about Shopify's stored data), gift-card messages (gift cards are Shopify's), and the Zeller vendor name registered with Zeller. No behaviour change. Device test: none. |
+ | 0277 | 2026-11-24 | Alloys phase P11b: **Square refunds**. The Square Alloy now refunds each way of paying against the payments that took the money (never more than a payment still holds, after earlier refunds), safe to retry on the key, then puts returned items back in stock unless told not to. Payments are noted with how they were paid so gift card and exchange credit read back correctly. Square does not say which items came back, so the till remembers it and the order shows what is left to return. Built blind from Square's documentation like 0275, so **T124 is the real test**. |
++| 0278 | 2026-11-24 | Alloys phase P11c: **Square discounts**. Square can now be the Discounts Element: its fixed percentage and fixed amount discounts become the till's manual presets; ones that ask for a value at the time, and nameless ones, are left out. Automatic pricing rules are not read (they match items in ways the till's discount engine cannot be told about), so there are no automatic discounts from Square; the picker says so. Gift cards and the card reader remain Square gaps. Step 11 added to T123. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/src/alloys/square/alloy.ts b/src/alloys/square/alloy.ts
+index d061ba0..a847f17 100644
+--- a/src/alloys/square/alloy.ts
++++ b/src/alloys/square/alloy.ts
+@@ -1,11 +1,11 @@
+ // Location: src/alloys/square/alloy.ts
+ // Alloys P10b: the Square Alloy. Catalogue, Stock, Customers and Orders on a Square account, through Square's own REST API (v2) with a personal
+ // access token. It imports nothing from the app but the kit and types; every call goes through `ctx.http`, so it is tested against a fake.
+-// Not offered: gift cards, discounts and the card reader (Square's reader is not driven from here). It says so on the picker (`limits`).
++// Not offered: gift cards and the card reader (Square's reader is not driven from here). It says so on the picker (`limits`).
+ import { AlloyUserError } from '../../alloykit/errors';
+ import { splitLineForOrder } from '../../alloykit/orderSplit';
+ import type { Alloy, ConnectReport, Ctx, CustomerInput, ItemInput, ItemPatch, ItemRef, OrderDetail, OrderRef, Page, PageReq, RefundItem, StockLevel } from '../../alloykit/types';
+-import type { Collection, Customer, SaleRecord, Tender, Variant } from '../../lib/types';
++import type { Collection, Customer, ManualPreset, SaleRecord, Tender, Variant } from '../../lib/types';
+ 
+ const VERSION = '2025-10-16';
+ const base = (ctx: Ctx) => (ctx.setting('environment').toLowerCase() === 'sandbox' ? 'https://connect.squareupsandbox.com' : 'https://connect.squareup.com');
+@@ -109,6 +109,25 @@ async function currencyOf(ctx: Ctx): Promise<string> {
+   const r = await call<{ location?: { currency?: string } }>(ctx, `/v2/locations/${encodeURIComponent(l)}`); const c = r.location?.currency || 'AUD'; currencies.set(l, c); return c;
+ }
+ 
++// ── Discounts ─────────────────────────────────────────────────────────────────────────────
++type SqDiscount = { id: string; is_deleted?: boolean; discount_data?: { name?: string; discount_type?: string; percentage?: string; amount_money?: Money } };
++const discounts = {
++  /** Square's own automatic pricing rules are not read: they match items in ways the till's discount engine cannot be told about. */
++  async listAutomatic(): Promise<[]> { return []; },
++  /** The fixed percentage and fixed amount discounts in the catalogue, offered as the till's manual presets. Ones that ask for a value at the time are left out. */
++  async listPresets(ctx: Ctx): Promise<ManualPreset[]> {
++    const out: ManualPreset[] = []; let cursor: string | undefined;
++    do {
++      const r = await call<{ objects?: SqDiscount[]; cursor?: string }>(ctx, '/v2/catalog/list', { query: { types: 'DISCOUNT', cursor } });
++      for (const o of r.objects ?? []) { if (o.is_deleted) continue; const d = o.discount_data ?? {}; const label = (d.name ?? '').trim(); if (!label) continue;
++        if (d.discount_type === 'FIXED_PERCENTAGE' && Number(d.percentage) > 0) out.push({ id: o.id, kind: 'pct', value: Number(d.percentage), label });
++        else if (d.discount_type === 'FIXED_AMOUNT' && cents(d.amount_money) > 0) out.push({ id: o.id, kind: 'amt', value: cents(d.amount_money), label }); }
++      cursor = r.cursor;
++    } while (cursor);
++    return out;
++  },
++};
++
+ // ── Stock ─────────────────────────────────────────────────────────────────────────────────
+ const stock = {
+   async changesSince(ctx: Ctx, cursor: string | null): Promise<{ levels: StockLevel[]; cursor: string }> {
+@@ -271,6 +290,7 @@ const alloy: Alloy = {
+   elements: {
+     catalogue: { api: catalogue, needs: ['ITEMS_READ', 'ITEMS_WRITE'], limits: ['Each item has one price. Square item options become separate items when copied in.'] },
+     stock: { api: stock, needs: ['INVENTORY_READ', 'INVENTORY_WRITE'], limits: ['Counts are for the one location you choose.'] },
++    discounts: { api: discounts, needs: ['ITEMS_READ'], limits: ['Fixed percentage and fixed amount discounts become presets. Automatic pricing rules are not read.'] },
+     customers: { api: customers, needs: ['CUSTOMERS_READ', 'CUSTOMERS_WRITE'], limits: ['Searching by name reads the customer list, so the saved copy is faster.'] },
+     orders: { api: orders, needs: ['ORDERS_READ', 'ORDERS_WRITE', 'PAYMENTS_WRITE'], limits: ['Sales are recorded in Square with their payments. Refunds go back against the same payments. Square cannot refund a gift card or exchange credit onto the card itself.'] },
+   },
+diff --git a/tests/alloysquare.test.ts b/tests/alloysquare.test.ts
+index 187afdd..004df09 100644
+--- a/tests/alloysquare.test.ts
++++ b/tests/alloysquare.test.ts
+@@ -131,7 +131,7 @@ test('list maps Square orders to what the screens show', async () => {
+ });
+ 
+ test('Square offers what it can do and says what it cannot; it needs a sign-in and is ready only once filled in', () => {
+-  assert.deepEqual(Object.keys(square.elements).sort(), ['catalogue', 'customers', 'orders', 'stock']); assert.equal(typeof el.orders.api.refund, 'function');
++  assert.deepEqual(Object.keys(square.elements).sort(), ['catalogue', 'customers', 'discounts', 'orders', 'stock']); assert.equal(typeof el.orders.api.refund, 'function');
+   assert.ok(square.settings.some(f => f.key === 'accessToken' && f.secret)); assert.ok(square.settings.find(f => f.key === 'environment')!.optional); assert.equal(square.needsLocation, false); assert.match(el.orders.limits[0], /Refunds go back against the same payments/);
+   assert.ok(ALLOYS.some(a => a.id === 'square'));
+ });
+@@ -176,3 +176,10 @@ test('refund: what came back is remembered, so the order shows less left to retu
+   assert.equal((await el.orders.api.list(a.ctx, {})).rows[0].lines[0].refundableQty, 2);
+   await el.orders.api.refund(a.ctx, order, [{ lineId: 'a', qty: 2 }], { amounts: { cash: 100 }, note: '', key: 'K2' }); assert.equal((await el.orders.api.list(a.ctx, {})).rows[0].lines[0].refundableQty, 0);
+ });
++
++test('discounts: fixed percentage and fixed amount discounts become presets; variable and nameless ones are left out; no automatic ones', async () => {
++  const a = mk(() => ({ objects: [{ id: 'D1', discount_data: { name: 'Staff', discount_type: 'FIXED_PERCENTAGE', percentage: '12.5' } }, { id: 'D2', discount_data: { name: 'Five off', discount_type: 'FIXED_AMOUNT', amount_money: { amount: 500 } } },
++    { id: 'D3', discount_data: { name: 'Ask', discount_type: 'VARIABLE_PERCENTAGE' } }, { id: 'D4', discount_data: { name: ' ', discount_type: 'FIXED_PERCENTAGE', percentage: '5' } }, { id: 'D5', is_deleted: true, discount_data: { name: 'Gone', discount_type: 'FIXED_PERCENTAGE', percentage: '9' } }] }));
++  assert.deepEqual(await el.discounts.api.listPresets(a.ctx), [{ id: 'D1', kind: 'pct', value: 12.5, label: 'Staff' }, { id: 'D2', kind: 'amt', value: 500, label: 'Five off' }]);
++  assert.equal(a.calls[0].query.types, 'DISCOUNT'); assert.deepEqual(await el.discounts.api.listAutomatic(a.ctx), []);
++});
+-- 
+2.43.0
+

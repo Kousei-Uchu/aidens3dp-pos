@@ -1,0 +1,263 @@
+From 3d05d179609a2428ee9caac91e823d8d1ed7592e Mon Sep 17 00:00:00 2001
+From: a <a@a>
+Date: Tue, 24 Nov 2026 08:02:31 +1100
+Subject: [PATCH] Alloys P11b: Square refunds
+
+---
+ dev_docs/DEVICE_TESTS.md   | 16 ++++++++++-
+ dev_docs/PROGRESS.md       |  1 +
+ dev_docs/QUEUE.md          |  2 +-
+ dev_docs/TO_DO.md          |  2 +-
+ src/alloys/square/alloy.ts | 56 +++++++++++++++++++++++++++++++-------
+ tests/alloysquare.test.ts  | 40 +++++++++++++++++++++++++--
+ 6 files changed, 101 insertions(+), 16 deletions(-)
+
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index bf24908..920f220 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1644,8 +1644,22 @@ Use Square's sandbox if you can: in your Square developer dashboard open your ap
+ 6. Make a sale of one item and pay by cash. Pass: the sale completes. In Square (Dashboard, Orders or Transactions) the order is there with the item, and a payment of the same amount.
+ 7. Make a sale with the card reader if it is paired, or by gift card or exchange credit. Pass: the order in Square shows the payment as external.
+ 8. Check the stock of the item in Square. Pass: it went down by one.
+-9. Open Orders in the app. Pass: the sale is listed. Tap it: the lines and total match. Refunds are not offered (expected for now).
++9. Open Orders in the app. Pass: the sale is listed. Tap it: the lines and total match. Refunds are tested in T124.
+ 10. Settings, Connections, **Forget this sign-in**. Pass: the token and location are cleared and the Check button reports a missing token.
+ 11. Move my data: copy from Shopify (or Pure Tillium) to Square and see what would be copied. Pass: the plan lists items, collections and customers. Run it only on a sandbox.
+ 
+ Tell me pass or fail for each, and the exact text of any error.
++
++## T124. Square refunds (0277)
++
++Run T123 first, on the sandbox. You need a sale from that test that sold two of one tracked item.
++
++1. Open the sale under Orders and start a refund of one of the two items, back to the way it was paid. Pass: it completes with no error, and the order shows one item left to return.
++2. In Square (Dashboard, Transactions) find the payment. Pass: a refund for the right amount is on it, with your note as the reason.
++3. Check the item's stock in the app and in Square. Pass: it went up by one.
++4. Refund the other item, and this time turn off putting it back in stock if the screen offers it. Pass: the refund goes through and the stock does not change.
++5. Try to refund the same sale again. Pass: nothing is left to return, or it refuses in plain words, and Square shows no extra refund.
++6. Pay a sale half by cash and half by gift card, then refund all of it. Pass: Square shows two refunds, one against each payment.
++7. Turn airplane mode on part way through step 1 and retry. Pass: Square shows one refund, not two.
++
++Tell me pass or fail for each, and the exact text of any error. Gift cards and exchange credit are refunded against their Square payment only: Square does not put money back on the card itself.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index b25295a..4a57f63 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -236,6 +236,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0274 | 2026-11-23 | Alloys phase P10a: **a place for an Alloy's sign-in**. Only Shopify had one (in its own client); every other Alloy was handed an empty set of secrets and settings. Now an Alloy lists `settings` fields and the app keeps them: plain values in `settings.alloySettings`, secrets in the Keychain (`pos.alloy.<id>.<key>`), read into memory at start so `ctx.secret` stays instant. `src/alloyhost/credentials.ts` (pure, tested) with `appCredentials.ts` wiring the real Keychain; `appCtxFor` hands them to the Alloy; a saved choice counts as ready only when every required field is filled (an Alloy with its own `ready` keeps it); a `SettingField` can be `optional`. Connections shows a sign-in form per chosen Alloy that has fields (secrets never shown back; Save and check; a list the Alloy returns, such as locations, becomes chips; Forget). Practice mode saves and clears nothing. Not shared between registers. Nothing visible changes until an Alloy with fields exists (Square, 0275). Device test: none yet. |
+ | 0275 | 2026-11-23 | Alloys phase P10b: **the Square Alloy** (the first Alloy that is not one of today's three). Catalogue (items with options as separate lines, categories as collections, create and update, collections created by assigning items), Stock (counts at one location, adjust, set, changes since a time), Customers (search by email or phone, by name through the list, list all, create, update) and Orders (a sale is recorded as a Square order with each tender as an external payment, rounding and tips as their own charges, safe to repeat on the key; list; find) through Square's REST API with an access token and a chosen location, sandbox optional. Not offered, and the picker says so: gift cards, discounts, refunds, the card reader. Sign-in uses the 0274 store and form. Tested against a fake Square (no network). It cannot be tried against Square from here, so **T123 is the real test**: expect to send me back any field Square answers differently. |
+ | 0276 | 2026-11-24 | Alloys phase P11a: **wording that no longer assumes Shopify**, where it shows with any connection: the location hint (Settings ▸ Connections), the missing-order notices ("Created a missing order", "Sales with no order"), the refund error log line, and the PIN prompt for changing the shop. Kept on purpose: the practice-mode lessons (they teach a Shopify shop), the iCloud and migration pages (they are about Shopify's stored data), gift-card messages (gift cards are Shopify's), and the Zeller vendor name registered with Zeller. No behaviour change. Device test: none. |
++| 0277 | 2026-11-24 | Alloys phase P11b: **Square refunds**. The Square Alloy now refunds each way of paying against the payments that took the money (never more than a payment still holds, after earlier refunds), safe to retry on the key, then puts returned items back in stock unless told not to. Payments are noted with how they were paid so gift card and exchange credit read back correctly. Square does not say which items came back, so the till remembers it and the order shows what is left to return. Built blind from Square's documentation like 0275, so **T124 is the real test**. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index 2f897a1..b975b2e 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -28,7 +28,7 @@ Help and Training gating, and stock actions from Scan; see `PROGRESS.md`). Only
+ 
+ ## Stream C: Tillium Alloys (separate branch, `tillium-dev`)
+ 
+-Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P8a is done (0269, Smelter plan and dry run); P8b is done (0270, the run and Move my data); P9a is done (0271, shims removed); P9b is done (0272); the Tillium rebrand is done (0273) and so is the Alloy sign-in store (0274, P10a); the Square Alloy (P10b, 0275) is built; its refunds are the next Square job once T123 passes. P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259, orders 0260, shared state 0261, card terminal 0262; P5 is done; P6a 0263, P6b 0264, P6c 0265; P6 is done; P7a 0266, P7b 0267, P7c 0268; Pure Tillium is on). Next: P8, the Smelter; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
++Planned in 0248, not started: `dev_docs/ALLOYS_PLAN.md`. P1 is done (0250) and P2 is done (0251, characterisation tests). P8a is done (0269, Smelter plan and dry run); P8b is done (0270, the run and Move my data); P9a is done (0271, shims removed); P9b is done (0272); the Tillium rebrand is done (0273) and so is the Alloy sign-in store (0274, P10a); the Square Alloy (P10b, 0275) is built; its refunds are built (0277, T124). Next in line: Square gift cards and discounts, and sharing Pure Tillium data between registers. P3 is done (0252, files moved, shims at the old paths). P4 is done (0253 router, 0254 adapters). P5 in progress (discounts 0255, customers 0256, catalogue 0257, stock 0258, gift cards 0259, orders 0260, shared state 0261, card terminal 0262; P5 is done; P6a 0263, P6b 0264, P6c 0265; P6 is done; P7a 0266, P7b 0267, P7c 0268; Pure Tillium is on). Next: P8, the Smelter; each `TRANSITION` exception in `boundaries.ts` goes as P4 and P5 remove the need for it.
+ 
+ ## Rules that hold for the whole queue
+ 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index 0c64ff2..f25beea 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -100,7 +100,7 @@ Everything here is built and unit tested. What is left on each is your device te
+ Planned in 0248 (`dev_docs/ALLOYS_PLAN.md`, rules in `dev_docs/ALLOYS.md`), on the `tillium-dev` branch, not built yet. Your
+ decisions are recorded in section 10 of the plan. P1 is built (0250: the `alloykit` types, the registry, the selection rules and
+ the boundary test, with nothing calling them). P2 is built (0251: tests that pin what the Shopify and Zeller code does now).
+-P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P8a (0269) and P8b (0270) are built: the Smelter plan, dry run, run and the Move my data screen; P9a (0271) and P9b (0272) are built: shims gone and the Alloys no longer import app libraries; the Tillium rebrand (0273) and the Alloy sign-in store (0274) are built; the Square Alloy (0275) is built and needs T123 on a real or sandbox account. Square refunds and gift cards are not built. P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258), gift cards (0259), orders (0260) and shared state (0261) and the card terminal (0262) are on the router, which finishes P5. P6a is built (0263: the picker rules, the saved choice, the router reading it) and P6b (0264: the Connections screen, and the Shopify form on `connectAlloy`). P6c (0265) moved the reader check, pairing and host onto the Zeller Alloy, which finishes P6. Device tests needed: T119 (Connections, 0264) and T120 (reader, 0265). P7a (0266) built Pure Tillium and P7b (0267) gave it a store that survives a restart and made the sync code ask each Alloy whether it is ready. P7c (0268) turned it on. Device test T121. Known gap: Pure Tillium data lives on one iPad and is not shared between registers (a later patch could share it through iCloud records). Next: P8, the Smelter (move a shop's data between connections). P9 list also: `saleCardMode` in `cloudkitBackend.ts` is still reached directly by sync.ts. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
++P3 is built (0252: the files moved under `src/alloys/` with shims at the old paths). P4 is built (0253 the Ctx builder and router, 0254 the Shopify, Zeller and iCloud adapters). P8a (0269) and P8b (0270) are built: the Smelter plan, dry run, run and the Move my data screen; P9a (0271) and P9b (0272) are built: shims gone and the Alloys no longer import app libraries; the Tillium rebrand (0273) and the Alloy sign-in store (0274) are built; the Square Alloy (0275) is built and needs T123 on a real or sandbox account. Square refunds (0277) are built and need T124. Square gift cards and discounts are not built. P5 has started: discounts (0255), customers (0256), catalogue (0257), stock (0258), gift cards (0259), orders (0260) and shared state (0261) and the card terminal (0262) are on the router, which finishes P5. P6a is built (0263: the picker rules, the saved choice, the router reading it) and P6b (0264: the Connections screen, and the Shopify form on `connectAlloy`). P6c (0265) moved the reader check, pairing and host onto the Zeller Alloy, which finishes P6. Device tests needed: T119 (Connections, 0264) and T120 (reader, 0265). P7a (0266) built Pure Tillium and P7b (0267) gave it a store that survives a restart and made the sync code ask each Alloy whether it is ready. P7c (0268) turned it on. Device test T121. Known gap: Pure Tillium data lives on one iPad and is not shared between registers (a later patch could share it through iCloud records). Next: P8, the Smelter (move a shop's data between connections). P9 list also: `saleCardMode` in `cloudkitBackend.ts` is still reached directly by sync.ts. P9 list: move the plain helpers still living in the Shopify folder (`debitNote`, `onceDecision`) to `src/lib`. Later: users deploy their own Cloudflare workers (section 8 of the plan).
+ 
+ ## 4. Flagged in the repo but not on a list
+ 
+diff --git a/src/alloys/square/alloy.ts b/src/alloys/square/alloy.ts
+index 4ab9454..d061ba0 100644
+--- a/src/alloys/square/alloy.ts
++++ b/src/alloys/square/alloy.ts
+@@ -1,10 +1,10 @@
+ // Location: src/alloys/square/alloy.ts
+ // Alloys P10b: the Square Alloy. Catalogue, Stock, Customers and Orders on a Square account, through Square's own REST API (v2) with a personal
+ // access token. It imports nothing from the app but the kit and types; every call goes through `ctx.http`, so it is tested against a fake.
+-// Not offered: gift cards, discounts, refunds and the card reader (Square's reader is not driven from here). It says so on the picker (`limits`).
++// Not offered: gift cards, discounts and the card reader (Square's reader is not driven from here). It says so on the picker (`limits`).
+ import { AlloyUserError } from '../../alloykit/errors';
+ import { splitLineForOrder } from '../../alloykit/orderSplit';
+-import type { Alloy, ConnectReport, Ctx, CustomerInput, ItemInput, ItemPatch, ItemRef, OrderDetail, OrderRef, Page, PageReq, StockLevel } from '../../alloykit/types';
++import type { Alloy, ConnectReport, Ctx, CustomerInput, ItemInput, ItemPatch, ItemRef, OrderDetail, OrderRef, Page, PageReq, RefundItem, StockLevel } from '../../alloykit/types';
+ import type { Collection, Customer, SaleRecord, Tender, Variant } from '../../lib/types';
+ 
+ const VERSION = '2025-10-16';
+@@ -25,7 +25,7 @@ type SqOrder = {
+   id: string; state?: string; created_at?: string; reference_id?: string; customer_id?: string; note?: string; ticket_name?: string; total_money?: Money; location_id?: string;
+   line_items?: { uid?: string; name?: string; variation_name?: string; quantity?: string; catalog_object_id?: string; base_price_money?: Money; total_money?: Money; gross_sales_money?: Money; note?: string }[];
+   tenders?: { id?: string; type?: string; amount_money?: Money; card_details?: unknown; note?: string }[];
+-  refunds?: { amount_money?: Money }[]; returns?: unknown[]; metadata?: Record<string, string>;
++  refunds?: { amount_money?: Money; tender_id?: string }[]; returns?: unknown[]; metadata?: Record<string, string>;
+ };
+ type SqCustomer = { id: string; given_name?: string; family_name?: string; company_name?: string; email_address?: string; phone_number?: string; note?: string };
+ 
+@@ -160,22 +160,34 @@ const customers = {
+ 
+ // ── Orders ────────────────────────────────────────────────────────────────────────────────
+ const EXTERNAL: Record<Tender['kind'], string> = { card: 'CARD', cash: 'OTHER', gift_card: 'OTHER_GIFT_CARD', exchange_credit: 'OTHER' };
+-const kindOfTender = (t?: string): Tender['kind'] => (t === 'CASH' ? 'cash' : t === 'CARD' ? 'card' : t === 'SQUARE_GIFT_CARD' ? 'gift_card' : 'card');
++/** Each payment is written with a note naming how it was paid, because Square's own tender types lump gift cards and exchange credit in with other. */
++const NOTE = 'Tillium ';
++const kindOfTender = (t?: string, note?: string): Tender['kind'] => {
++  const n = note?.startsWith(NOTE) ? note.slice(NOTE.length) : '';
++  if (n === 'cash' || n === 'card' || n === 'gift_card' || n === 'exchange_credit') return n;
++  return t === 'CASH' ? 'cash' : t === 'SQUARE_GIFT_CARD' ? 'gift_card' : 'card';
++};
+ const looksForeign = (id: string) => id.startsWith('gid://') || id.startsWith('tl_');
+ const refOf = (o: { id: string }): OrderRef => ({ id: o.id, name: `#${o.id.slice(-4).toUpperCase()}` });
+ const detailOf = (o: SqOrder): OrderDetail => {
+   const refunded = (o.refunds ?? []).reduce((s, r) => s + cents(r.amount_money), 0);
+   return { id: o.id, name: o.ticket_name || `#${o.id.slice(-4).toUpperCase()}`, createdAt: o.created_at ?? '', financial: o.state === 'COMPLETED' ? (refunded ? 'PARTIALLY_REFUNDED' : 'PAID') : o.state === 'CANCELED' ? 'VOIDED' : 'PENDING', fulfillment: 'FULFILLED',
+     totalCents: cents(o.total_money), refundedCents: refunded, note: o.note, tags: ['pos'], attrs: { ...(o.metadata ?? {}) },
+-    lines: (o.line_items ?? []).map((l, i) => ({ id: l.uid ?? String(i), title: l.name ?? '', variantTitle: l.variation_name && !/^regular$/i.test(l.variation_name) ? l.variation_name : undefined, qty: Number(l.quantity ?? 1) || 1, refundableQty: 0,
++    lines: (o.line_items ?? []).map((l, i) => ({ id: l.uid ?? String(i), title: l.name ?? '', variantTitle: l.variation_name && !/^regular$/i.test(l.variation_name) ? l.variation_name : undefined, qty: Number(l.quantity ?? 1) || 1, refundableQty: Number(l.quantity ?? 1) || 1,
+       unitCents: cents(l.base_price_money), originalUnitCents: cents(l.base_price_money), variantId: l.catalog_object_id, costCents: 0 })),
+-    tenders: (o.tenders ?? []).map((t, i) => ({ id: t.id ?? String(i), kind: kindOfTender(t.type), amountCents: cents(t.amount_money) })) as Tender[], saleUuid: o.reference_id,
++    tenders: (o.tenders ?? []).map((t, i) => ({ id: t.id ?? String(i), kind: kindOfTender(t.type, t.note), amountCents: cents(t.amount_money) })) as Tender[], saleUuid: o.reference_id,
+     transactions: (o.tenders ?? []).map((t, i) => ({ id: t.id ?? String(i), kind: 'SALE', status: 'SUCCESS', gateway: t.type ?? 'Square', amountCents: cents(t.amount_money) })), roundingCents: 0 };
+ };
++/** Square does not say which items came back, so the till remembers it: how many of each line have been returned, by order and line. */
++const returnedKey = (orderId: string, lineId: string) => `${orderId}:${lineId}`;
++async function withReturned(ctx: Ctx, rows: OrderDetail[]): Promise<OrderDetail[]> {
++  for (const o of rows) for (const l of o.lines) { const r = await ctx.store.get<{ qty: number }>('returned', returnedKey(o.id, l.id)); if (r) l.refundableQty = Math.max(0, l.qty - r.qty); }
++  return rows;
++}
+ const known = (ctx: Ctx, uuid: string) => ctx.store.get<{ id: string }>('orderBySale', uuid);
+ const orders = {
+   async record(ctx: Ctx, sale: SaleRecord, o: { key: string }): Promise<OrderRef> {
+-    if (sale.type === 'refund') throw new AlloyUserError('Square refunds are not supported yet.');
++    if (sale.type === 'refund') throw new AlloyUserError('Record a refund from the Refund screen, not as a sale.');
+     const seen = await known(ctx, sale.uuid); if (seen) return refOf(seen);
+     const location = loc(ctx); const currency = await currencyOf(ctx); const money = (amount: number) => ({ amount, currency });
+     const line_items = sale.lines.flatMap(l => splitLineForOrder(l.netCents, l.qty).map(part => ({
+@@ -195,17 +207,41 @@ const orders = {
+     for (const t of sale.tenders) {
+       n++; if (t.amountCents <= 0) continue;
+       const cash = t.kind === 'cash';
+-      await call(ctx, '/v2/payments', { method: 'POST', body: { idempotency_key: `${o.key}:pay${n}`, order_id: order.id, location_id: location, amount_money: money(t.amountCents), autocomplete: true,
++      await call(ctx, '/v2/payments', { method: 'POST', body: { idempotency_key: `${o.key}:pay${n}`, order_id: order.id, location_id: location, amount_money: money(t.amountCents), autocomplete: true, note: `${NOTE}${t.kind}`,
+         ...(cash ? { source_id: 'CASH', cash_details: { buyer_supplied_money: money(t.tenderedCents ?? t.amountCents) } } : { source_id: 'EXTERNAL', external_details: { type: EXTERNAL[t.kind], source: 'Tillium' } }) } });
+     }
+     await ctx.store.put('orderBySale', sale.uuid, { id: order.id });
+     return refOf(order);
+   },
++  /** Refunds each way of paying against the payments that took the money (a payment id is the order's tender id), oldest first, never more than a payment still holds. Then puts returned items back in stock unless told not to. */
++  async refund(ctx: Ctx, order: OrderDetail, items: RefundItem[], o: { amounts: Partial<Record<Tender['kind'], number>>; note: string; key: string; restock?: boolean }): Promise<{ id?: string }> {
++    const cur = (await call<{ order?: SqOrder }>(ctx, `/v2/orders/${encodeURIComponent(order.id)}`)).order; if (!cur) throw new AlloyUserError('That order was not found in Square.');
++    const room = new Map<string, number>(); const kinds = new Map<string, Tender['kind']>();
++    for (const t of cur.tenders ?? []) if (t.id) { room.set(t.id, cents(t.amount_money)); kinds.set(t.id, kindOfTender(t.type, t.note)); }
++    for (const r of cur.refunds ?? []) if (r.tender_id) room.set(r.tender_id, (room.get(r.tender_id) ?? 0) - cents(r.amount_money));
++    const currency = await currencyOf(ctx); let first: string | undefined; let n = 0;
++    for (const [kind, want] of Object.entries(o.amounts) as [Tender['kind'], number][]) {
++      let left = Math.round(want ?? 0); if (left <= 0) continue;
++      for (const [id, k] of kinds) { if (k !== kind || left <= 0) continue; const take = Math.min(left, room.get(id) ?? 0); if (take <= 0) continue;
++        n++; const r = await call<{ refund?: { id?: string } }>(ctx, '/v2/refunds', { method: 'POST', body: { idempotency_key: `${o.key}:ref${n}`, payment_id: id, amount_money: { amount: take, currency }, reason: (o.note || 'Refund').slice(0, 192) } });
++        first ??= r.refund?.id; room.set(id, (room.get(id) ?? 0) - take); left -= take; }
++      if (left > 0) throw new AlloyUserError(`Square holds only ${(want - left) / 100} of the ${want / 100} to give back as ${kind.replace('_', ' ')}.`);
++    }
++    if (o.restock ?? true) {
++      let s = 0;
++      for (const it of items) { const l = order.lines.find(x => x.id === it.lineId); if (l?.variantId && it.qty > 0 && !looksForeign(l.variantId)) { s++; await stock.adjust(ctx, { itemId: l.variantId, delta: it.qty, reason: 'restock', key: `${o.key}:stock${s}` }); } }
++    }
++    if (!(await ctx.store.get('ops', `returned:${o.key}`))) {
++      for (const it of items) { const k = returnedKey(order.id, it.lineId); const had = (await ctx.store.get<{ qty: number }>('returned', k))?.qty ?? 0; await ctx.store.put('returned', k, { qty: had + it.qty }); }
++      await ctx.store.put('ops', `returned:${o.key}`, { at: now() });
++    }
++    return { id: first };
++  },
+   async find(ctx: Ctx, saleUuid: string): Promise<OrderRef | null> { const s = await known(ctx, saleUuid); return s ? refOf(s) : null; },
+   async list(ctx: Ctx, p: PageReq & { query?: string }): Promise<Page<OrderDetail>> {
+     const r = await call<{ orders?: SqOrder[]; cursor?: string }>(ctx, '/v2/orders/search', { method: 'POST', body: { location_ids: [loc(ctx)], limit: p.limit ?? 10, cursor: p.after ?? undefined,
+       query: { filter: { state_filter: { states: ['COMPLETED', 'OPEN'] } }, sort: { sort_field: 'CREATED_AT', sort_order: 'DESC' } } } });
+-    return { rows: (r.orders ?? []).map(detailOf), next: r.cursor ?? null };
++    return { rows: await withReturned(ctx, (r.orders ?? []).map(detailOf)), next: r.cursor ?? null };
+   },
+ };
+ 
+@@ -236,7 +272,7 @@ const alloy: Alloy = {
+     catalogue: { api: catalogue, needs: ['ITEMS_READ', 'ITEMS_WRITE'], limits: ['Each item has one price. Square item options become separate items when copied in.'] },
+     stock: { api: stock, needs: ['INVENTORY_READ', 'INVENTORY_WRITE'], limits: ['Counts are for the one location you choose.'] },
+     customers: { api: customers, needs: ['CUSTOMERS_READ', 'CUSTOMERS_WRITE'], limits: ['Searching by name reads the customer list, so the saved copy is faster.'] },
+-    orders: { api: orders, needs: ['ORDERS_READ', 'ORDERS_WRITE', 'PAYMENTS_WRITE'], limits: ['Sales are recorded in Square with their payments. Refunds are not supported yet.'] },
++    orders: { api: orders, needs: ['ORDERS_READ', 'ORDERS_WRITE', 'PAYMENTS_WRITE'], limits: ['Sales are recorded in Square with their payments. Refunds go back against the same payments. Square cannot refund a gift card or exchange credit onto the card itself.'] },
+   },
+ };
+ export default alloy;
+diff --git a/tests/alloysquare.test.ts b/tests/alloysquare.test.ts
+index 7ea327e..187afdd 100644
+--- a/tests/alloysquare.test.ts
++++ b/tests/alloysquare.test.ts
+@@ -116,7 +116,7 @@ test('record: cash rounding, tips, cash tendered, foreign ids and custom lines',
+ });
+ 
+ test('record: refunds and a missing location are refused in plain words, and a failed payment leaves the order unremembered so a retry finishes it', async () => {
+-  const a = mk(orderReply); await assert.rejects(el.orders.api.record(a.ctx, sale({ type: 'refund' }), { key: 'K' }), /refunds are not supported/);
++  const a = mk(orderReply); await assert.rejects(el.orders.api.record(a.ctx, sale({ type: 'refund' }), { key: 'K' }), /Refund screen/);
+   const noLoc = mk(orderReply, {}); await assert.rejects(el.orders.api.record(noLoc.ctx, sale(), { key: 'K' }), /Choose which Square location/);
+   let fail = true; const b = mk(c => { if (path(c) === '/v2/payments' && fail) { fail = false; throw new Error('offline'); } return orderReply(c); });
+   await assert.rejects(el.orders.api.record(b.ctx, sale(), { key: 'KEY' }), /offline/); assert.equal(await el.orders.api.find(b.ctx, 'u-1'), null);
+@@ -131,8 +131,8 @@ test('list maps Square orders to what the screens show', async () => {
+ });
+ 
+ test('Square offers what it can do and says what it cannot; it needs a sign-in and is ready only once filled in', () => {
+-  assert.deepEqual(Object.keys(square.elements).sort(), ['catalogue', 'customers', 'orders', 'stock']); assert.ok(!('refund' in el.orders.api));
+-  assert.ok(square.settings.some(f => f.key === 'accessToken' && f.secret)); assert.ok(square.settings.find(f => f.key === 'environment')!.optional); assert.equal(square.needsLocation, false); assert.match(el.orders.limits[0], /Refunds are not supported/);
++  assert.deepEqual(Object.keys(square.elements).sort(), ['catalogue', 'customers', 'orders', 'stock']); assert.equal(typeof el.orders.api.refund, 'function');
++  assert.ok(square.settings.some(f => f.key === 'accessToken' && f.secret)); assert.ok(square.settings.find(f => f.key === 'environment')!.optional); assert.equal(square.needsLocation, false); assert.match(el.orders.limits[0], /Refunds go back against the same payments/);
+   assert.ok(ALLOYS.some(a => a.id === 'square'));
+ });
+ 
+@@ -142,3 +142,37 @@ test('through the router, Square writes are refused in practice mode and reads s
+   await assert.rejects(r.api('orders')!.record(sale(), { key: 'K' } as any), PracticeBlockedError); assert.equal(a.calls.length, 0);
+   training = false; assert.ok(r.has('orders'));
+ });
++
++test('refund: goes back against the payments that took the money, per way of paying, never over what a payment holds; restocks real variations', async () => {
++  const a = mk(c => c.method === 'GET' ? { order: { id: 'O1', tenders: [{ id: 'P1', type: 'CARD', amount_money: { amount: 600 }, note: 'Tillium card' }, { id: 'P2', type: 'CARD', amount_money: { amount: 400 }, note: 'Tillium gift_card' }, { id: 'P3', type: 'CASH', amount_money: { amount: 300 } }], refunds: [{ tender_id: 'P1', amount_money: { amount: 100 } }] } }
++    : path(c) === '/v2/locations/L1' ? { location: { currency: 'AUD' } } : path(c) === '/v2/refunds' ? { refund: { id: 'R-' + c.body.payment_id } } : {});
++  const order: any = { id: 'O1', lines: [{ id: 'a', variantId: 'V1' }, { id: 'b', variantId: 'gid://shopify/ProductVariant/1' }, { id: 'c' }] };
++  const r = await el.orders.api.refund(a.ctx, order, [{ lineId: 'a', qty: 2 }, { lineId: 'b', qty: 1 }, { lineId: 'c', qty: 1 }], { amounts: { card: 500, gift_card: 400, cash: 100 }, note: 'Wrong size', key: 'K' });
++  assert.equal(r.id, 'R-P1');
++  const refs = a.calls.filter(c => path(c) === '/v2/refunds').map(c => [c.body.payment_id, c.body.amount_money.amount, c.body.idempotency_key, c.body.reason]);
++  assert.deepEqual(refs, [['P1', 500, 'K:ref1', 'Wrong size'], ['P2', 400, 'K:ref2', 'Wrong size'], ['P3', 100, 'K:ref3', 'Wrong size']]);
++  const stock = a.calls.filter(c => path(c) === '/v2/inventory/changes/batch-create').map(c => [c.body.changes[0].adjustment.catalog_object_id, c.body.changes[0].adjustment.quantity, c.body.idempotency_key]);
++  assert.deepEqual(stock, [['V1', '2', 'K:stock1']]);
++});
++
++test('refund: asking for more than the payments hold is refused in plain words and sends nothing past the limit; restock can be turned off', async () => {
++  const mkOrder = () => mk(c => c.method === 'GET' ? { order: { id: 'O1', tenders: [{ id: 'P1', type: 'CASH', amount_money: { amount: 300 } }], refunds: [{ tender_id: 'P1', amount_money: { amount: 100 } }] } } : path(c) === '/v2/locations/L1' ? { location: { currency: 'AUD' } } : { refund: { id: 'R' } });
++  const a = mkOrder(); await assert.rejects(el.orders.api.refund(a.ctx, { id: 'O1', lines: [] } as any, [], { amounts: { cash: 300 }, note: '', key: 'K' }), /holds only 2 of the 3/);
++  const b = mkOrder(); await el.orders.api.refund(b.ctx, { id: 'O1', lines: [{ id: 'a', variantId: 'V1' }] } as any, [{ lineId: 'a', qty: 1 }], { amounts: { cash: 200 }, note: '', key: 'K', restock: false });
++  assert.equal(b.calls.filter(c => path(c) === '/v2/inventory/changes/batch-create').length, 0); assert.equal(b.calls.find(c => path(c) === '/v2/refunds')!.body.reason, 'Refund');
++});
++
++test('payments are noted with how they were paid, and the order list reads that back', async () => {
++  const a = mk(orderReply); await el.orders.api.record(a.ctx, sale({ uuid: 'u-9', tenders: [{ id: 't', kind: 'exchange_credit', amountCents: 1000 }] }), { key: 'K' });
++  assert.equal(a.calls.find(c => path(c) === '/v2/payments')!.body.note, 'Tillium exchange_credit');
++  const b = mk(() => ({ orders: [{ id: 'X1', state: 'COMPLETED', tenders: [{ id: 'p', type: 'OTHER', amount_money: { amount: 1 }, note: 'Tillium exchange_credit' }, { id: 'q', type: 'CASH', amount_money: { amount: 1 } }] }] }));
++  assert.deepEqual((await el.orders.api.list(b.ctx, {})).rows[0].tenders.map((t: any) => t.kind), ['exchange_credit', 'cash']);
++});
++
++test('refund: what came back is remembered, so the order shows less left to return, and a retry does not count twice', async () => {
++  const reply = (c: Call) => c.method === 'GET' ? { order: { id: 'O1', tenders: [{ id: 'P1', type: 'CASH', amount_money: { amount: 1000 } }] } } : path(c) === '/v2/locations/L1' ? { location: { currency: 'AUD' } } : path(c) === '/v2/orders/search' ? { orders: [{ id: 'O1', state: 'COMPLETED', line_items: [{ uid: 'a', name: 'Dino', quantity: '3' }] }] } : { refund: { id: 'R' } };
++  const a = mk(reply); const order: any = { id: 'O1', lines: [{ id: 'a', qty: 3 }] };
++  await el.orders.api.refund(a.ctx, order, [{ lineId: 'a', qty: 1 }], { amounts: { cash: 100 }, note: '', key: 'K' }); await el.orders.api.refund(a.ctx, order, [{ lineId: 'a', qty: 1 }], { amounts: { cash: 100 }, note: '', key: 'K' });
++  assert.equal((await el.orders.api.list(a.ctx, {})).rows[0].lines[0].refundableQty, 2);
++  await el.orders.api.refund(a.ctx, order, [{ lineId: 'a', qty: 2 }], { amounts: { cash: 100 }, note: '', key: 'K2' }); assert.equal((await el.orders.api.list(a.ctx, {})).rows[0].lines[0].refundableQty, 0);
++});
+-- 
+2.43.0
+

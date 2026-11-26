@@ -1,0 +1,117 @@
+From 2a82ab39382f2c8f574c59299753f822f5f91f4e Mon Sep 17 00:00:00 2001
+From: a <a@a>
+Date: Tue, 24 Nov 2026 07:58:23 +1100
+Subject: [PATCH] Alloys P11a: wording that no longer assumes Shopify
+
+---
+ dev_docs/PROGRESS.md                  | 1 +
+ src/lib/cloudkit/orderRecoverySync.ts | 2 +-
+ src/lib/orderRecovery.ts              | 4 ++--
+ src/lib/refundFlow.ts                 | 2 +-
+ src/lib/stepUp.ts                     | 2 +-
+ src/lib/sync.ts                       | 2 +-
+ tests/orderrecovery.test.ts           | 4 ++--
+ 7 files changed, 9 insertions(+), 8 deletions(-)
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index c588424..b25295a 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -235,6 +235,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0273 | 2026-11-23 | Alloys phase P9c: **Tillium rebrand**. The bundle id, iCloud container and app name were already Tillium; this finishes the rest: package name `tillium`, the iCloud share title, the navgraph app name (regenerated), and a README that describes Alloys and Elements. Screens that said "Shopify" for the catalogue or orders (empty states, Save to, sales that did not reach, returns unlock, practice wording) now use the connection's name through `catalogueName()` and the new `ordersName()`. Kept on purpose so nothing old breaks: the backup file id `shopify-zeller-pos`, the recommended-pairs format id, and the shop's own logo and domain. Shopify-specific screens (Settings ▸ Shopify, its sign-in) still say Shopify. Device test: none; check the app name on the home screen after `npm run ios:reset`. |
+ | 0274 | 2026-11-23 | Alloys phase P10a: **a place for an Alloy's sign-in**. Only Shopify had one (in its own client); every other Alloy was handed an empty set of secrets and settings. Now an Alloy lists `settings` fields and the app keeps them: plain values in `settings.alloySettings`, secrets in the Keychain (`pos.alloy.<id>.<key>`), read into memory at start so `ctx.secret` stays instant. `src/alloyhost/credentials.ts` (pure, tested) with `appCredentials.ts` wiring the real Keychain; `appCtxFor` hands them to the Alloy; a saved choice counts as ready only when every required field is filled (an Alloy with its own `ready` keeps it); a `SettingField` can be `optional`. Connections shows a sign-in form per chosen Alloy that has fields (secrets never shown back; Save and check; a list the Alloy returns, such as locations, becomes chips; Forget). Practice mode saves and clears nothing. Not shared between registers. Nothing visible changes until an Alloy with fields exists (Square, 0275). Device test: none yet. |
+ | 0275 | 2026-11-23 | Alloys phase P10b: **the Square Alloy** (the first Alloy that is not one of today's three). Catalogue (items with options as separate lines, categories as collections, create and update, collections created by assigning items), Stock (counts at one location, adjust, set, changes since a time), Customers (search by email or phone, by name through the list, list all, create, update) and Orders (a sale is recorded as a Square order with each tender as an external payment, rounding and tips as their own charges, safe to repeat on the key; list; find) through Square's REST API with an access token and a chosen location, sandbox optional. Not offered, and the picker says so: gift cards, discounts, refunds, the card reader. Sign-in uses the 0274 store and form. Tested against a fake Square (no network). It cannot be tried against Square from here, so **T123 is the real test**: expect to send me back any field Square answers differently. |
++| 0276 | 2026-11-24 | Alloys phase P11a: **wording that no longer assumes Shopify**, where it shows with any connection: the location hint (Settings ▸ Connections), the missing-order notices ("Created a missing order", "Sales with no order"), the refund error log line, and the PIN prompt for changing the shop. Kept on purpose: the practice-mode lessons (they teach a Shopify shop), the iCloud and migration pages (they are about Shopify's stored data), gift-card messages (gift cards are Shopify's), and the Zeller vendor name registered with Zeller. No behaviour change. Device test: none. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/src/lib/cloudkit/orderRecoverySync.ts b/src/lib/cloudkit/orderRecoverySync.ts
+index 3944bfb..ca7b19f 100644
+--- a/src/lib/cloudkit/orderRecoverySync.ts
++++ b/src/lib/cloudkit/orderRecoverySync.ts
+@@ -56,7 +56,7 @@ export function createOrderRecovery(d: OrderRecoveryDeps) {
+         const stuck = all.filter(s => unrecoverableReason(s) !== null && !told.has(s.uuid));
+         if (stuck.length) {
+           for (const s of stuck) told.add(s.uuid);
+-          d.notify({ title: 'Sales with no Shopify order', body: `${stuck.length} sale${stuck.length > 1 ? 's' : ''} from another register ${stuck.length > 1 ? 'have' : 'has'} no Shopify order and cannot be finished from here (${unrecoverableReason(stuck[0])}). Open the register that took ${stuck.length > 1 ? 'them' : 'it'} and let its queue finish.` });
++          d.notify({ title: 'Sales with no order', body: `${stuck.length} sale${stuck.length > 1 ? 's' : ''} from another register ${stuck.length > 1 ? 'have' : 'has'} no order and cannot be finished from here (${unrecoverableReason(stuck[0])}). Open the register that took ${stuck.length > 1 ? 'them' : 'it'} and let its queue finish.` });
+         }
+         const stranded = all.filter(s => unrecoverableReason(s) === null).slice(0, MAX_PER_RUN);
+         let made = 0;
+diff --git a/src/lib/orderRecovery.ts b/src/lib/orderRecovery.ts
+index 0677c84..6d6d22b 100644
+--- a/src/lib/orderRecovery.ts
++++ b/src/lib/orderRecovery.ts
+@@ -61,6 +61,6 @@ export function claimBlocks(existing: Record<string, unknown>, me: Who, nowMs: n
+ 
+ /** The notice raised on the register that created the order. */
+ export const recoveredNotice = (s: SaleRecord, orderName: string): { title: string; body: string } => ({
+-  title: 'Created a missing Shopify order',
+-  body: `${s.registerName || 'Another register'}'s ${new Date(s.ts).toLocaleString()} sale had no Shopify order, so this register created it (${orderName}).`,
++  title: 'Created a missing order',
++  body: `${s.registerName || 'Another register'}'s ${new Date(s.ts).toLocaleString()} sale had no order, so this register created it (${orderName}).`,
+ });
+diff --git a/src/lib/refundFlow.ts b/src/lib/refundFlow.ts
+index bacc965..9968c22 100644
+--- a/src/lib/refundFlow.ts
++++ b/src/lib/refundFlow.ts
+@@ -91,7 +91,7 @@ export async function executeRefund(a: {
+     if (abortIfNothing && !money) return { ok, message, done, cashOwedCents: 0 };
+     if (isTraining()) applyPracticeRefund(order.id, a.lines, done, a.restock); // practice: the practice order is updated and Shopify is never called
+     else try { await needFeature('orders', 'refund')(order, a.lines.map(l => ({ lineId: l.lineId, qty: l.qty })), { amounts: done, note: `${a.reason} (POS)`, key: refundKey, restock: a.restock }); }
+-    catch (e: any) { void csv.event({ kind: 'error', saleUuid, message: `Shopify refund failed: ${e.message}`, staff }); useApp.getState().notify({ kind: 'refund', title: 'Refund not recorded in Shopify', body: `${order.name}: ${e.message}. The money was already returned.`, route: 'notifications' }); message = (message ? message + ' ' : '') + 'Refund taken but Shopify did not record it - see Notifications.'; }
++    catch (e: any) { void csv.event({ kind: 'error', saleUuid, message: `Refund failed: ${e.message}`, staff }); useApp.getState().notify({ kind: 'refund', title: 'Refund not recorded in Shopify', body: `${order.name}: ${e.message}. The money was already returned.`, route: 'notifications' }); message = (message ? message + ' ' : '') + 'Refund taken but Shopify did not record it - see Notifications.'; }
+     const lines: SaleLine[] = a.lines.map(rl => {
+       const ol = order.lines.find(l => l.id === rl.lineId)!; const cost = a.restock ? Math.round((ol.costCents ?? 0)) * rl.qty : 0;
+       return { variantId: ol.variantId, title: ol.title, variantTitle: ol.variantTitle, qty: rl.qty, baseUnitCents: ol.originalUnitCents, grossCents: ol.originalUnitCents * rl.qty, discountCents: (ol.originalUnitCents - ol.unitCents) * rl.qty, netCents: ol.unitCents * rl.qty, costCents: cost, discountLabels: ol.discount ? [ol.discount] : [], kind: 'item' };
+diff --git a/src/lib/stepUp.ts b/src/lib/stepUp.ts
+index 8370608..71486df 100644
+--- a/src/lib/stepUp.ts
++++ b/src/lib/stepUp.ts
+@@ -9,7 +9,7 @@ export type StepUpAction = 'payment' | 'refund' | 'shopify' | 'drawer' | 'admin'
+ export const STEP_UP_INFO: Record<StepUpAction, { title: string; why: string }> = {
+   payment: { title: 'Take a payment', why: 'Enter your PIN to take a payment.' },
+   refund: { title: 'Refund or return', why: 'Enter your PIN to refund or return an order.' },
+-  shopify: { title: 'Change the shop', why: 'Enter your PIN to change items, stock, customers or orders in Shopify.' },
++  shopify: { title: 'Change the shop', why: 'Enter your PIN to change items, stock, customers or orders.' },
+   drawer: { title: 'Change the cash drawer', why: 'Enter your PIN to change the cash drawer.' },
+   admin: { title: 'Settings and staff', why: 'Enter your PIN to change settings, staff or backups.' },
+   mode: { title: 'What this device is for', why: 'Enter your PIN to change which features this device has.' },
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index 3f6832f..4c29302 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -363,7 +363,7 @@ export const retryBlocked = (id: string) => { patchItem(id, o => ({ ...o, blocke
+ // ── catalogue import ─────────────────────────────────────────────────────────────────────────────
+ export async function importFromShopify(onProgress: (s: string) => void) {
+   const s = st();
+-  if (!s.settings.locationId) throw new Error('Pick a location first (Settings ▸ Shopify).');
++  if (!s.settings.locationId) throw new Error('Pick a location first (Settings ▸ Connections).');
+   onProgress('Products & stock…'); const vs = await listAllItems(onProgress);
+   onProgress('Collections…'); const collections = await listAllCollections(onProgress);
+   onProgress('Customers…'); const customers = await listAllCustomers(onProgress);
+diff --git a/tests/orderrecovery.test.ts b/tests/orderrecovery.test.ts
+index 0bcacf9..8e05d77 100644
+--- a/tests/orderrecovery.test.ts
++++ b/tests/orderrecovery.test.ts
+@@ -54,7 +54,7 @@ test('the claim uses the resolution record\'s existing fields, so the schema nee
+ test('a stranded sale is claimed, finished, and announced', async () => {
+   const t = job({ sales: [sale('s1')] }); assert.equal(await t.j.run(), 1);
+   assert.deepEqual(t.made, ['s1']); assert.equal(t.shop.writes(), 1); assert.equal(t.notices.length, 1);
+-  assert.match(t.notices[0].body, /Front till's .* sale had no Shopify order, so this register created it \(#1001\)/);
++  assert.match(t.notices[0].body, /Front till's .* sale had no order, so this register created it \(#1001\)/);
+ });
+ 
+ test('two registers looking at once: only the one whose claim landed first creates the order', async () => {
+@@ -99,7 +99,7 @@ test('it runs at most every ten minutes unless forced, and never in practice mod
+ test('a gift card sale is not finished from here; a person is told once', async () => {
+   const gift = sale('g', { lines: [{ id: 'l', kind: 'gift_card', title: 'Gift card', qty: 1, unitCents: 2000, netCents: 2000 } as any] });
+   const t = job({ sales: [gift, sale('ok')] }); assert.equal(await t.j.run(true), 1); assert.deepEqual(t.made, ['ok']);
+-  assert.ok(t.notices.some(n => n.title === 'Sales with no Shopify order' && /cannot be finished from here/.test(n.body)));
++  assert.ok(t.notices.some(n => n.title === 'Sales with no order' && /cannot be finished from here/.test(n.body)));
+   const before = t.notices.length; await t.j.run(true); assert.equal(t.notices.length, before, 'not repeated');
+ });
+ 
+-- 
+2.43.0
+
