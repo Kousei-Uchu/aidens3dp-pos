@@ -1,0 +1,461 @@
+From 18d53fadf73482129df43836f07c144780bb924b Mon Sep 17 00:00:00 2001
+From: a <a@a>
+Date: Thu, 26 Nov 2026 12:01:42 +1100
+Subject: [PATCH] Alloys P11d: help pages for Square, Pure Tillium and Move my
+ data
+
+---
+ dev_docs/PROGRESS.md          |   1 +
+ help/help.json                | 116 ++++++++++++++++++++++++++++++++--
+ help/settings/connections.md  |  23 +++++--
+ help/settings/index.md        |   5 +-
+ help/settings/move-data.md    |  52 +++++++++++++++
+ help/settings/pure-tillium.md |  48 ++++++++++++++
+ help/settings/square.md       |  51 +++++++++++++++
+ 7 files changed, 283 insertions(+), 13 deletions(-)
+ create mode 100644 help/settings/move-data.md
+ create mode 100644 help/settings/pure-tillium.md
+ create mode 100644 help/settings/square.md
+
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 5dc08cc..8095b6b 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -238,6 +238,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0276 | 2026-11-24 | Alloys phase P11a: **wording that no longer assumes Shopify**, where it shows with any connection: the location hint (Settings ▸ Connections), the missing-order notices ("Created a missing order", "Sales with no order"), the refund error log line, and the PIN prompt for changing the shop. Kept on purpose: the practice-mode lessons (they teach a Shopify shop), the iCloud and migration pages (they are about Shopify's stored data), gift-card messages (gift cards are Shopify's), and the Zeller vendor name registered with Zeller. No behaviour change. Device test: none. |
+ | 0277 | 2026-11-24 | Alloys phase P11b: **Square refunds**. The Square Alloy now refunds each way of paying against the payments that took the money (never more than a payment still holds, after earlier refunds), safe to retry on the key, then puts returned items back in stock unless told not to. Payments are noted with how they were paid so gift card and exchange credit read back correctly. Square does not say which items came back, so the till remembers it and the order shows what is left to return. Built blind from Square's documentation like 0275, so **T124 is the real test**. |
+ | 0278 | 2026-11-24 | Alloys phase P11c: **Square discounts**. Square can now be the Discounts Element: its fixed percentage and fixed amount discounts become the till's manual presets; ones that ask for a value at the time, and nameless ones, are left out. Automatic pricing rules are not read (they match items in ways the till's discount engine cannot be told about), so there are no automatic discounts from Square; the picker says so. Gift cards and the card reader remain Square gaps. Step 11 added to T123. |
++| 0279 | 2026-11-26 | Alloys phase P11d: **help pages for the new connections**. New pages `settings/pure-tillium`, `settings/square` and `settings/move-data`; `settings/connections` now lists the choosable connections, says only Catalogue and Orders are needed, and explains the sign-in box; the Settings page points to Connections. Basic, Deep and Advanced on each, with files checked against the code. Square's page notes it is written from Square's documentation until T123 and T124 pass. `help.json` rebuilt (72 pages). No behaviour change. |
+ | 0241 | 2026-11-14 | **B7e, Help pictures for three more pages (your request).** The picture engine (`src/lib/helpFigures.ts`) already drew 12 pages; this adds seven figures drawn from the real screens' labels: Cloud sync (set up, invite link, join, Back up everything and Export all events, which the page did not describe at all), Offline and sync errors (the Support & diagnostics Sync rows, with the new **Last full sync** line explained) and Split and part payments (the Split amount sheet and the Payment screen after a split). 15 of 68 pages now have a figure. No code; `help.json` rebuilt, the 63 help tests pass. Not looked at on a device: the pictures follow the screens' labels but I cannot see the iPad. The other 53 pages are not drawn; the Daily float report is the hardest (it draws notes and coins) and was left. | B7e |
+ | 0240 | 2026-11-14 | **B8, review of the gift-card calls before the live test (your request).** Read `giftcards.ts` against Shopify's `giftCardCredit` and `giftCardDebit` pages: the mutations, fields and the `write_gift_card_transactions` scope are as documented. Shopify gives neither call an idempotency key, and the cancel side already looked in the card's history before crediting again, but the **charge did not**: if Shopify took the charge and the reply was lost, the app said "could not be charged", the cashier tapped again and the card was charged twice. New `debitGiftCardOnce` and `src/lib/shopify/giftCardOnce.ts`: the Nth payment of a sale has the same note on every retry (`POS sale <8 chars> tender N`), the card's history is read for it first, and a debit already there is not sent again (Shopify returns a debit as a negative amount, so amounts are compared by size). The credit side now uses the same helper. Pay.tsx charges through it. `tests/giftcardonce.test.ts` (6 tests) pass. DEVICE_TESTS T10 gains the Wi-Fi-off charge test and a check of the notes. **The live run is still yours:** it spends real gift-card value on your store. | B8 |
+ | 0239 | 2026-11-11 | **iCloud was slow, and polls could pile up.** Found by reading the code, not measured on a device: the 25 second tick called `pollShared()` straight away with no check for one already running, and the change pushes and the Sync now button call it too. One poll is about twenty iCloud round trips in a row, so on a slow connection it takes longer than 25 seconds and every tick started another, all competing for iCloud and rewriting the same local state; a cash drawer closed on one iPad then took minutes to show on the other. `pollShared` is now single-flight (`src/lib/singleFlight.ts`): a call made while a poll runs joins it. Diagnostics ▸ Sync gains a **Last full sync** line with the total time and the slowest parts (`src/lib/pollTiming.ts`), so the next step is based on real numbers. Not changed, and likely still slow: the poll's steps run one after another, Back up everything and the events export read 100 records per round trip, and the iCloud tab asks iCloud four things in a row to connect. Parallelising the steps is the next lever but needs a look at what each writes first. Not run on a device. `tests/companionjobs`, `logosync` and `noticesync` cannot run in the sandbox (missing modules) and fail the same without this change; their source checks were run by hand and hold. | Sync |
+diff --git a/help/help.json b/help/help.json
+index fc4364a..353ff48 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "d5ff56e7",
++ "version": "1bb3500e",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1560,6 +1560,9 @@
+    ],
+    "related": [
+     "settings/connections",
++    "settings/square",
++    "settings/pure-tillium",
++    "settings/move-data",
+     "settings/shopify",
+     "settings/payments",
+     "settings/hardware",
+@@ -1583,7 +1586,7 @@
+    ],
+    "lead": "Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware and this register. Tap a section to open it; use the back button to return to the Settings list.",
+    "sections": {
+-    "basic": "### Find a setting\n- **Shopify** connects the register to your shop; see [[settings/shopify]].\n- **Payments** contains cash rounding, Smart change and card fee estimates; see [[settings/payments]].\n- **Discounts & bundles** manages the bundle deals used in Checkout.\n- **Cart warnings** sets the prompts shown at Charge for chosen items or categories. See [[sales/cart-warnings]].\n- **Hardware** opens the scanner test; see [[settings/hardware]].\n- **Data** exports chosen records as CSV files or a spreadsheet, shares the raw CSV files, links a second register to this one's records, or deletes local history. See [[settings/cloud-sync]].\n- **Square history** imports old Square sales for Reports.\n- **Grid import / export** moves the Checkout tile layout.\n- **AI assistant** (owners, or managers when there is no owner) sets the model the Help assistant will use. See [[settings/assistant]].\n- **Gift cards** has the claim-page and cashier-pass server settings.\n- **Receipts** configures receipt and tax-invoice details; see [[settings/receipts]].\n- **Backup & transfer** moves settings and logins to another device; **Data** exports or deletes local CSV history. See [[settings/backup]].\n- **Screensaver & display** controls this iPad's idle screen and Keep iPad awake; see [[staff/screensaver]].\n- **Theme** changes the app's appearance; see [[settings/theme]]. **About** shows app information.\n\n**Device mode** is in More, not in Settings: it says whether this device is a register or a companion, and holds the six register feature switches. See [[device-mode]].\n\nThe Settings list also has Checkout options for consolidating identical items and the tax display. Managers and Owners can access Settings when staff sign-in is required; cashiers cannot.",
++    "basic": "### Find a setting\n- **Connections** chooses where each part of the till gets its data (Shopify, Square, Pure Tillium and more), and has **Move my data**; see [[settings/connections]].\n- **Shopify** connects the register to your Shopify shop; see [[settings/shopify]].\n- **Payments** contains cash rounding, Smart change and card fee estimates; see [[settings/payments]].\n- **Discounts & bundles** manages the bundle deals used in Checkout.\n- **Cart warnings** sets the prompts shown at Charge for chosen items or categories. See [[sales/cart-warnings]].\n- **Hardware** opens the scanner test; see [[settings/hardware]].\n- **Data** exports chosen records as CSV files or a spreadsheet, shares the raw CSV files, links a second register to this one's records, or deletes local history. See [[settings/cloud-sync]].\n- **Square history** imports old Square sales for Reports.\n- **Grid import / export** moves the Checkout tile layout.\n- **AI assistant** (owners, or managers when there is no owner) sets the model the Help assistant will use. See [[settings/assistant]].\n- **Gift cards** has the claim-page and cashier-pass server settings.\n- **Receipts** configures receipt and tax-invoice details; see [[settings/receipts]].\n- **Backup & transfer** moves settings and logins to another device; **Data** exports or deletes local CSV history. See [[settings/backup]].\n- **Screensaver & display** controls this iPad's idle screen and Keep iPad awake; see [[staff/screensaver]].\n- **Theme** changes the app's appearance; see [[settings/theme]]. **About** shows app information.\n\n**Device mode** is in More, not in Settings: it says whether this device is a register or a companion, and holds the six register feature switches. See [[device-mode]].\n\nThe Settings list also has Checkout options for consolidating identical items and the tax display. Managers and Owners can access Settings when staff sign-in is required; cashiers cannot.",
+     "deep": "### Settings are not all shared the same way\nSome choices apply only to this register, such as Screensaver & display, and Smart change until Cloud sync is switched on (after that it is shared). Shared settings, such as staff and bundle deals, sync with the other registers. The screen or setting guide explains when a choice is local.\n\nThe Payments section shows fee rates used for estimates. Zeller does not report actual card fees to the POS, and the automatic cash tender machine is still under construction; cash is entered and given by hand.",
+     "advanced": "### Settings sections\n| Section | Component or route |\n|---|---|\n| Settings list and section navigation | `src/screens/Settings.tsx` |\n| Shopify connection and catalogue import | `ShopifySettings` in `src/screens/Settings.tsx` |\n| Payments, fees and cash rounding | Payments section in `src/screens/Settings.tsx` |\n| Bundle deals | `BundlesEditor` in `src/screens/BundleBuilder.tsx` |\n| Hardware scanner test | `HardwareTest` in `src/screens/ScannerSpeed.tsx` |\n| Screensaver and display | `DisplaySettings` in `src/screens/Settings.tsx` |\n| Settings model and defaults | `src/state/store.ts` |\n\nEach section is a panel within the Settings screen. Its values may be stored locally, shared with the other registers, or held in the iPad's secure storage depending on the setting."
+    }
+@@ -1766,27 +1769,34 @@
+     "Shopify",
+     "Zeller",
+     "iCloud",
++    "Square",
++    "Pure Tillium",
+     "catalogue",
+     "orders",
+     "shared state",
+-    "setup"
++    "setup",
++    "move data",
++    "sign in"
+    ],
+    "related": [
+     "settings",
+     "settings/shopify",
++    "settings/square",
++    "settings/pure-tillium",
++    "settings/move-data",
+     "settings/cloud-sync",
+     "settings/hardware"
+    ],
+-   "updated": "2026-11-20",
++   "updated": "2026-11-26",
+    "roles": [
+     "manager",
+     "owner"
+    ],
+    "lead": "Open **More ▸ Settings ▸ Connections** to see where each part of the till gets its data, such as the catalogue, orders, stock, gift cards and the card reader.",
+    "sections": {
+-    "basic": "### What the screen shows\nEach part of the till has a row. The chips under it are the connections that can do that part, plus **Off** for the parts that are optional. A part marked *needed* (Catalogue, Orders and Shared state) cannot be switched off.\n\nThe screen opens on what the till is doing today, so looking at it changes nothing. Nothing is saved until you tap **Save choice**, and saving never moves or deletes any data. Anything already held in an older service stays there.\n\n### Check connections\nTap **Check connections** to ask every connection in use whether it is signed in and what it is missing. A part the login has no permission for shows a warning naming the permission to add.\n\n### Go back\nOnce a choice is saved, **Go back to the current setup** removes it, and the till reads its setup the way it did before.",
++    "basic": "### What the screen shows\nEach part of the till has a row. The chips under it are the connections that can do that part, plus **Off** for the parts that are optional. A part marked *needed* (Catalogue and Orders) cannot be switched off. Shared state is optional: switched off, the register works on its own.\n\nThe screen opens on what the till is doing today, so looking at it changes nothing. Nothing is saved until you tap **Save choice**, and saving never moves or deletes any data. Anything already held in an older service stays there.\n\n### The connections you can choose\n- **Shopify** can supply every part except the card reader. See [[settings/shopify]].\n- **Pure Tillium** keeps the shop on this iPad, with no outside service. See [[settings/pure-tillium]].\n- **Square** supplies the catalogue, stock, customers, discounts and orders. See [[settings/square]].\n- **Zeller** is the card reader. **iCloud** shares the register's settings and totals between iPads. See [[settings/cloud-sync]].\n\n### Sign-in for a connection\nA connection that needs a login (Square, for now) shows a **sign-in** box under the rows once you have picked it. Type the details and tap **Save and check**. A secret such as an access token is never shown back: the box only says it is saved, and typing a new one replaces it. **Forget this sign-in** removes the details from this iPad and changes nothing in the service. Practice mode saves nothing. These details stay on this iPad; they are not shared with other registers.\n\n### Move my data\nFurther down is **Move my data**, which copies a shop from one connection to another. See [[settings/move-data]].\n\n### Check connections\nTap **Check connections** to ask every connection in use whether it is signed in and what it is missing. A part the login has no permission for shows a warning naming the permission to add.\n\n### Go back\nOnce a choice is saved, **Go back to the current setup** removes it, and the till reads its setup the way it did before.",
+     "deep": "### Warnings\nA needed part with nothing chosen blocks **Save choice**. An optional part that is off shows what the shop loses, for example that stock screens are hidden. A missing permission warns but does not block, because the rest of the till still works.",
+-    "advanced": "| Job | Where |\n|---|---|\n| The screen | `Connections` in `src/screens/Connections.tsx` |\n| Rows, warnings and the rules for changing a choice | `buildPicker`, `choose`, `pickerReady` in `src/alloykit/picker.ts` |\n| Saved choice and the connection check | `saveSelection`, `connectAlloy` in `src/alloyhost/choice.ts` |\n| Reading the saved choice | `readSavedSelection` in `src/alloyhost/savedSelection.ts`, used by `src/alloyhost/appRouter.ts` |\n\nFor the Shopify sign-in and location, see [[settings/shopify]]."
++    "advanced": "| Job | Where |\n|---|---|\n| The screen | `Connections` in `src/screens/Connections.tsx` |\n| Rows, warnings and the rules for changing a choice | `buildPicker`, `choose`, `pickerReady` in `src/alloykit/picker.ts` |\n| Sign-in details: plain values in settings, secrets in the Keychain, loaded at start | `createCredentials` in `src/alloyhost/credentials.ts`, wired in `src/alloyhost/appCredentials.ts`, form `AlloyForm` in `src/screens/Connections.tsx` |\n| Saved choice and the connection check | `saveSelection`, `connectAlloy` in `src/alloyhost/choice.ts` |\n| Reading the saved choice | `readSavedSelection` in `src/alloyhost/savedSelection.ts`, used by `src/alloyhost/appRouter.ts` |\n\nTests: `tests/alloycredentials.test.ts`. For the Shopify sign-in and location, see [[settings/shopify]]."
+    }
+   },
+   {
+@@ -1821,6 +1831,38 @@
+     "advanced": "### Test input path\n```mermaid\nflowchart TD\n  A[Pair scanner as HID keyboard] --> B[Open Hardware test]\n  B --> C[Scanner types code and Return]\n  C --> D[Show raw code in recent scans]\n  D --> E[Cart and catalogue stay unchanged]\n```\n\n| Job | Where |\n|---|---|\n| Hardware test UI, recent scan list, speed test and Calibrate menu | `HardwareTest`, `CalibrateSheet` in `src/screens/ScannerSpeed.tsx` |\n| Bluetooth HID input | `HidScanner` in `src/screens/Scanner.tsx` |\n| Scan activity and input completion | `noteActivity` in `src/lib/idle.ts`, submit handler in `src/screens/Scanner.tsx` |\n| Item/pass/gift-card scan handling | `src/screens/Scanner.tsx`, `src/lib/lookup.ts` |\n| Timing a scan, ranges, saving rules | `noteChange`, `measure`, `rangeFromSamples`, `calibrationProblems`, `canCalibrate` in `src/lib/scanSpeed.ts` |\n| Share the calibration between registers | `saveScannerCalibration`, `pushScannerCalibration` in `src/lib/sync.ts` (pulled in the same poll as the other shared settings) |\n| Scanner guide | `help/sales/scanners.md` |\n\nThe Hardware test keeps the most recent eight scans in memory while it is open. It does not save those scan values to the catalogue or sales history."
+    }
+   },
++  {
++   "id": "settings/move-data",
++   "title": "Move my data",
++   "parent": "settings",
++   "summary": "Copy items, stock, collections and customers from one connection to another, after seeing what would happen.",
++   "tags": [
++    "move data",
++    "copy",
++    "Smelter",
++    "migrate",
++    "Shopify",
++    "Square",
++    "Pure Tillium",
++    "import"
++   ],
++   "related": [
++    "settings/connections",
++    "settings/pure-tillium",
++    "settings/square"
++   ],
++   "updated": "2026-11-26",
++   "roles": [
++    "manager",
++    "owner"
++   ],
++   "lead": "**Move my data**, at the bottom of **More ▸ Settings ▸ Connections**, copies your shop from one connection to another. It copies, it never deletes, and it shows you what it will do first.",
++   "sections": {
++    "basic": "### Copy a shop\n1. Choose **Copy from** and **Copy to**.\n2. Tap **See what would be copied**. Nothing changes yet. You see how many items, collections and customers will be copied, what is already there, and what will be left behind.\n3. Read the warnings and the list of what is **not copied**. Tap **Copy to ...** and confirm.\n\n### What is copied\nItems with their prices, SKUs, barcodes, costs and stock; collections; and customers. Items that are archived or drafts are left behind.\n\n### What is not copied\nOrder history, gift cards (Shopify only gives the last four digits of a code), automatic discounts and presets, and pictures and sales channels. The screen lists these every time.\n\n### If it stops\nRun it again. Anything already copied is recognised and skipped, so it carries on from where it got to. After five failures in a row it stops and says why.\n\n### Practice mode\nPractice mode refuses to copy.",
++    "deep": "### How an item is matched\nBy SKU first, then barcode, then name and price. An item that matches something already in the destination is not copied again. Items with neither a SKU nor a barcode can be copied twice if you run the same copy into a destination that already holds them under a different name, so the screen warns about them.\n\n### Options\nA product with options (Size, Colour) is copied as separate items named like \"Shirt - Large\", because not every connection has options.\n\n### Customers\nMatched by email, then phone number, then name.",
++    "advanced": "| Job | Where |\n|---|---|\n| The plan: what would be copied, matched and left behind | `buildPlan` in `src/alloykit/smelter.ts` |\n| Reading each side directly (not through the router) | `readSide`, `dryRun` in `src/alloyhost/smelter.ts` |\n| The copy | `runPlan` in `src/alloyhost/smelter.ts`: items with stock, then collections, then customers |\n| The screen | `MoveData` in `src/screens/Connections.tsx` |\n\nTests: `tests/alloysmelter.test.ts`. Device test: T122 in `dev_docs/DEVICE_TESTS.md`."
++   }
++  },
+   {
+    "id": "settings/payments",
+    "title": "Payment settings",
+@@ -1854,6 +1896,37 @@
+     "advanced": "### Payment settings and reader path\n```mermaid\nflowchart TD\n  A[Choose rounding or fee estimates] --> B[Save payment settings]\n  C[Open Reader and pairing] --> D[Support and diagnostics]\n  D --> E[Setup pair terminal]\n  E --> F[Check reader before taking card payment]\n```\n\n| Job | Where |\n|---|---|\n| Payments section | `src/screens/Settings.tsx` |\n| Default fee rates and rate selection | `DEFAULT_FEES`, `feeRate` in `src/lib/fees.ts` |\n| Cash rounding | `cashRounding` in `src/lib/cashSale.ts` |\n| Reader pairing and test purchase controls | `src/screens/Diagnostics.tsx` |\n| Zeller payment request and results | `src/lib/zeller.ts`, `src/screens/Pay.tsx` |\n\nThe fee estimates are recorded with sales for reporting; they are not a quote from the terminal. The Settings footer explains that actual card fees are not provided by the Zeller SDK."
+    }
+   },
++  {
++   "id": "settings/pure-tillium",
++   "title": "Pure Tillium",
++   "parent": "settings",
++   "summary": "Run the till with no outside service: items, stock, customers, orders and gift cards are kept on this iPad.",
++   "tags": [
++    "Pure Tillium",
++    "offline",
++    "no Shopify",
++    "local",
++    "This iPad",
++    "orders",
++    "gift cards"
++   ],
++   "related": [
++    "settings/connections",
++    "settings/move-data",
++    "settings/backup"
++   ],
++   "updated": "2026-11-26",
++   "roles": [
++    "manager",
++    "owner"
++   ],
++   "lead": "Pure Tillium keeps the whole shop on this iPad. Choose it in **More ▸ Settings ▸ Connections** when you want a register that works without Shopify or Square.",
++   "sections": {
++    "basic": "### What it does\n- Items, stock, collections, customers, discounts, gift cards and orders are all kept on this iPad.\n- Orders are named **#T1001**, **#T1002** and so on.\n- There is one location, **This iPad**. You do not pick a location.\n- Refunds, returns and gift cards work the way they do with Shopify. Money is shown as **Zeller**, **Cash**, **Gift card** or **Exchange credit**.\n\n### Before you switch\nNothing is copied when you switch, and nothing is deleted. To bring your shop across, use **Move my data** ([[settings/move-data]]). Back up first ([[settings/backup]]) if the data matters.\n\n### What it cannot do yet\n- The data lives on this one iPad. Another register does not see it, and the QR setup does not copy it.\n- If this iPad is lost or reset, Pure Tillium data goes with it unless you made a backup.",
++    "deep": "### Practice mode\nIn practice mode Pure Tillium refuses every write, like the other connections, so practice never changes the real shop.\n\n### If it is switched off and on\nSwitching away from Pure Tillium leaves its data where it is. Switching back finds it again. The location you used before is remembered and restored when you leave.",
++    "advanced": "| Job | Where |\n|---|---|\n| The Alloy (every Element it supplies) | `src/alloys/tillium/alloy.ts` |\n| Storage on the iPad, one namespace per Alloy | `appLocalStore`, `scopedStore` in `src/alloyhost/persistentStore.ts` (keys `tl1:<collection>:<id>`) |\n| Writes one at a time, repeats safe on their key | the lock `L` and `once` in `src/alloys/tillium/alloy.ts` |\n| The built-in location and switching back | `LOCAL_LOCATION`, `reconcileLocation` in `src/alloyhost/choice.ts` |\n\nTests: `tests/alloytillium.test.ts`, `tests/alloypersist.test.ts`.\n\n### Known to change\nSharing this data between registers is not built. Until it is, treat Pure Tillium as one register."
++   }
++  },
+   {
+    "id": "settings/receipts",
+    "title": "Receipt settings",
+@@ -1954,6 +2027,37 @@
+     "advanced": "### Connection and import path\n```mermaid\nflowchart TD\n  A[Enter shop domain and app credentials] --> B[Save credentials in iOS Keychain]\n  B --> C[Request Shopify access token]\n  C --> D[Fetch shop and active locations]\n  D --> E[Choose location for stock and orders]\n  E --> F[Import variants collections customers and discounts]\n  E --> G[Set up shared storage when using multiple registers]\n```\n\n| Job | Where |\n|---|---|\n| Connection form and import controls | `ShopifySettings` in `src/screens/Settings.tsx` |\n| Store-domain cleanup and secure credentials | `normaliseDomain`, `saveCreds` in `src/alloys/shopify/client.ts` |\n| Access token and Admin GraphQL requests | `getToken`, `gql` in `src/alloys/shopify/client.ts` |\n| Shop name and active locations | `fetchShop` in `src/alloys/shopify/catalogue.ts` |\n| Bulk catalogue import | `importFromShopify` in `src/lib/sync.ts` |\n| Shared storage definitions | `ensureShared` in `src/alloykit/syncBackend.ts`, which the metaobject backend answers with `ensureDefinitions` in `src/alloys/shopify/metaobjects.ts` |\n\nThe access token is created by the app and refreshed automatically; you do not enter a token in Settings. Credentials and token are kept in the iOS Keychain on this device.\n\nFor a completed sale that is queued or blocked from uploading, see [[fix/offline-sync]]."
+    }
+   },
++  {
++   "id": "settings/square",
++   "title": "Square",
++   "parent": "settings",
++   "summary": "Use Square for items, stock, customers, discounts and orders, with a Square access token.",
++   "tags": [
++    "Square",
++    "access token",
++    "location",
++    "sandbox",
++    "refunds",
++    "discounts",
++    "sign in"
++   ],
++   "related": [
++    "settings/connections",
++    "settings/move-data",
++    "settings/pure-tillium"
++   ],
++   "updated": "2026-11-26",
++   "roles": [
++    "manager",
++    "owner"
++   ],
++   "lead": "Choose **Square** in **More ▸ Settings ▸ Connections** to keep items, stock, customers, discounts and orders on your Square account.",
++   "sections": {
++    "basic": "### Set it up\n1. In the Square Developer Dashboard open your application, then Credentials, and copy the **Production** access token.\n2. In Connections choose Square for the parts you want, then paste the token in the **Square sign-in** box and tap **Save and check**.\n3. When it says Connected, tap your **location** in the list. Stock and orders are counted at that one location.\n4. Tap **Save choice**.\n\nTo try it without touching your real account, type `sandbox` in the Environment box and use the Sandbox token.\n\n### What it does\n- Each sale is recorded in Square as an order, with every way it was paid.\n- Refunds are made against the payment that took the money, and returned items go back in stock unless you turn that off.\n- Fixed percentage and fixed amount discounts in Square appear as the till's discount presets.\n\n### What it does not do yet\n- Gift cards and the card reader. Use Zeller for cards.\n- Square's automatic pricing rules are not used.\n- A gift card or exchange credit cannot be refunded onto the card itself, only against its payment.\n- Each item has one price. Square item options become separate items when you copy a shop in.",
++    "deep": "### If a sale will not record\nThe message names the problem, such as no location chosen or the token being refused. Check the sign-in box, then **Check connections**. A sale that could not reach Square waits in the queue and is sent again with the same key, so Square never makes two orders.\n\n### Returned items\nSquare does not say which items came back, so the till remembers it. The order shows how many of each line are left to return.",
++    "advanced": "| Job | Where |\n|---|---|\n| The Alloy | `src/alloys/square/alloy.ts`, through `ctx.http` to Square's v2 API |\n| Order and payment per tender, rounding and tips as their own charges | `orders.record` |\n| Refunds against the order's payments | `orders.refund` (reads the order fresh, never over a payment's remaining amount) |\n| Sign-in details | [[settings/connections]], `src/alloyhost/credentials.ts` |\n\nTests: `tests/alloysquare.test.ts` (against a fake Square). It was written from Square's documentation, so the device tests T123 and T124 are the real check."
++   }
++  },
+   {
+    "id": "settings/theme",
+    "title": "Theme, tiles and accent",
+diff --git a/help/settings/connections.md b/help/settings/connections.md
+index 8dc1247..fb4bbd8 100644
+--- a/help/settings/connections.md
++++ b/help/settings/connections.md
+@@ -3,9 +3,9 @@ id: settings/connections
+ title: Connections
+ parent: settings
+ summary: Choose which connection supplies each part of the till, check them, and go back to the current setup.
+-tags: [connections, Alloys, Shopify, Zeller, iCloud, catalogue, orders, shared state, setup]
+-related: [settings, settings/shopify, settings/cloud-sync, settings/hardware]
+-updated: 2026-11-20
++tags: [connections, Alloys, Shopify, Zeller, iCloud, Square, Pure Tillium, catalogue, orders, shared state, setup, move data, sign in]
++related: [settings, settings/shopify, settings/square, settings/pure-tillium, settings/move-data, settings/cloud-sync, settings/hardware]
++updated: 2026-11-26
+ roles: [manager, owner]
+ ---
+ Open **More ▸ Settings ▸ Connections** to see where each part of the till gets its data, such as the catalogue, orders, stock, gift cards and the card reader.
+@@ -13,10 +13,22 @@ Open **More ▸ Settings ▸ Connections** to see where each part of the till ge
+ ## Basic
+ 
+ ### What the screen shows
+-Each part of the till has a row. The chips under it are the connections that can do that part, plus **Off** for the parts that are optional. A part marked *needed* (Catalogue, Orders and Shared state) cannot be switched off.
++Each part of the till has a row. The chips under it are the connections that can do that part, plus **Off** for the parts that are optional. A part marked *needed* (Catalogue and Orders) cannot be switched off. Shared state is optional: switched off, the register works on its own.
+ 
+ The screen opens on what the till is doing today, so looking at it changes nothing. Nothing is saved until you tap **Save choice**, and saving never moves or deletes any data. Anything already held in an older service stays there.
+ 
++### The connections you can choose
++- **Shopify** can supply every part except the card reader. See [[settings/shopify]].
++- **Pure Tillium** keeps the shop on this iPad, with no outside service. See [[settings/pure-tillium]].
++- **Square** supplies the catalogue, stock, customers, discounts and orders. See [[settings/square]].
++- **Zeller** is the card reader. **iCloud** shares the register's settings and totals between iPads. See [[settings/cloud-sync]].
++
++### Sign-in for a connection
++A connection that needs a login (Square, for now) shows a **sign-in** box under the rows once you have picked it. Type the details and tap **Save and check**. A secret such as an access token is never shown back: the box only says it is saved, and typing a new one replaces it. **Forget this sign-in** removes the details from this iPad and changes nothing in the service. Practice mode saves nothing. These details stay on this iPad; they are not shared with other registers.
++
++### Move my data
++Further down is **Move my data**, which copies a shop from one connection to another. See [[settings/move-data]].
++
+ ### Check connections
+ Tap **Check connections** to ask every connection in use whether it is signed in and what it is missing. A part the login has no permission for shows a warning naming the permission to add.
+ 
+@@ -34,7 +46,8 @@ A needed part with nothing chosen blocks **Save choice**. An optional part that
+ |---|---|
+ | The screen | `Connections` in `src/screens/Connections.tsx` |
+ | Rows, warnings and the rules for changing a choice | `buildPicker`, `choose`, `pickerReady` in `src/alloykit/picker.ts` |
++| Sign-in details: plain values in settings, secrets in the Keychain, loaded at start | `createCredentials` in `src/alloyhost/credentials.ts`, wired in `src/alloyhost/appCredentials.ts`, form `AlloyForm` in `src/screens/Connections.tsx` |
+ | Saved choice and the connection check | `saveSelection`, `connectAlloy` in `src/alloyhost/choice.ts` |
+ | Reading the saved choice | `readSavedSelection` in `src/alloyhost/savedSelection.ts`, used by `src/alloyhost/appRouter.ts` |
+ 
+-For the Shopify sign-in and location, see [[settings/shopify]].
++Tests: `tests/alloycredentials.test.ts`. For the Shopify sign-in and location, see [[settings/shopify]].
+diff --git a/help/settings/index.md b/help/settings/index.md
+index 1b0d8f4..f424c58 100644
+--- a/help/settings/index.md
++++ b/help/settings/index.md
+@@ -4,7 +4,7 @@ title: Settings
+ parent: start
+ summary: Find Shopify, payment, hardware, data, receipt, backup, display and other register settings.
+ tags: [settings, Shopify, payments, fees, rounding, hardware, scanner, receipts, backup, theme]
+-related: [settings/connections, settings/shopify, settings/payments, settings/hardware, settings/scanner-codes, settings/receipts, settings/backup, settings/theme, settings/cloud-sync, start/setup, device-mode, staff/screensaver, staff, sales/bundles, sales/cart-warnings, settings/assistant]
++related: [settings/connections, settings/square, settings/pure-tillium, settings/move-data, settings/shopify, settings/payments, settings/hardware, settings/scanner-codes, settings/receipts, settings/backup, settings/theme, settings/cloud-sync, start/setup, device-mode, staff/screensaver, staff, sales/bundles, sales/cart-warnings, settings/assistant]
+ updated: 2026-10-11
+ roles: [manager, owner]
+ ---
+@@ -13,7 +13,8 @@ Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware a
+ ## Basic
+ 
+ ### Find a setting
+-- **Shopify** connects the register to your shop; see [[settings/shopify]].
++- **Connections** chooses where each part of the till gets its data (Shopify, Square, Pure Tillium and more), and has **Move my data**; see [[settings/connections]].
++- **Shopify** connects the register to your Shopify shop; see [[settings/shopify]].
+ - **Payments** contains cash rounding, Smart change and card fee estimates; see [[settings/payments]].
+ - **Discounts & bundles** manages the bundle deals used in Checkout.
+ - **Cart warnings** sets the prompts shown at Charge for chosen items or categories. See [[sales/cart-warnings]].
+diff --git a/help/settings/move-data.md b/help/settings/move-data.md
+new file mode 100644
+index 0000000..331a0fd
+--- /dev/null
++++ b/help/settings/move-data.md
+@@ -0,0 +1,52 @@
++---
++id: settings/move-data
++title: Move my data
++parent: settings
++summary: Copy items, stock, collections and customers from one connection to another, after seeing what would happen.
++tags: [move data, copy, Smelter, migrate, Shopify, Square, Pure Tillium, import]
++related: [settings/connections, settings/pure-tillium, settings/square]
++updated: 2026-11-26
++roles: [manager, owner]
++---
++**Move my data**, at the bottom of **More ▸ Settings ▸ Connections**, copies your shop from one connection to another. It copies, it never deletes, and it shows you what it will do first.
++
++## Basic
++
++### Copy a shop
++1. Choose **Copy from** and **Copy to**.
++2. Tap **See what would be copied**. Nothing changes yet. You see how many items, collections and customers will be copied, what is already there, and what will be left behind.
++3. Read the warnings and the list of what is **not copied**. Tap **Copy to ...** and confirm.
++
++### What is copied
++Items with their prices, SKUs, barcodes, costs and stock; collections; and customers. Items that are archived or drafts are left behind.
++
++### What is not copied
++Order history, gift cards (Shopify only gives the last four digits of a code), automatic discounts and presets, and pictures and sales channels. The screen lists these every time.
++
++### If it stops
++Run it again. Anything already copied is recognised and skipped, so it carries on from where it got to. After five failures in a row it stops and says why.
++
++### Practice mode
++Practice mode refuses to copy.
++
++## Deep
++
++### How an item is matched
++By SKU first, then barcode, then name and price. An item that matches something already in the destination is not copied again. Items with neither a SKU nor a barcode can be copied twice if you run the same copy into a destination that already holds them under a different name, so the screen warns about them.
++
++### Options
++A product with options (Size, Colour) is copied as separate items named like "Shirt - Large", because not every connection has options.
++
++### Customers
++Matched by email, then phone number, then name.
++
++## Advanced
++
++| Job | Where |
++|---|---|
++| The plan: what would be copied, matched and left behind | `buildPlan` in `src/alloykit/smelter.ts` |
++| Reading each side directly (not through the router) | `readSide`, `dryRun` in `src/alloyhost/smelter.ts` |
++| The copy | `runPlan` in `src/alloyhost/smelter.ts`: items with stock, then collections, then customers |
++| The screen | `MoveData` in `src/screens/Connections.tsx` |
++
++Tests: `tests/alloysmelter.test.ts`. Device test: T122 in `dev_docs/DEVICE_TESTS.md`.
+diff --git a/help/settings/pure-tillium.md b/help/settings/pure-tillium.md
+new file mode 100644
+index 0000000..4bc10a8
+--- /dev/null
++++ b/help/settings/pure-tillium.md
+@@ -0,0 +1,48 @@
++---
++id: settings/pure-tillium
++title: Pure Tillium
++parent: settings
++summary: Run the till with no outside service: items, stock, customers, orders and gift cards are kept on this iPad.
++tags: [Pure Tillium, offline, no Shopify, local, This iPad, orders, gift cards]
++related: [settings/connections, settings/move-data, settings/backup]
++updated: 2026-11-26
++roles: [manager, owner]
++---
++Pure Tillium keeps the whole shop on this iPad. Choose it in **More ▸ Settings ▸ Connections** when you want a register that works without Shopify or Square.
++
++## Basic
++
++### What it does
++- Items, stock, collections, customers, discounts, gift cards and orders are all kept on this iPad.
++- Orders are named **#T1001**, **#T1002** and so on.
++- There is one location, **This iPad**. You do not pick a location.
++- Refunds, returns and gift cards work the way they do with Shopify. Money is shown as **Zeller**, **Cash**, **Gift card** or **Exchange credit**.
++
++### Before you switch
++Nothing is copied when you switch, and nothing is deleted. To bring your shop across, use **Move my data** ([[settings/move-data]]). Back up first ([[settings/backup]]) if the data matters.
++
++### What it cannot do yet
++- The data lives on this one iPad. Another register does not see it, and the QR setup does not copy it.
++- If this iPad is lost or reset, Pure Tillium data goes with it unless you made a backup.
++
++## Deep
++
++### Practice mode
++In practice mode Pure Tillium refuses every write, like the other connections, so practice never changes the real shop.
++
++### If it is switched off and on
++Switching away from Pure Tillium leaves its data where it is. Switching back finds it again. The location you used before is remembered and restored when you leave.
++
++## Advanced
++
++| Job | Where |
++|---|---|
++| The Alloy (every Element it supplies) | `src/alloys/tillium/alloy.ts` |
++| Storage on the iPad, one namespace per Alloy | `appLocalStore`, `scopedStore` in `src/alloyhost/persistentStore.ts` (keys `tl1:<collection>:<id>`) |
++| Writes one at a time, repeats safe on their key | the lock `L` and `once` in `src/alloys/tillium/alloy.ts` |
++| The built-in location and switching back | `LOCAL_LOCATION`, `reconcileLocation` in `src/alloyhost/choice.ts` |
++
++Tests: `tests/alloytillium.test.ts`, `tests/alloypersist.test.ts`.
++
++### Known to change
++Sharing this data between registers is not built. Until it is, treat Pure Tillium as one register.
+diff --git a/help/settings/square.md b/help/settings/square.md
+new file mode 100644
+index 0000000..913473b
+--- /dev/null
++++ b/help/settings/square.md
+@@ -0,0 +1,51 @@
++---
++id: settings/square
++title: Square
++parent: settings
++summary: Use Square for items, stock, customers, discounts and orders, with a Square access token.
++tags: [Square, access token, location, sandbox, refunds, discounts, sign in]
++related: [settings/connections, settings/move-data, settings/pure-tillium]
++updated: 2026-11-26
++roles: [manager, owner]
++---
++Choose **Square** in **More ▸ Settings ▸ Connections** to keep items, stock, customers, discounts and orders on your Square account.
++
++## Basic
++
++### Set it up
++1. In the Square Developer Dashboard open your application, then Credentials, and copy the **Production** access token.
++2. In Connections choose Square for the parts you want, then paste the token in the **Square sign-in** box and tap **Save and check**.
++3. When it says Connected, tap your **location** in the list. Stock and orders are counted at that one location.
++4. Tap **Save choice**.
++
++To try it without touching your real account, type `sandbox` in the Environment box and use the Sandbox token.
++
++### What it does
++- Each sale is recorded in Square as an order, with every way it was paid.
++- Refunds are made against the payment that took the money, and returned items go back in stock unless you turn that off.
++- Fixed percentage and fixed amount discounts in Square appear as the till's discount presets.
++
++### What it does not do yet
++- Gift cards and the card reader. Use Zeller for cards.
++- Square's automatic pricing rules are not used.
++- A gift card or exchange credit cannot be refunded onto the card itself, only against its payment.
++- Each item has one price. Square item options become separate items when you copy a shop in.
++
++## Deep
++
++### If a sale will not record
++The message names the problem, such as no location chosen or the token being refused. Check the sign-in box, then **Check connections**. A sale that could not reach Square waits in the queue and is sent again with the same key, so Square never makes two orders.
++
++### Returned items
++Square does not say which items came back, so the till remembers it. The order shows how many of each line are left to return.
++
++## Advanced
++
++| Job | Where |
++|---|---|
++| The Alloy | `src/alloys/square/alloy.ts`, through `ctx.http` to Square's v2 API |
++| Order and payment per tender, rounding and tips as their own charges | `orders.record` |
++| Refunds against the order's payments | `orders.refund` (reads the order fresh, never over a payment's remaining amount) |
++| Sign-in details | [[settings/connections]], `src/alloyhost/credentials.ts` |
++
++Tests: `tests/alloysquare.test.ts` (against a fake Square). It was written from Square's documentation, so the device tests T123 and T124 are the real check.
+-- 
+2.43.0
+
